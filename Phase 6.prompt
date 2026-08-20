@@ -1,0 +1,1630 @@
+You are working on the ExamFlow project.
+
+We are now starting:
+
+PHASE 6 — CROWDMARK EXAM TEMPLATE IMPORT & INTEGRATION
+
+The goal of this phase is to integrate ExamFlow with the existing Crowdmark
+workflow without attempting to replace or replicate Crowdmark.
+
+ExamFlow is responsible for:
+
+- exam administration
+- student roster
+- room assignment
+- seat assignment
+- exam metadata
+- document preparation metadata
+
+Crowdmark remains responsible for:
+
+- exam templates
+- exam questions
+- digital/scanned exam workflows
+- grading
+- Crowdmark-specific exam management
+
+IMPORTANT:
+
+Keep the integration intentionally simple.
+
+The preferred architecture is:
+
+Crowdmark
+   ↓
+Export exam template
+   ↓
+ExamFlow
+   ↓
+Import and store template metadata/file
+   ↓
+Associate template with Exam
+   ↓
+Later generate personalized exam documents
+
+Do NOT attempt to recreate Crowdmark.
+
+Do NOT implement a full Crowdmark clone.
+
+Do NOT build grading functionality.
+
+Do NOT build an OCR system.
+
+Do NOT implement AI.
+
+Do NOT generate personalized exam PDFs yet.
+
+Do NOT generate QR codes yet.
+
+Those belong to later phases.
+
+==================================================
+1. READ PROJECT DOCUMENTATION
+==================================================
+
+Before coding, read:
+
+- PRD.md
+- ARCHITECTURE.md
+- DATABASE.md
+- SECURITY.md
+- DEVELOPMENT.md
+- AGENTS.md
+
+Also inspect:
+
+- Phase 1 Authentication
+- Phase 2 Exam Management
+- Phase 3 Student/Roster Management
+- Phase 4 Room/Seat Management
+- Phase 5 Seating Assignment
+
+Follow the existing architecture.
+
+Do not introduce a new architecture.
+
+Before coding, provide a concise implementation plan.
+
+==================================================
+2. CORE DESIGN PRINCIPLE
+==================================================
+
+Crowdmark and ExamFlow have different responsibilities.
+
+Crowdmark:
+
+"How is the exam administered and graded?"
+
+ExamFlow:
+
+"Who is writing the exam, where are they sitting, and what document should
+be prepared for them?"
+
+Do not duplicate Crowdmark functionality.
+
+==================================================
+3. INTEGRATION STRATEGY
+==================================================
+
+Use an import-first architecture.
+
+Initial workflow:
+
+1. Instructor/administrator creates an exam in ExamFlow.
+2. User exports/downloads the exam template from Crowdmark.
+3. User uploads the exported template into ExamFlow.
+4. ExamFlow validates the file.
+5. ExamFlow stores the template securely.
+6. ExamFlow associates the template with the Exam.
+7. ExamFlow records Crowdmark metadata if available.
+8. Later phases use the template to generate personalized exam documents.
+
+Do not require a live Crowdmark API for the first implementation.
+
+==================================================
+4. NO CROWDMARK API DEPENDENCY
+==================================================
+
+Do NOT make the system dependent on a Crowdmark API unless a documented,
+supported API is explicitly available and required.
+
+The first version must work with:
+
+Crowdmark export/download
+→
+ExamFlow upload
+
+This keeps the system:
+
+- simple
+- maintainable
+- independent
+- easier for central Registrar deployment
+
+If future API integration is appropriate, design the code so it can be added
+later.
+
+==================================================
+5. EXAM TEMPLATE MODEL
+==================================================
+
+Create an ExamTemplate entity.
+
+Suggested fields:
+
+id
+exam_id
+original_filename
+stored_filename
+mime_type
+file_size
+file_hash
+template_type
+version
+status
+created_by
+created_at
+updated_at
+
+Use the project's existing ID strategy.
+
+Do not create unnecessary fields.
+
+==================================================
+6. TEMPLATE RELATIONSHIP
+
+An Exam can have one or more template versions.
+
+Recommended:
+
+Exam
+  ↓
+ExamTemplate
+  ├── version 1
+  ├── version 2
+  └── version 3
+
+Only one template should be marked as the active template.
+
+Database/business logic must prevent ambiguous active templates.
+
+==================================================
+7. TEMPLATE STATUS
+
+Keep status simple.
+
+Possible:
+
+ACTIVE
+ARCHIVED
+
+If the architecture does not need multiple states, use:
+
+is_active
+
+Do not create a large workflow state machine.
+
+==================================================
+8. TEMPLATE VERSION
+
+Support basic versioning.
+
+Example:
+
+Exam:
+CSC108 Final
+
+Templates:
+
+v1 — original
+v2 — corrected
+v3 — final
+
+The administrator can select which version is active.
+
+Do not implement Git-like version control.
+
+==================================================
+9. FILE TYPES
+
+The system should support the file formats actually exported by the current
+Crowdmark workflow.
+
+Before implementing format-specific parsing:
+
+inspect the actual exported format available to the project.
+
+Do NOT assume that Crowdmark exports are always PDF.
+
+The system should identify:
+
+- PDF
+- image files
+- archive files
+- other supported document formats
+
+only if they are actually part of the approved workflow.
+
+If only PDF is required by the PRD, support PDF only.
+
+Do not build unnecessary parsers.
+
+==================================================
+10. FILE VALIDATION
+
+Uploaded files must be validated.
+
+Validate:
+
+- extension
+- MIME type
+- file size
+- file signature / magic bytes where appropriate
+- file integrity
+
+Do not trust the filename extension.
+
+Example:
+
+A file called:
+
+exam.pdf
+
+must not automatically be trusted as a valid PDF.
+
+==================================================
+11. FILE SIZE
+
+Define a reasonable maximum upload size.
+
+Use application configuration.
+
+Do not hard-code arbitrary values throughout the code.
+
+Example configuration:
+
+MAX_EXAM_TEMPLATE_SIZE
+
+The exact production value should be configurable.
+
+==================================================
+12. SECURE STORAGE
+
+Do NOT store uploaded exam files directly in the public frontend directory.
+
+Do NOT expose uploaded files through:
+
+/public
+/static
+/public/uploads
+
+unless there is a strong security reason and proper access control.
+
+Exam templates may contain confidential exam material.
+
+Store them in protected storage.
+
+For the initial implementation, local filesystem storage is acceptable if
+consistent with the architecture.
+
+Design the storage interface so it can later support:
+
+- object storage
+- Azure Blob Storage
+- S3-compatible storage
+
+without changing business logic.
+
+==================================================
+13. STORAGE ABSTRACTION
+
+Create a simple storage service.
+
+Conceptually:
+
+ExamTemplateStorage
+
+Methods may include:
+
+save()
+get()
+delete()
+exists()
+
+Do not create a large generic storage framework.
+
+The service should isolate file storage from database logic.
+
+==================================================
+14. FILE NAMING
+
+Do not store files using the original filename directly.
+
+Do not allow:
+
+../../../etc/passwd
+
+or similar path manipulation.
+
+Generate safe internal filenames.
+
+Example concept:
+
+exam-template-{UUID}.pdf
+
+The original filename should be stored as metadata only.
+
+==================================================
+15. PATH TRAVERSAL
+
+Never construct storage paths directly from user-provided filenames.
+
+Normalize and sanitize all file-related inputs.
+
+Do not trust:
+
+filename
+path
+directory
+extension
+
+from the client.
+
+==================================================
+16. FILE HASH
+
+Calculate a cryptographic hash for uploaded files.
+
+Recommended:
+
+SHA-256
+
+Store:
+
+file_hash
+
+This provides:
+
+- duplicate detection
+- integrity verification
+- auditability
+
+Do not use MD5 as the primary integrity identifier.
+
+==================================================
+17. DUPLICATE FILE
+
+If the same file is uploaded twice:
+
+detect it using:
+
+exam_id + file_hash
+
+The UI should clearly indicate:
+
+"This template already exists."
+
+Do not silently create duplicate versions.
+
+==================================================
+18. TEMPLATE METADATA
+
+Store useful metadata:
+
+Original filename
+File type
+File size
+SHA-256
+Version
+Uploaded by
+Uploaded time
+
+Do not store unnecessary file metadata.
+
+==================================================
+19. CROWDMARK IDENTIFIER
+
+If the exported template or workflow provides a Crowdmark exam identifier,
+store it.
+
+Possible field:
+
+crowdmark_exam_id
+
+However:
+
+Do not assume a specific Crowdmark identifier format.
+
+Treat it as an opaque string.
+
+Do not validate it using guessed formats.
+
+==================================================
+20. CROWDMark URL
+
+If the user provides a Crowdmark exam URL and the product requirements
+support storing it:
+
+store it as metadata.
+
+Do not automatically fetch arbitrary URLs.
+
+Do not use the URL as a security credential.
+
+Do not expose it to unauthorized users.
+
+==================================================
+21. NO CROWDMark PASSWORDS
+
+Never store:
+
+Crowdmark password
+Crowdmark session cookie
+Crowdmark authentication token
+
+in the database.
+
+Never ask users to paste Crowdmark passwords into ExamFlow.
+
+==================================================
+22. OPTIONAL CROWDMARK METADATA
+
+If useful, support:
+
+crowdmark_exam_id
+crowdmark_url
+
+Keep these fields optional.
+
+ExamFlow must remain functional if Crowdmark metadata is not available.
+
+==================================================
+23. TEMPLATE UPLOAD API
+
+Implement an endpoint such as:
+
+POST
+/api/exams/{exam_id}/templates
+
+The endpoint must:
+
+- authenticate user
+- authorize access to exam
+- validate exam
+- validate uploaded file
+- calculate hash
+- store file
+- create database record
+- return metadata
+
+==================================================
+24. TEMPLATE LIST API
+
+Implement:
+
+GET
+/api/exams/{exam_id}/templates
+
+Return:
+
+id
+original filename
+version
+file type
+file size
+hash
+status
+uploaded by
+created_at
+
+Do not return file contents.
+
+==================================================
+25. TEMPLATE DOWNLOAD API
+
+Implement a protected endpoint:
+
+GET
+/api/exam-templates/{template_id}/download
+
+The endpoint must:
+
+- authenticate
+- authorize
+- locate template
+- stream the file
+- use a safe content disposition
+
+Do not expose the filesystem path.
+
+==================================================
+26. TEMPLATE DELETE
+
+Do NOT permanently delete active templates.
+
+If deletion is required:
+
+archive them.
+
+Historical exam documents may depend on template versions.
+
+Prefer:
+
+ARCHIVED
+
+over destructive deletion.
+
+==================================================
+27. TEMPLATE ACTIVATE
+
+Implement:
+
+POST
+/api/exam-templates/{template_id}/activate
+
+Only authorized users may activate a template.
+
+Activating a template should:
+
+- deactivate previous active template
+- activate selected template
+- execute atomically
+
+==================================================
+28. TEMPLATE VERSION CREATION
+
+When uploading a new valid template:
+
+If the file differs from the active template:
+
+create a new version.
+
+Example:
+
+Current:
+
+v1 ACTIVE
+
+Upload new file:
+
+v2 ACTIVE
+
+Previous:
+
+v1 ARCHIVED
+
+Do not overwrite the original file.
+
+==================================================
+29. VERSION NUMBER
+
+Version numbering should be generated server-side.
+
+Do not trust:
+
+version = 999
+
+from the frontend.
+
+The server determines the next version.
+
+==================================================
+30. EXAM TEMPLATE UI
+
+On:
+
+/app/exams/[id]
+
+add:
+
+Exam Template
+
+Display:
+
+Current template:
+CSC108-Final.pdf
+Version: 3
+Status: Active
+
+Buttons:
+
+[ Upload Template ]
+[ Download ]
+[ View Versions ]
+
+==================================================
+31. UPLOAD UI
+
+Provide:
+
+Choose File
+
+Optional:
+
+Crowdmark Exam ID
+Crowdmark URL
+
+Then:
+
+[ Upload ]
+
+Show:
+
+- file name
+- size
+- upload progress if supported
+- validation errors
+- success state
+
+==================================================
+32. TEMPLATE VERSION UI
+
+Display:
+
+Version | File | Size | Uploaded By | Date | Status
+
+Example:
+
+v3 | final.pdf | 4.2 MB | admin | Aug 19 | Active
+v2 | revised.pdf | 4.1 MB | admin | Aug 18 | Archived
+v1 | original.pdf | 4.0 MB | admin | Aug 17 | Archived
+
+Actions:
+
+Download
+Activate
+
+Do not show unnecessary technical metadata to normal users.
+
+==================================================
+33. TEMPLATE SECURITY
+
+Exam templates are confidential.
+
+Require authentication.
+
+Require authorization.
+
+Do not allow:
+
+anonymous download
+public URLs
+predictable file paths
+
+==================================================
+34. DOWNLOAD AUTHORIZATION
+
+A user who can access Exam A must not automatically be able to download:
+
+Exam B's template.
+
+Check:
+
+user authorization
+→
+exam authorization
+→
+template relationship
+
+Do not authorize solely based on template ID.
+
+==================================================
+35. IDOR PROTECTION
+
+Test:
+
+Change:
+
+/api/exam-templates/{template_id}
+
+to another valid UUID.
+
+The unauthorized user must receive:
+
+403 or 404
+
+according to the application's security convention.
+
+==================================================
+36. CONTENT SECURITY
+
+Do not render uploaded exam files directly as HTML.
+
+If displaying PDFs inline:
+
+use an appropriate content type and security headers.
+
+Do not execute uploaded content.
+
+==================================================
+37. MALICIOUS FILES
+
+Uploaded files are untrusted.
+
+Do not:
+
+execute them
+import them as code
+treat them as configuration
+parse arbitrary archive contents without validation
+
+If archive formats are supported later, implement strict extraction rules.
+
+For Phase 6, prefer supporting the simplest safe file type required.
+
+==================================================
+38. PDF VALIDATION
+
+If PDF is supported:
+
+validate that the file is actually a PDF.
+
+Do not rely solely on:
+
+filename.endsWith(".pdf")
+
+Use file signature and a safe parser where appropriate.
+
+==================================================
+39. TEMPLATE PAGE COUNT
+
+If PDF parsing is already available and safe:
+
+extract:
+
+page_count
+
+This can be useful metadata.
+
+However:
+
+do not introduce a heavyweight PDF processing system just to obtain page
+count.
+
+If not necessary, defer it.
+
+==================================================
+40. TEMPLATE CONTENT PARSING
+
+Do NOT attempt to parse exam questions.
+
+Do NOT attempt to understand:
+
+- questions
+- answers
+- grading rubrics
+- student responses
+
+Crowdmark remains responsible for exam content.
+
+ExamFlow only needs the template as a document asset.
+
+==================================================
+41. TEMPLATE IDENTITY
+
+The system should treat:
+
+file_hash
+
+as the identity of the uploaded file contents.
+
+Do not use:
+
+filename
+
+as the unique identity.
+
+Two files may have the same filename but different content.
+
+==================================================
+42. IMPORT WORKFLOW
+
+The user workflow should be:
+
+Step 1
+
+Create Exam in ExamFlow.
+
+Step 2
+
+Create exam in Crowdmark.
+
+Step 3
+
+Export/download Crowdmark exam template.
+
+Step 4
+
+Return to ExamFlow.
+
+Step 5
+
+Upload template.
+
+Step 6
+
+Optionally enter Crowdmark exam ID.
+
+Step 7
+
+ExamFlow validates and stores the template.
+
+Step 8
+
+Template becomes available for later personalization.
+
+==================================================
+43. DO NOT AUTO-FETCH
+
+Do not implement:
+
+"Enter Crowdmark URL and automatically download exam."
+
+unless an approved official API/integration is available and explicitly
+required.
+
+Manual upload is preferred for the first production version.
+
+==================================================
+44. IMPORT SUMMARY
+
+After upload, display:
+
+Exam:
+CSC108 Final
+
+Template:
+CSC108-final.pdf
+
+Version:
+3
+
+Pages:
+10
+
+Size:
+4.2 MB
+
+Hash:
+xxxxxxxx
+
+Status:
+Active
+
+Crowdmark Exam ID:
+optional
+
+==================================================
+45. TEMPLATE ↔ EXAM RELATIONSHIP
+
+The template belongs to the Exam.
+
+Do not create a global template library in Phase 6.
+
+Avoid:
+
+Template
+  ↓
+multiple unrelated exams
+
+unless PRD.md explicitly requires reusable templates.
+
+Keep:
+
+Exam
+  ↓
+ExamTemplate
+
+simple.
+
+==================================================
+46. FUTURE PERSONALIZATION
+
+Phase 7 will use:
+
+ExamTemplate
++
+Student
++
+SeatAssignment
+
+to generate:
+
+Personalized Exam
+
+Example:
+
+Template:
+CSC108-final.pdf
+
+Student:
+100000001 Alice Student
+
+Room:
+IB101
+
+Seat:
+A01
+
+Output:
+
+Alice's personalized exam document
+
+Do NOT implement this in Phase 6.
+
+==================================================
+47. FUTURE QR CODE
+
+Phase 7/8 may add a QR code linking:
+
+personalized exam
+→
+Crowdmark identity
+
+Do NOT generate QR codes in Phase 6.
+
+The database model should not depend on QR codes yet.
+
+==================================================
+48. FUTURE CROWDMark SUBMISSION
+
+Do not implement:
+
+upload answers to Crowdmark
+submit exams to Crowdmark
+retrieve grades
+sync grading status
+
+Those are separate future capabilities.
+
+==================================================
+49. CROWDMark INTEGRATION ABSTRACTION
+
+If an integration service is created, keep it small.
+
+For example:
+
+CrowdmarkIntegrationService
+
+Possible future methods:
+
+get_exam()
+upload_template()
+create_submission()
+
+But Phase 6 should implement only what is actually needed.
+
+Do not create empty fake API implementations.
+
+==================================================
+50. EXTERNAL API
+
+If a Crowdmark API is not required or officially available:
+
+do not create an HTTP client.
+
+The system should still be fully functional.
+
+==================================================
+51. CONFIGURATION
+
+Do not add Crowdmark secrets to the project.
+
+If future configuration is needed:
+
+CROWDMARK_ENABLED
+CROWDMARK_BASE_URL
+
+Only if actually required.
+
+Do not create fake credentials.
+
+==================================================
+52. DATABASE MIGRATION
+
+Create migration for:
+
+exam_templates
+
+Include:
+
+- primary key
+- exam foreign key
+- creator foreign key
+- file hash
+- version
+- status
+- timestamps
+
+Add appropriate indexes.
+
+==================================================
+53. DATABASE CONSTRAINTS
+
+Enforce:
+
+exam_id + version unique
+
+If only one active template is allowed:
+
+enforce this at the application/database level appropriately.
+
+Do not allow duplicate versions.
+
+==================================================
+54. FILE STORAGE TRANSACTION SAFETY
+
+Be careful with:
+
+database transaction
+vs
+filesystem storage
+
+A database transaction cannot automatically roll back a filesystem write.
+
+Implement safe cleanup.
+
+Example:
+
+1. validate file
+2. calculate hash
+3. save temporary file
+4. create database record
+5. finalize file
+6. cleanup temporary file if database operation fails
+
+Do not leave orphan files.
+
+==================================================
+55. UPLOAD TEMPORARY FILES
+
+Use a temporary location for uploads.
+
+Do not directly place unvalidated uploads into permanent storage.
+
+Workflow:
+
+upload
+→ validate
+→ hash
+→ temporary storage
+→ database transaction
+→ final storage
+
+==================================================
+56. FILE ACCESS
+
+Use streaming for downloads.
+
+Do not load large exam templates entirely into application memory.
+
+==================================================
+57. AUDIT EVENTS
+
+Create audit events:
+
+EXAM_TEMPLATE_UPLOADED
+EXAM_TEMPLATE_ACTIVATED
+EXAM_TEMPLATE_ARCHIVED
+EXAM_TEMPLATE_DOWNLOADED
+
+Audit should contain:
+
+actor
+exam_id
+template_id
+action
+timestamp
+safe summary
+
+Do not log file contents.
+
+Do not log student PII.
+
+==================================================
+58. SECURITY LOGGING
+
+Do not log:
+
+- exam PDF contents
+- Crowdmark credentials
+- tokens
+- passwords
+- full file paths if they expose internal storage
+- unnecessary sensitive metadata
+
+==================================================
+59. TESTING — UPLOAD
+
+Test:
+
+1. valid file
+2. invalid extension
+3. invalid MIME type
+4. oversized file
+5. corrupted PDF
+6. duplicate hash
+7. unauthorized upload
+8. missing exam
+9. safe filename handling
+
+==================================================
+60. TESTING — VERSIONING
+
+Test:
+
+1. upload v1
+2. upload different file
+3. verify v2
+4. verify v1 archived
+5. activate v1
+6. verify v2 archived
+7. activate v2
+8. verify only one active template
+
+==================================================
+61. TESTING — DOWNLOAD
+
+Test:
+
+- authorized download
+- unauthorized download
+- nonexistent template
+- correct content type
+- correct filename
+- no filesystem path exposure
+
+==================================================
+62. TESTING — IDOR
+
+Explicitly test:
+
+User A has access to Exam A.
+
+User A attempts to download:
+
+Exam B template.
+
+Must fail.
+
+==================================================
+63. TESTING — STORAGE FAILURE
+
+Simulate:
+
+filesystem/object storage failure
+
+Verify:
+
+database does not contain a broken template record.
+
+==================================================
+64. TESTING — DATABASE FAILURE
+
+Simulate:
+
+database failure after temporary file creation.
+
+Verify:
+
+temporary file is cleaned up.
+
+No orphan file should remain.
+
+==================================================
+65. TESTING — CONCURRENCY
+
+Test two uploads occurring at approximately the same time.
+
+Verify:
+
+version numbers remain unique and consistent.
+
+==================================================
+66. FRONTEND TESTING
+
+Test:
+
+- upload form
+- validation errors
+- upload success
+- version list
+- active template
+- archive state
+- download
+- activation
+- unauthorized behavior
+
+==================================================
+67. ACCESSIBILITY
+
+Ensure:
+
+- keyboard-accessible upload
+- clear labels
+- accessible errors
+- accessible confirmation dialogs
+- semantic tables
+- visible focus states
+
+==================================================
+68. PERFORMANCE
+
+Do not unnecessarily process exam documents.
+
+For Phase 6:
+
+The system primarily:
+
+- validates
+- stores
+- retrieves metadata
+- streams files
+
+Do not render PDF pages or perform expensive document processing unless
+required.
+
+==================================================
+69. STORAGE CONFIGURATION
+
+Support configurable storage.
+
+Example:
+
+STORAGE_BACKEND=local
+
+Future:
+
+STORAGE_BACKEND=s3
+STORAGE_BACKEND=azure
+
+Do not implement all storage backends now.
+
+A simple interface is sufficient.
+
+==================================================
+70. LOCAL STORAGE
+
+For development:
+
+use a configurable application storage directory.
+
+Do not use:
+
+/var/www/html
+/public
+/static
+
+as the default upload location.
+
+The path must be outside publicly served frontend assets.
+
+==================================================
+71. PRODUCTION SAFETY
+
+Do not commit uploaded templates.
+
+Ensure:
+
+.gitignore
+
+contains the local storage directory.
+
+Never commit actual exam material.
+
+==================================================
+72. PRIVACY
+
+Exam templates may contain confidential examination material.
+
+Treat them as restricted institutional data.
+
+Do not expose them through:
+
+- public URLs
+- CDN without authorization
+- frontend static directories
+- logs
+- analytics
+
+==================================================
+73. DOCUMENTATION
+
+Update:
+
+README.md
+DATABASE.md
+DEVELOPMENT.md
+ARCHITECTURE.md
+SECURITY.md
+
+Document:
+
+- Crowdmark workflow
+- manual export/import workflow
+- supported file types
+- template versioning
+- secure storage
+- authorization
+- file lifecycle
+- future Crowdmark API integration
+
+==================================================
+74. USER DOCUMENTATION
+
+Create concise documentation for administrators:
+
+"How to import a Crowdmark exam template"
+
+Workflow:
+
+1. Create exam in Crowdmark.
+2. Export/download template.
+3. Open corresponding exam in ExamFlow.
+4. Upload template.
+5. Enter Crowdmark Exam ID if available.
+6. Verify template.
+7. Activate template.
+
+Do not provide instructions for undocumented Crowdmark features.
+
+==================================================
+75. NO AI
+
+Do NOT add:
+
+OpenAI
+LLM
+RAG
+embeddings
+machine learning
+OCR
+
+This phase is deterministic document management.
+
+==================================================
+76. NO PDF PERSONALIZATION
+
+Do not add:
+
+student name overlay
+student ID overlay
+room overlay
+seat overlay
+
+That is Phase 7.
+
+==================================================
+77. NO QR CODE
+
+Do not generate:
+
+QR code
+barcode
+student-specific URL
+
+That is Phase 7/8.
+
+==================================================
+78. NO CROWDMark API CLONE
+
+Do not implement:
+
+exam creation
+question management
+grading
+submission management
+
+Crowdmark remains the source system for those functions.
+
+==================================================
+79. API DOCUMENTATION
+
+Document new endpoints through OpenAPI.
+
+Suggested:
+
+POST
+/api/exams/{exam_id}/templates
+
+GET
+/api/exams/{exam_id}/templates
+
+GET
+/api/exam-templates/{template_id}/download
+
+POST
+/api/exam-templates/{template_id}/activate
+
+POST
+/api/exam-templates/{template_id}/archive
+
+Use appropriate:
+
+401
+403
+404
+409
+413
+422
+
+responses.
+
+==================================================
+80. FINAL SECURITY REVIEW
+
+Verify:
+
+- authenticated upload
+- authorized upload
+- authorized download
+- IDOR protection
+- path traversal protection
+- MIME validation
+- file signature validation
+- size limits
+- SHA-256
+- protected storage
+- no public files
+- no secrets
+- no Crowdmark passwords
+- no tokens
+- no real production files in Git
+- audit logging
+
+==================================================
+81. FINAL QUALITY CHECK
+
+Actually run:
+
+Backend:
+
+pytest
+ruff check
+type checking if configured
+
+Frontend:
+
+lint
+typecheck
+tests if configured
+
+Database:
+
+alembic upgrade head
+
+Test upload and download manually.
+
+Do not claim success unless commands actually pass.
+
+==================================================
+82. FINAL GIT REVIEW
+
+Run:
+
+git status
+git diff --stat
+git diff
+
+Confirm:
+
+- Phase 6 only
+- Crowdmark template import implemented
+- secure file storage
+- template versioning
+- active template
+- download
+- authorization
+- audit
+- no Crowdmark credentials
+- no AI
+- no QR code
+- no personalized PDF
+- no signature list
+- no seating map
+- no grading
+- no unnecessary infrastructure
+- no real exam files
+
+==================================================
+83. FINAL RESPONSE
+
+When complete, report:
+
+## Phase 6 Implemented
+
+Describe Crowdmark template import.
+
+## Crowdmark Workflow
+
+Explain:
+
+Crowdmark
+→ Export
+→ ExamFlow
+→ Upload
+→ Validate
+→ Store
+→ Activate
+
+## Database
+
+List:
+
+- exam_templates
+- constraints
+- indexes
+- migration
+
+## File Storage
+
+Explain:
+
+- storage backend
+- protected directory
+- file validation
+- SHA-256
+- temporary upload handling
+
+## Versioning
+
+Explain:
+
+- version creation
+- activation
+- archiving
+
+## API
+
+List endpoints.
+
+## Frontend
+
+List routes/pages.
+
+## Security
+
+Explain:
+
+- authentication
+- authorization
+- IDOR
+- path traversal
+- file validation
+- PII/confidential exam protection
+
+## Audit
+
+List events.
+
+## Tests
+
+Report actual results.
+
+## Lint
+
+Report actual results.
+
+## Type Checking
+
+Report actual results.
+
+## Known Limitations
+
+Clearly state:
+
+- no Crowdmark API
+- no QR code
+- no personalized exam PDF
+- no student information overlay
+- no signature list
+- no seating map
+- no grading integration
+
+## Files Changed
+
+List important files.
+
+STOP AFTER PHASE 6.
+
+Do not begin Phase 7.
