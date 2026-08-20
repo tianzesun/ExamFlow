@@ -1,0 +1,1797 @@
+You are working on the ExamFlow project.
+
+We are now starting:
+
+PHASE 9 — PRODUCTION HARDENING & REGISTRAR WORKFLOW
+
+The goal of this phase is to make ExamFlow suitable for controlled
+institutional use by the Registrar's Office and authorized IITS staff.
+
+Previous phases implemented:
+
+Phase 1 — Authentication
+Phase 2 — Exam Management
+Phase 3 — Student/Roster Management
+Phase 4 — Room/Seat Management
+Phase 5 — Seating Assignment
+Phase 6 — Crowdmark Template Import
+Phase 7 — Personalized Exam Generation
+Phase 8 — QR Codes, Signature Lists, Seating Maps,
+           and Exam Administration Package
+
+This phase is NOT about adding major new business features.
+
+The goal is:
+
+reliability
+security
+operability
+auditability
+maintainability
+data integrity
+administrator usability
+production deployment readiness
+
+IMPORTANT:
+
+Do NOT introduce AI.
+
+Do NOT introduce machine learning.
+
+Do NOT introduce RAG.
+
+Do NOT add unnecessary microservices.
+
+Do NOT rewrite the architecture.
+
+Do NOT replace PostgreSQL.
+
+Do NOT replace the existing authentication system.
+
+Do NOT rebuild Crowdmark.
+
+Do NOT implement grading.
+
+Do NOT implement OCR.
+
+Do NOT create a student portal.
+
+Do NOT create a mobile application.
+
+Do NOT add speculative features.
+
+Keep the system simple and professional.
+
+==================================================
+1. READ DOCUMENTATION
+==================================================
+
+Read:
+
+- PRD.md
+- ARCHITECTURE.md
+- DATABASE.md
+- SECURITY.md
+- DEVELOPMENT.md
+- AGENTS.md
+
+Review all previous implementation phases.
+
+Before coding:
+
+1. inspect current architecture
+2. inspect database schema
+3. inspect authentication
+4. inspect authorization
+5. inspect file storage
+6. inspect PDF generation
+7. inspect audit logging
+8. inspect tests
+9. inspect deployment configuration
+
+Provide a concise implementation plan before making changes.
+
+==================================================
+2. PRODUCTION PRINCIPLE
+==================================================
+
+ExamFlow handles confidential examination information.
+
+Therefore:
+
+Correctness > convenience.
+
+Security > speed.
+
+Predictability > complexity.
+
+Auditability > cleverness.
+
+Do not optimize for features that are not required.
+
+==================================================
+3. ENVIRONMENT SEPARATION
+==================================================
+
+Clearly support:
+
+development
+test
+production
+
+Do not allow development settings to accidentally be used in production.
+
+Examples:
+
+DEBUG
+development database
+development storage
+test authentication
+
+must not be enabled accidentally.
+
+==================================================
+4. ENVIRONMENT VARIABLES
+==================================================
+
+Review all environment variables.
+
+Classify:
+
+PUBLIC
+SERVER-ONLY
+SECRET
+
+Never expose:
+
+database credentials
+storage credentials
+authentication secrets
+API keys
+QR signing secrets
+
+to the browser.
+
+==================================================
+5. ENVIRONMENT VALIDATION
+==================================================
+
+At application startup:
+
+validate required environment variables.
+
+If required production configuration is missing:
+
+fail clearly.
+
+Do not start in an unsafe partial configuration.
+
+==================================================
+6. SECRET MANAGEMENT
+==================================================
+
+Never commit secrets.
+
+Check:
+
+.gitignore
+.env.example
+deployment configuration
+
+Ensure:
+
+.env
+
+is excluded.
+
+Provide:
+
+.env.example
+
+containing variable names only.
+
+==================================================
+7. DATABASE MIGRATIONS
+==================================================
+
+Review all database migrations.
+
+Verify:
+
+alembic upgrade head
+
+works on a clean database.
+
+Verify migrations are ordered correctly.
+
+Do not modify already-applied migrations destructively.
+
+Create new migrations when schema changes are required.
+
+==================================================
+8. DATABASE CONSTRAINTS
+==================================================
+
+Review critical integrity rules.
+
+Ensure database constraints prevent:
+
+duplicate student assignments
+duplicate seats
+invalid exam relationships
+invalid room relationships
+duplicate QR tokens
+invalid generated document relationships
+
+Use database constraints rather than relying exclusively on application logic.
+
+==================================================
+9. DATABASE INDEXES
+==================================================
+
+Review indexes for:
+
+exam_id
+student_id
+student_id + exam_id
+room_id
+seat_id
+assignment_id
+template_id
+status
+qr_token
+
+Only create indexes that are actually useful.
+
+Do not create indexes everywhere.
+
+==================================================
+10. TRANSACTIONS
+==================================================
+
+Review all multi-step operations.
+
+Especially:
+
+seating assignment
+personalized exam generation
+package generation
+exam state changes
+
+Ensure partial database updates do not leave the system inconsistent.
+
+==================================================
+11. FILE STORAGE
+==================================================
+
+Review:
+
+template storage
+generated exam storage
+package storage
+
+Ensure confidential documents are not stored in:
+
+public/
+static/
+frontend assets
+
+unless explicitly designed as public.
+
+==================================================
+12. FILE ACCESS
+==================================================
+
+All protected documents must be accessed through authorized server endpoints.
+
+Do not expose direct storage paths.
+
+Do not expose filesystem paths.
+
+==================================================
+13. PATH TRAVERSAL
+==================================================
+
+Review every file operation.
+
+Reject unsafe paths.
+
+Never allow user input to become a raw filesystem path.
+
+Use server-generated storage keys.
+
+==================================================
+14. SAFE FILENAMES
+==================================================
+
+Review all generated filenames.
+
+Ensure:
+
+no ../
+no absolute paths
+no control characters
+no executable extensions
+
+Use deterministic server-generated names.
+
+==================================================
+15. PDF VALIDATION
+==================================================
+
+Review uploaded templates.
+
+Validate:
+
+file type
+file size
+PDF structure
+
+Do not trust:
+
+filename extension
+Content-Type header alone
+
+==================================================
+16. UPLOAD LIMITS
+==================================================
+
+Configure reasonable limits for:
+
+PDF upload size
+CSV upload size
+request size
+
+Do not allow unlimited uploads.
+
+==================================================
+17. CSV IMPORT
+
+Provide a professional roster import workflow.
+
+The system should support CSV import if PRD.md requires it.
+
+Example:
+
+student_id,name
+
+100000001,Alice Student
+100000002,Bob Student
+
+==================================================
+18. CSV VALIDATION
+
+Before importing:
+
+validate the entire file.
+
+Check:
+
+required columns
+duplicate student IDs
+missing student IDs
+missing names
+invalid encoding
+invalid rows
+
+Do not partially import a malformed file.
+
+==================================================
+19. IMPORT PREVIEW
+
+Before committing CSV import:
+
+show:
+
+Total rows
+Valid rows
+Invalid rows
+Duplicates
+
+Example:
+
+Students found: 185
+Valid: 183
+Invalid: 2
+
+Errors:
+
+Row 87:
+Missing student ID
+
+Row 141:
+Duplicate student ID
+
+Require user confirmation before committing.
+
+==================================================
+20. IMPORT TRANSACTION
+
+CSV import should be transactional.
+
+Either:
+
+all valid records are committed
+
+or:
+
+nothing is committed
+
+unless the PRD explicitly defines partial import behavior.
+
+Prefer all-or-nothing.
+
+==================================================
+21. CSV ERROR REPORT
+
+Provide an error report that can be downloaded.
+
+Example:
+
+row,error
+
+87,Missing student ID
+141,Duplicate student ID
+
+Do not expose unnecessary internal database details.
+
+==================================================
+22. EXPORT
+
+Provide controlled export where appropriate.
+
+Possible exports:
+
+roster CSV
+seating CSV
+room assignment CSV
+
+Do not export confidential documents through CSV.
+
+Respect authorization.
+
+==================================================
+23. DATA VALIDATION
+
+Review every important form.
+
+Never trust frontend validation alone.
+
+Server-side validation is mandatory.
+
+==================================================
+24. AUTHORIZATION
+
+Review every API endpoint.
+
+Create an authorization matrix.
+
+Example:
+
+                 Admin   Registrar   Instructor
+Create Exam        ✓         ✓            -
+Import Roster      ✓         ✓            -
+Assign Seats       ✓         ✓            ✓*
+Generate Exams     ✓         ✓            ✓*
+Download Package   ✓         ✓            ✓*
+
+*only for authorized exams
+
+Use the actual roles already defined by the project.
+
+Do not invent roles unless necessary.
+
+==================================================
+25. OBJECT-LEVEL AUTHORIZATION
+
+Do not stop at role checking.
+
+Verify:
+
+user has permission to access THIS exam.
+
+This is critical.
+
+==================================================
+26. IDOR REVIEW
+
+Audit all endpoints for:
+
+exam_id
+student_id
+assignment_id
+generated_exam_id
+template_id
+room_id
+package_id
+
+Ensure users cannot access another exam by changing an ID.
+
+==================================================
+27. ADMINISTRATIVE PRIVILEGES
+
+Do not make every authenticated user an administrator.
+
+Use least privilege.
+
+==================================================
+28. AUTHENTICATION HARDENING
+
+Review:
+
+password policy if local authentication exists
+session expiration
+cookie security
+CSRF protection where applicable
+login rate limiting
+logout behavior
+session invalidation
+
+Follow existing institutional authentication architecture.
+
+Do not replace it.
+
+==================================================
+29. SSO READINESS
+
+If institutional SSO is expected in the future:
+
+keep authentication behind a clear abstraction.
+
+Do not implement SSO unless explicitly required.
+
+Document the integration point.
+
+==================================================
+30. SECURITY HEADERS
+
+Review appropriate:
+
+Content-Security-Policy
+X-Content-Type-Options
+Referrer-Policy
+Strict-Transport-Security
+
+Use values compatible with the application.
+
+Do not blindly add headers that break the application.
+
+==================================================
+31. HTTPS
+
+Production deployment must use HTTPS.
+
+Do not send:
+
+login credentials
+student information
+exam documents
+
+over plain HTTP.
+
+==================================================
+32. COOKIE SECURITY
+
+For authentication cookies:
+
+Secure
+HttpOnly
+SameSite
+
+must be configured appropriately.
+
+==================================================
+33. CSRF
+
+If cookie-based authentication is used:
+
+implement appropriate CSRF protection.
+
+If token-based authentication is used:
+
+follow the project's existing security architecture.
+
+Do not add redundant mechanisms without understanding the authentication model.
+
+==================================================
+34. RATE LIMITING
+
+Review rate limiting for:
+
+login
+file upload
+document download
+QR verification
+package generation
+
+Do not rate-limit normal internal workflows so aggressively that they become
+unusable.
+
+==================================================
+35. QR RATE LIMITING
+
+QR verification endpoints should have reasonable rate limiting.
+
+Do not allow unlimited automated token probing.
+
+==================================================
+36. AUDIT LOGGING
+
+Review audit events.
+
+Important events include:
+
+login
+logout
+exam creation
+exam modification
+roster import
+room creation
+seat assignment
+template upload
+template activation
+personalized exam generation
+QR generation
+package generation
+document download
+package download
+
+==================================================
+37. AUDIT LOG DESIGN
+
+Audit record should include:
+
+timestamp
+actor
+action
+resource type
+resource ID
+result
+
+Optional:
+
+IP address
+
+Only store information justified by institutional policy.
+
+==================================================
+38. AUDIT IMMUTABILITY
+
+Normal application users must not be able to modify audit records.
+
+If deletion is required:
+
+restrict it to authorized administrative processes.
+
+==================================================
+39. AUDIT RETENTION
+
+Do not invent an institutional retention period.
+
+Document that retention should follow university policy.
+
+==================================================
+40. LOGGING
+
+Application logs should contain:
+
+request ID
+timestamp
+severity
+service
+operation
+safe error information
+
+Do NOT log:
+
+passwords
+tokens
+session cookies
+QR tokens
+student names unnecessarily
+student IDs unnecessarily
+exam contents
+
+==================================================
+41. ERROR HANDLING
+
+Never return internal stack traces to users.
+
+Bad:
+
+Traceback...
+SQLAlchemy...
+filesystem path...
+
+Good:
+
+"Unable to generate the examination document. Please contact an administrator."
+
+Log the detailed technical error server-side.
+
+==================================================
+42. ERROR CODES
+
+Use consistent error categories.
+
+Examples:
+
+VALIDATION_ERROR
+AUTHENTICATION_ERROR
+AUTHORIZATION_ERROR
+NOT_FOUND
+CONFLICT
+FILE_ERROR
+GENERATION_ERROR
+INTERNAL_ERROR
+
+Do not create hundreds of error codes.
+
+==================================================
+43. REQUEST IDs
+
+Every server request should have a correlation/request ID.
+
+Include it in error responses when appropriate.
+
+Example:
+
+Request ID:
+8f3c...
+
+This helps support staff troubleshoot issues.
+
+==================================================
+44. UI ERROR HANDLING
+
+The frontend must display:
+
+what went wrong
+what the user can do next
+
+Example:
+
+"3 students are missing seats."
+
+Action:
+
+"Go to Seating"
+
+==================================================
+45. GLOBAL ERROR BOUNDARY
+
+Ensure frontend unexpected errors do not expose:
+
+stack traces
+environment variables
+internal API details
+
+==================================================
+46. EMPTY STATES
+
+Every major page should have a useful empty state.
+
+Examples:
+
+No exams yet.
+
+No roster imported.
+
+No rooms configured.
+
+No seating assignments.
+
+No personalized exams generated.
+
+==================================================
+47. LOADING STATES
+
+Every long-running operation should show progress or clear loading state.
+
+Especially:
+
+CSV import
+exam generation
+package generation
+
+==================================================
+48. CONFIRMATION DIALOGS
+
+Require confirmation for destructive or high-impact operations:
+
+delete exam
+replace roster
+regenerate official documents
+change seating after documents generated
+
+Do not require confirmation for harmless navigation.
+
+==================================================
+49. DESTRUCTIVE OPERATIONS
+
+Prefer:
+
+archive
+
+over:
+
+hard delete
+
+for important exam records.
+
+Follow PRD.md.
+
+==================================================
+50. EXAM LIFECYCLE
+
+Review exam status.
+
+Recommended concept:
+
+DRAFT
+READY
+PUBLISHED
+COMPLETED
+ARCHIVED
+
+Use existing status definitions if already implemented.
+
+Do not introduce unnecessary state complexity.
+
+==================================================
+51. STATE VALIDATION
+
+Prevent invalid transitions.
+
+Example:
+
+ARCHIVED → DRAFT
+
+should not happen accidentally.
+
+==================================================
+52. LOCKING / FINALIZATION
+
+Before final exam package generation:
+
+allow the exam to be marked:
+
+READY FOR ADMINISTRATION
+
+After that:
+
+changes to roster/seating/template should trigger stale state.
+
+Do not allow silent changes.
+
+==================================================
+53. EXAM LOCK
+
+If PRD.md supports an exam lock:
+
+make it explicit.
+
+Example:
+
+[Lock Exam for Administration]
+
+After locking:
+
+- roster changes restricted
+- seating changes restricted
+- template changes restricted
+
+Only authorized users can unlock.
+
+Do not implement a complicated workflow.
+
+==================================================
+54. STALE DETECTION
+
+Ensure the system can detect:
+
+roster changed
+template changed
+seating changed
+room changed
+
+after documents were generated.
+
+Show:
+
+"Documents are out of date."
+
+==================================================
+55. PRINT WORKFLOW
+
+Make the printing workflow clear.
+
+The system should allow an administrator to:
+
+1. validate exam
+2. generate package
+3. download package
+4. verify package
+5. print
+
+Do not attempt to directly control physical printers.
+
+==================================================
+56. PRINT CHECKLIST
+
+Create a simple checklist:
+
+✓ Roster verified
+✓ Seating verified
+✓ Template verified
+✓ Documents generated
+✓ QR codes verified
+✓ Signature lists generated
+✓ Seating maps generated
+✓ Package downloaded
+
+This is an operational safeguard.
+
+==================================================
+57. REGISTRAR DASHBOARD
+
+Improve the main dashboard.
+
+Show:
+
+Upcoming Exams
+Draft Exams
+Ready for Administration
+Completed
+Archived
+
+For each:
+
+course
+exam
+date
+students
+rooms
+status
+
+==================================================
+58. EXAM SEARCH
+
+Allow administrators to search:
+
+course code
+exam name
+date
+instructor
+
+Use server-side filtering.
+
+==================================================
+59. FILTERING
+
+Allow filters:
+
+status
+date
+course
+term
+
+Do not build a complicated reporting engine.
+
+==================================================
+60. PAGINATION
+
+Large lists must use pagination.
+
+Do not load thousands of records into the browser unnecessarily.
+
+==================================================
+61. DATABASE QUERY REVIEW
+
+Check for:
+
+N+1 queries
+unnecessary joins
+full-table scans
+
+Especially:
+
+exam list
+roster
+seating
+generated documents
+
+Fix obvious issues only.
+
+Do not prematurely optimize.
+
+==================================================
+62. BACKUP
+
+Document the required backup strategy.
+
+At minimum:
+
+PostgreSQL database
+protected document storage
+
+must be backed up according to institutional policy.
+
+Do not implement a custom backup system if infrastructure already provides one.
+
+==================================================
+63. RESTORE TEST
+
+Document a restore procedure.
+
+A backup that has never been restored is not a verified backup.
+
+If possible:
+
+test restoring a development/staging database from backup.
+
+Do not perform destructive production testing.
+
+==================================================
+64. DISASTER RECOVERY
+
+Document:
+
+database loss
+file storage loss
+application server loss
+
+and expected recovery process.
+
+Do not invent unrealistic RTO/RPO values.
+
+Mark them as institutional decisions if not defined.
+
+==================================================
+65. HEALTH CHECK
+
+Implement or review:
+
+GET /health
+
+It should verify basic application availability.
+
+Do not expose sensitive configuration.
+
+==================================================
+66. READINESS CHECK
+
+If the deployment architecture supports it:
+
+provide a readiness check that verifies:
+
+database connectivity
+required storage connectivity
+
+Do not expose credentials.
+
+==================================================
+67. MONITORING
+
+The application should expose useful operational metrics/logs.
+
+Monitor:
+
+application availability
+database connectivity
+generation failures
+package generation failures
+request errors
+storage failures
+
+Reuse existing institutional monitoring where possible.
+
+==================================================
+68. ALERTING
+
+Do not create excessive alerts.
+
+Useful alerts:
+
+application unavailable
+database unavailable
+high generation failure rate
+storage failure
+disk space exhaustion
+
+==================================================
+69. DISK SPACE
+
+If local temporary files are used for PDF/ZIP generation:
+
+ensure temporary files are cleaned up.
+
+Prevent disk exhaustion.
+
+==================================================
+70. TEMPORARY FILE CLEANUP
+
+Every temporary generation operation must have cleanup logic.
+
+Cleanup must happen:
+
+on success
+on failure
+on cancellation where possible
+
+==================================================
+71. CONCURRENCY
+
+Prevent two administrators from simultaneously performing conflicting
+operations.
+
+Examples:
+
+two seating generations
+two package generations
+two template activations
+
+Use simple locking or database constraints where appropriate.
+
+Do not build distributed locking unless actually required.
+
+==================================================
+72. DUPLICATE GENERATION
+
+If two users click:
+
+Generate Package
+
+at the same time:
+
+do not create inconsistent results.
+
+One operation should succeed or the system should safely recognize that the
+package already exists.
+
+==================================================
+73. IMPORT CONCURRENCY
+
+Do not allow one roster import to silently overwrite another user's changes.
+
+Use explicit versioning or conflict detection where appropriate.
+
+==================================================
+74. TEST DATA
+
+Create a repeatable seed/test dataset.
+
+Example:
+
+Exam:
+TEST101
+
+Students:
+20
+
+Rooms:
+2
+
+Seats:
+20
+
+This should be usable for development and automated tests.
+
+Do not put real student information in test fixtures.
+
+==================================================
+75. SECURITY TEST DATA
+
+Include tests for:
+
+unauthorized user
+authorized user
+different exam
+different room
+different document
+
+==================================================
+76. AUTOMATED TEST COVERAGE
+
+Ensure tests exist for critical business rules.
+
+Prioritize:
+
+authorization
+seating integrity
+document generation
+QR token security
+package generation
+CSV validation
+stale detection
+
+Do not chase arbitrary percentage coverage.
+
+==================================================
+77. REGRESSION TESTS
+
+Previous phase tests must continue passing.
+
+Do not break:
+
+Phase 7 PDF generation
+Phase 8 QR generation
+signature lists
+seating maps
+
+==================================================
+78. API DOCUMENTATION
+
+Ensure API documentation is clear.
+
+For every important endpoint:
+
+method
+path
+authentication
+authorization
+request
+response
+errors
+
+Do not document internal implementation details.
+
+==================================================
+79. USER DOCUMENTATION
+
+Create/update:
+
+Administrator Guide
+
+Include:
+
+Create an exam
+Import roster
+Configure rooms
+Assign seating
+Import Crowdmark template
+Generate personalized exams
+Generate administration package
+Download package
+Regenerate after changes
+Archive exam
+
+==================================================
+80. TROUBLESHOOTING GUIDE
+
+Create:
+
+TROUBLESHOOTING.md
+
+Include common problems:
+
+missing template
+invalid roster
+missing seats
+duplicate student
+document generation failure
+QR failure
+package generation failure
+permission denied
+stale documents
+
+For each:
+
+symptom
+cause
+solution
+
+==================================================
+81. OPERATIONS GUIDE
+
+Create:
+
+OPERATIONS.md
+
+Include:
+
+startup
+shutdown
+database migration
+backup
+restore
+logs
+health check
+storage
+monitoring
+upgrades
+
+==================================================
+82. DEPLOYMENT
+
+Review production deployment.
+
+Use the existing architecture.
+
+Prefer:
+
+Next.js
++
+Python service/worker
++
+PostgreSQL
++
+protected storage
+
+Do not introduce Kubernetes unless explicitly required.
+
+==================================================
+83. CONTAINERIZATION
+
+If Docker is already part of the architecture:
+
+ensure production images are clean.
+
+If Docker is not currently used:
+
+do not force Docker solely for this phase unless deployment requirements justify
+it.
+
+==================================================
+84. PRODUCTION CONFIGURATION
+
+Ensure:
+
+debug disabled
+secure cookies
+HTTPS
+production database
+production storage
+production logging
+
+==================================================
+85. DATABASE CONNECTION POOL
+
+Configure sensible production connection pooling.
+
+Do not use excessive connections.
+
+Consider PostgreSQL server limits.
+
+==================================================
+86. TIMEOUTS
+
+Configure reasonable:
+
+HTTP timeout
+database timeout
+file operation timeout
+
+Long document generation should use the worker architecture rather than
+unlimited HTTP requests.
+
+==================================================
+87. WORKER RELIABILITY
+
+If a worker is used:
+
+ensure failed jobs do not disappear silently.
+
+Record:
+
+job status
+error
+timestamp
+
+==================================================
+88. JOB RETRIES
+
+Retries should be limited.
+
+Do not create infinite retry loops.
+
+==================================================
+89. SECURITY DEPENDENCY REVIEW
+
+Review dependencies for:
+
+known vulnerabilities
+abandoned packages
+unnecessary dependencies
+
+Do not blindly upgrade every package.
+
+Only upgrade when compatible.
+
+==================================================
+90. CODE QUALITY
+
+Run:
+
+lint
+typecheck
+tests
+formatting
+
+Remove:
+
+unused code
+debug statements
+temporary scripts
+development credentials
+
+==================================================
+91. API CONSISTENCY
+
+Review API naming and response structures.
+
+Do not have multiple inconsistent patterns.
+
+==================================================
+92. FRONTEND CONSISTENCY
+
+Review:
+
+buttons
+dialogs
+tables
+forms
+notifications
+errors
+
+Keep the interface simple.
+
+Use consistent terminology:
+
+Exam
+Roster
+Room
+Seat
+Template
+Documents
+Administration
+
+==================================================
+93. ACCESSIBILITY
+
+Review:
+
+keyboard navigation
+focus states
+form labels
+table headers
+dialog accessibility
+color contrast
+screen-reader labels
+
+Do not use color alone for status.
+
+==================================================
+94. BROWSER SUPPORT
+
+Support the browsers defined by the institutional environment.
+
+Do not optimize for obsolete browsers unless required.
+
+==================================================
+95. SECURITY SCANNING
+
+Run available:
+
+dependency audit
+static analysis
+secret scanning
+
+Do not commit generated reports containing secrets.
+
+==================================================
+96. PERFORMANCE TEST
+
+Use synthetic data:
+
+500 students
+10 rooms
+
+Test:
+
+roster import
+seating
+document generation
+package generation
+
+Measure:
+
+execution time
+memory
+disk usage
+
+Do not optimize prematurely.
+
+==================================================
+97. LOAD TEST
+
+If practical:
+
+simulate multiple authorized users accessing the dashboard.
+
+Do not perform aggressive load testing against production.
+
+==================================================
+98. PRODUCTION READINESS CHECKLIST
+
+Create:
+
+PRODUCTION-CHECKLIST.md
+
+Include:
+
+Security
+Database
+Storage
+Authentication
+Authorization
+Backups
+Monitoring
+Logging
+Testing
+Deployment
+Documentation
+Operations
+
+==================================================
+99. REGISTRAR WORKFLOW CHECKLIST
+
+Create:
+
+REGISTRAR-WORKFLOW.md
+
+The workflow should be:
+
+1. Create exam.
+2. Verify exam details.
+3. Import roster.
+4. Verify roster.
+5. Configure rooms.
+6. Configure seats.
+7. Generate seating.
+8. Review seating.
+9. Import Crowdmark template.
+10. Activate template.
+11. Validate exam.
+12. Generate personalized exams.
+13. Verify QR codes.
+14. Generate administration package.
+15. Download package.
+16. Verify package.
+17. Print exams.
+18. Print signature lists.
+19. Print seating maps.
+20. Conduct exam.
+21. Archive exam.
+
+==================================================
+100. FINAL VALIDATION
+
+Perform a complete end-to-end test using synthetic data.
+
+Example:
+
+Exam:
+CSC108 Final
+
+Students:
+100
+
+Rooms:
+2
+
+Seats:
+100
+
+Template:
+test PDF
+
+Workflow:
+
+Create exam
+→ import roster
+→ configure rooms
+→ assign seats
+→ import template
+→ generate personalized exams
+→ generate QR
+→ generate signature lists
+→ generate seating maps
+→ generate package
+→ download package
+→ verify package
+
+==================================================
+101. SECURITY END-TO-END TEST
+
+Verify:
+
+User A cannot access Exam B.
+
+Test:
+
+exam
+roster
+template
+generated exam
+signature list
+seating map
+package
+
+==================================================
+102. DATA INTEGRITY TEST
+
+For every generated student document verify:
+
+student ID
+student name
+room
+seat
+
+match the database assignment.
+
+==================================================
+103. PDF TEST
+
+Open generated PDFs.
+
+Verify:
+
+original exam content preserved
+student information correct
+room correct
+seat correct
+QR visible
+QR scannable
+no clipping
+no overlap
+
+==================================================
+104. PACKAGE TEST
+
+Verify:
+
+ZIP opens
+directory structure correct
+all expected documents present
+no unexpected files
+no secrets
+no internal paths
+
+==================================================
+105. FINAL SECURITY REVIEW
+
+Review:
+
+OWASP Top 10 relevant areas
+
+especially:
+
+Broken Access Control
+Cryptographic Failures
+Injection
+Security Misconfiguration
+Identification/Auth Failures
+Logging/Monitoring Failures
+SSRF where applicable
+File upload vulnerabilities
+
+Fix relevant findings.
+
+Do not perform unnecessary security theater.
+
+==================================================
+106. FINAL GIT REVIEW
+
+Run:
+
+git status
+git diff --stat
+git diff
+
+Confirm:
+
+- Phase 9 only
+- no AI
+- no new unnecessary services
+- no architectural rewrite
+- production configuration
+- security hardening
+- authorization
+- CSV validation
+- audit
+- backup documentation
+- monitoring
+- error handling
+- operational documentation
+- Registrar workflow
+- deployment readiness
+
+==================================================
+107. FINAL RESPONSE
+
+When complete, report:
+
+## Phase 9 Implemented
+
+Summarize production hardening.
+
+## Security
+
+Describe:
+
+authentication
+authorization
+IDOR protection
+file security
+audit
+logging
+rate limiting
+
+## Registrar Workflow
+
+Describe the complete workflow.
+
+## Data Import
+
+Describe CSV validation and preview.
+
+## Reliability
+
+Describe:
+
+transactions
+stale detection
+concurrency
+retry
+cleanup
+
+## Operations
+
+Describe:
+
+health
+monitoring
+backup
+restore
+logging
+
+## Deployment
+
+Describe:
+
+production configuration
+database
+storage
+HTTPS
+
+## Documentation
+
+List:
+
+PRODUCTION-CHECKLIST.md
+REGISTRAR-WORKFLOW.md
+OPERATIONS.md
+TROUBLESHOOTING.md
+
+and other updated documents.
+
+## Tests
+
+Report actual test results.
+
+## Security Testing
+
+Report actual security tests.
+
+## Performance
+
+Report results using synthetic data.
+
+## Known Limitations
+
+Clearly list anything intentionally deferred.
+
+STOP AFTER PHASE 9.
+
+Do not begin Phase 10.
