@@ -1,0 +1,373 @@
+You are working on the ExamFlow project.
+
+We are now starting:
+
+PHASE 3 — STUDENT ROSTER MANAGEMENT & IMPORT
+
+The goal of this phase is to implement student roster management for an
+exam.
+
+This phase establishes the student data required for later:
+
+- Room assignment
+- Seat assignment
+- Seating maps
+- Signature lists
+- Personalized exam generation
+- Crowdmark-related workflows
+
+IMPORTANT:
+
+Keep the implementation simple, secure, deterministic, and professional.
+
+Do NOT implement seating assignment yet.
+
+Do NOT implement PDF generation yet.
+
+Do NOT implement Crowdmark integration yet.
+
+==================================================
+1. READ PROJECT DOCUMENTATION
+==================================================
+
+Before coding, read:
+
+- PRD.md
+- ARCHITECTURE.md
+- DATABASE.md
+- SECURITY.md
+- DEVELOPMENT.md
+- AGENTS.md
+
+Also inspect the existing implementation from:
+
+- Phase 0
+- Phase 1
+- Phase 2
+
+Follow existing project patterns.
+
+Do not introduce a new architecture.
+
+Before modifying code, provide a concise implementation plan.
+
+==================================================
+2. PHASE 3 SCOPE
+==================================================
+
+Implement:
+
+1. Student entity
+2. Exam roster
+3. Student roster import
+4. CSV import
+5. Roster validation
+6. Duplicate detection
+7. Roster preview
+8. Import confirmation
+9. Roster viewing
+10. Roster removal where appropriate
+11. Basic student search
+12. Roster statistics
+13. Authorization
+14. Audit events
+15. Database migrations
+16. Backend APIs
+17. Frontend UI
+18. Automated tests
+
+Do NOT implement:
+
+- Room management
+- Seat management
+- Seating assignment
+- Seating algorithms
+- PDF generation
+- Personalized exam generation
+- Crowdmark API integration
+- QR code processing
+- Signature list generation
+- Seating map generation
+
+==================================================
+3. CORE DESIGN PRINCIPLE
+==================================================
+
+ExamFlow is an examination administration system.
+
+Student data is sensitive.
+
+Therefore:
+
+- Minimize stored data.
+- Never expose student information unnecessarily.
+- Never log full student records.
+- Never send student data to external AI services.
+- Never commit real student data to Git.
+- Use synthetic data in development and tests.
+
+==================================================
+4. STUDENT MODEL
+==================================================
+
+Create a Student entity.
+
+Minimum expected information:
+
+id
+student_number
+first_name
+last_name
+display_name
+created_at
+updated_at
+
+Follow PRD.md and DATABASE.md if they define different fields.
+
+Do not add unnecessary fields such as:
+
+- address
+- phone
+- date of birth
+- personal email
+- nationality
+- program
+- GPA
+
+unless explicitly required by the product requirements.
+
+ExamFlow is not a student information system.
+
+==================================================
+5. STUDENT IDENTIFIER
+==================================================
+
+Student number is the primary institutional identifier used by ExamFlow.
+
+It must be:
+
+- required
+- normalized
+- unique
+
+Do not use student name as the unique identifier.
+
+Names can be duplicated.
+
+Do not assume a specific student-number format unless defined by requirements.
+
+Avoid overly strict formatting rules.
+
+==================================================
+6. STUDENT NAME
+==================================================
+
+Store names in a way that supports reasonable display and searching.
+
+At minimum:
+
+first_name
+last_name
+
+A display_name may be generated or stored according to the architecture.
+
+Do not create complicated international-name parsing logic.
+
+Do not assume every student's name follows the same cultural naming pattern.
+
+==================================================
+7. STUDENT PRIVACY
+==================================================
+
+Student data must be treated as sensitive institutional information.
+
+Do NOT:
+
+- log student names unnecessarily
+- log student numbers
+- include student information in error messages unnecessarily
+- put student information into URLs unnecessarily
+- expose the entire roster to unauthorized users
+- include real students in seed data
+- send student data to external services
+
+Use synthetic data for tests.
+
+==================================================
+8. EXAM ROSTER RELATIONSHIP
+==================================================
+
+An exam must have a roster.
+
+Do not assume that a Student belongs to only one exam.
+
+The same student may take:
+
+- multiple exams
+- multiple exams in different terms
+- different exams in the same course
+
+Therefore:
+
+Student
+
+and
+
+Exam
+
+should be modeled as a relationship.
+
+Do not duplicate complete student records for every exam.
+
+==================================================
+9. EXAM REGISTRATION / ROSTER ENTITY
+==================================================
+
+Create an appropriate relationship entity between Student and Exam.
+
+Suggested concept:
+
+ExamStudent
+
+or:
+
+ExamEnrollment
+
+or:
+
+ExamRosterEntry
+
+Follow the project's naming conventions.
+
+This entity may contain:
+
+id
+exam_id
+student_id
+created_at
+updated_at
+
+Additional fields should only be added if required.
+
+Do not add room or seat fields yet.
+
+==================================================
+10. UNIQUE ROSTER MEMBERSHIP
+==================================================
+
+A student should not appear twice in the same exam roster.
+
+The database must enforce:
+
+unique(exam_id, student_id)
+
+Do not rely only on frontend validation.
+
+==================================================
+11. ROSTER IMPORT SOURCE
+==================================================
+
+Phase 3 should support CSV roster import.
+
+Do not implement direct integration with:
+
+- Registrar systems
+- LMS
+- SIS
+- PeopleSoft
+- Workday
+- external APIs
+
+unless explicitly required.
+
+File-based CSV import keeps Phase 3 simple and makes it useful immediately.
+
+==================================================
+12. CSV FORMAT
+==================================================
+
+Support a clearly documented CSV format.
+
+For example:
+
+student_number,first_name,last_name
+
+100000001,Alice,Student
+100000002,Bob,Student
+
+Do not require unnecessary columns.
+
+Document the exact expected CSV format.
+
+==================================================
+13. CSV HEADER
+
+The importer should support a header row.
+
+Expected fields should be clearly defined.
+
+Do not silently guess arbitrary column meanings.
+
+If reasonable, support case-insensitive header matching.
+
+For example:
+
+Student Number
+student_number
+STUDENT_NUMBER
+
+may be treated equivalently if the implementation remains simple.
+
+Document the behavior.
+
+==================================================
+14. CSV ENCODING
+
+Support UTF-8 CSV.
+
+Handle UTF-8 BOM if reasonably possible.
+
+Do not attempt to support every possible legacy encoding in Phase 3.
+
+If an unsupported encoding is detected, return a useful error.
+
+==================================================
+15. CSV DELIMITER
+
+Use comma as the default delimiter.
+
+Do not automatically guess dozens of delimiter types unless there is a
+clear requirement.
+
+If delimiter configuration is needed, keep it explicit.
+
+==================================================
+16. CSV VALIDATION
+
+Before importing, validate the entire file.
+
+Validate:
+
+- required columns
+- missing student number
+- duplicate student numbers within the file
+- invalid empty rows
+- excessive field lengths
+- malformed CSV
+- invalid data
+
+Do not partially import a file if validation fails.
+
+Preferred workflow:
+
+Upload
+  ↓
+Parse
+  ↓
+Validate
+  ↓
+Preview
+  ↓
+Confirm
+  ↓
+Import
