@@ -1,0 +1,1701 @@
+You are working on the ExamFlow project.
+
+We are now starting:
+
+PHASE 5 — SEATING ASSIGNMENT
+
+The goal of this phase is to assign every student registered for an exam
+to a specific examination room and physical seat.
+
+This phase connects:
+
+Exam
+  ↓
+Student Roster
+
+with:
+
+Exam
+  ↓
+Selected Rooms
+  ↓
+Usable Seats
+
+The output is:
+
+Student
+  ↓
+Exam Room
+  ↓
+Physical Seat
+
+This is one of the most important business workflows in ExamFlow.
+
+IMPORTANT:
+
+Keep the implementation deterministic, explainable, auditable, and simple.
+
+Do NOT use AI or machine learning.
+
+Do NOT implement Crowdmark integration.
+
+Do NOT generate personalized exam PDFs.
+
+Do NOT generate QR codes.
+
+Do NOT generate signature lists yet.
+
+Do NOT generate seating maps yet.
+
+Those belong to later phases.
+
+==================================================
+1. READ PROJECT DOCUMENTATION
+==================================================
+
+Before coding, read:
+
+- PRD.md
+- ARCHITECTURE.md
+- DATABASE.md
+- SECURITY.md
+- DEVELOPMENT.md
+- AGENTS.md
+
+Also inspect the complete implementation of:
+
+- Phase 1 — Authentication
+- Phase 2 — Course + Exam
+- Phase 3 — Student + Roster
+- Phase 4 — Building + Room + Seat
+
+Follow existing architecture and naming conventions.
+
+Do not introduce a new architecture.
+
+Before coding, provide a concise implementation plan.
+
+==================================================
+2. PHASE 5 SCOPE
+==================================================
+
+Implement:
+
+1. Seat assignment model
+2. Assignment generation
+3. Deterministic assignment algorithm
+4. Room ordering
+5. Seat ordering
+6. Student ordering
+7. Assignment preview
+8. Assignment confirmation
+9. Assignment validation
+10. Capacity checking
+11. Assignment regeneration
+12. Assignment viewing
+13. Assignment search
+14. Assignment statistics
+15. Authorization
+16. Audit logging
+17. Database migration
+18. Backend APIs
+19. Frontend UI
+20. Automated tests
+
+Do NOT implement:
+
+- Crowdmark
+- QR codes
+- personalized PDFs
+- signature sheets
+- seating maps
+- exam printing
+- AI
+- external scheduling systems
+
+==================================================
+3. CORE CONCEPT
+==================================================
+
+Create a separate exam-specific assignment entity.
+
+Conceptually:
+
+Exam
+  │
+  ├── Student
+  │
+  └── Seat Assignment
+          │
+          ├── Room
+          └── Seat
+
+The physical Seat must remain independent from the student.
+
+Do NOT put:
+
+student_id
+
+inside the Seat table.
+
+==================================================
+4. ASSIGNMENT MODEL
+==================================================
+
+Create an ExamSeatAssignment entity.
+
+Suggested fields:
+
+id
+exam_id
+student_id
+room_id
+seat_id
+assignment_order
+created_at
+updated_at
+
+Follow DATABASE.md and project naming conventions.
+
+The exact fields may differ if a better existing design exists.
+
+==================================================
+5. DATABASE RELATIONSHIPS
+==================================================
+
+An assignment must reference:
+
+exam
+student
+room
+seat
+
+All references must use foreign keys.
+
+The assignment must represent:
+
+Student X
+taking Exam Y
+in Room Z
+at Seat A01
+
+==================================================
+6. UNIQUE ASSIGNMENT
+==================================================
+
+A student can have at most one seat assignment for a given exam.
+
+Database constraint:
+
+unique(exam_id, student_id)
+
+A physical seat can be assigned to at most one student for a given exam.
+
+Database constraint:
+
+unique(exam_id, seat_id)
+
+These constraints are mandatory.
+
+Do not rely only on application-level validation.
+
+==================================================
+7. ROOM CONSISTENCY
+==================================================
+
+The assigned seat must actually belong to the assigned room.
+
+For example:
+
+Assignment:
+
+exam = CSC108 Final
+room = IB101
+seat = A01
+
+must be valid only if:
+
+A01 belongs to IB101.
+
+Do not trust frontend-provided room_id.
+
+Validate this in the backend/database logic.
+
+==================================================
+8. EXAM ROOM VALIDATION
+==================================================
+
+A room used by an assignment must belong to the exam's selected rooms.
+
+For example:
+
+Exam CSC108 Final
+
+Selected rooms:
+
+IB101
+IB102
+
+A student cannot be assigned:
+
+IB103
+
+unless IB103 has first been added to the exam.
+
+==================================================
+9. SEAT VALIDATION
+==================================================
+
+A seat can be assigned only if:
+
+- seat exists
+- seat belongs to selected exam room
+- seat is usable
+- seat is not already assigned for the exam
+
+An unusable seat must never be assigned.
+
+==================================================
+10. STUDENT VALIDATION
+==================================================
+
+A student can be assigned only if:
+
+- student exists
+- student is in the exam roster
+- student is not already assigned
+
+Do not allow assigning arbitrary students who are not registered for the exam.
+
+==================================================
+11. CAPACITY CHECK
+==================================================
+
+Before generating assignments:
+
+registered_students =
+number of students in exam roster
+
+available_seats =
+number of usable seats in selected exam rooms
+
+If:
+
+registered_students > available_seats
+
+do not generate assignments.
+
+Return a clear error:
+
+"Insufficient seating capacity."
+
+Example:
+
+Students:
+185
+
+Usable seats:
+170
+
+Result:
+
+Assignment cannot proceed.
+
+Do not partially assign 170 students.
+
+==================================================
+12. CAPACITY WARNING
+==================================================
+
+If:
+
+available_seats > registered_students
+
+the system may show:
+
+185 students
+220 available seats
+
+Extra seats:
+35
+
+This is normal.
+
+Do not require every physical seat to be occupied.
+
+==================================================
+13. ASSIGNMENT ALGORITHM
+==================================================
+
+Implement a deterministic algorithm.
+
+The first version should be intentionally simple.
+
+Default:
+
+1. Retrieve exam roster.
+2. Sort students deterministically.
+3. Retrieve selected rooms.
+4. Sort rooms deterministically.
+5. Retrieve usable seats.
+6. Sort seats deterministically.
+7. Assign students sequentially.
+
+Example:
+
+Students:
+
+100000001
+100000002
+100000003
+100000004
+
+Rooms:
+
+IB101
+IB102
+
+Seats:
+
+IB101:
+A01
+A02
+A03
+
+IB102:
+A01
+A02
+A03
+
+Result:
+
+100000001 → IB101 A01
+100000002 → IB101 A02
+100000003 → IB101 A03
+100000004 → IB102 A01
+
+This is deterministic.
+
+==================================================
+14. STUDENT ORDERING
+==================================================
+
+Default ordering should be:
+
+student_number ASC
+
+Student number is preferred because it is:
+
+- deterministic
+- stable
+- easy to audit
+- easy to reproduce
+
+Do not sort by display name by default.
+
+Do not use random ordering.
+
+==================================================
+15. ROOM ORDERING
+==================================================
+
+Use a deterministic room order.
+
+Recommended:
+
+building_code ASC
+room_number ASC
+
+For example:
+
+IB101
+IB102
+IB201
+HW100
+
+The exact ordering must be documented.
+
+==================================================
+16. SEAT ORDERING
+==================================================
+
+Use deterministic physical ordering.
+
+Recommended:
+
+row_label ASC
+seat_number ASC
+
+For example:
+
+A01
+A02
+A03
+...
+B01
+B02
+...
+
+Do not depend on database natural order.
+
+==================================================
+17. ASSIGNMENT ORDER
+
+Store:
+
+assignment_order
+
+This represents the deterministic sequence used by the assignment algorithm.
+
+Example:
+
+1 → Student 100000001 → IB101 A01
+2 → Student 100000002 → IB101 A02
+3 → Student 100000003 → IB101 A03
+
+This will later be useful for:
+
+- signature lists
+- seating maps
+- audit
+- reproducibility
+
+==================================================
+18. DETERMINISM
+
+Running the same assignment operation twice against the same inputs should
+produce the same result.
+
+Given:
+
+same roster
+same rooms
+same seats
+same ordering rules
+
+the output must be identical.
+
+Do NOT use:
+
+random()
+UUID ordering
+database natural order
+timestamps
+
+to determine seating.
+
+==================================================
+19. RANDOMIZATION
+
+Do NOT implement randomization in Phase 5.
+
+If randomized seating is required later, implement it as an explicit,
+auditable strategy.
+
+The default algorithm must remain deterministic.
+
+==================================================
+20. ASSIGNMENT STRATEGY
+
+Design the code so the algorithm can later support multiple strategies.
+
+For example:
+
+SequentialSeatAssignmentStrategy
+
+But do not implement multiple strategies yet.
+
+Do not over-engineer this.
+
+A simple service abstraction is enough.
+
+==================================================
+21. ASSIGNMENT GENERATION WORKFLOW
+
+Preferred workflow:
+
+User opens:
+
+Exam → Seating
+
+System displays:
+
+Students:
+185
+
+Available seats:
+220
+
+Current assignments:
+0
+
+Then:
+
+[ Generate Assignment ]
+
+The system calculates a preview.
+
+No database changes yet.
+
+==================================================
+22. ASSIGNMENT PREVIEW
+
+Preview should show:
+
+Students:
+185
+
+Rooms:
+3
+
+Available seats:
+220
+
+Assigned:
+185
+
+Unused:
+35
+
+Then show sample assignment rows.
+
+For example:
+
+Student Number | Name | Building | Room | Seat
+
+100000001 | Alice Student | IB | 101 | A01
+100000002 | Bob Student   | IB | 101 | A02
+
+Do not display the entire dataset unnecessarily if the roster is large.
+
+Pagination is acceptable.
+
+==================================================
+23. CONFIRMATION
+
+The user must explicitly confirm the generated assignment.
+
+Example:
+
+"Generate seating for 185 students using 220 available seats?"
+
+[Cancel]
+[Confirm Assignment]
+
+Do not automatically commit preview results.
+
+==================================================
+24. FINAL ASSIGNMENT
+
+When confirmed:
+
+- revalidate roster
+- revalidate rooms
+- revalidate seats
+- revalidate capacity
+- regenerate assignment from authoritative database state
+- insert transactionally
+- commit
+
+Do not trust the preview payload.
+
+==================================================
+25. TRANSACTION
+
+Assignment creation must be atomic.
+
+Preferred:
+
+BEGIN
+
+validate all inputs
+
+generate assignments
+
+insert all assignments
+
+COMMIT
+
+If any error occurs:
+
+ROLLBACK
+
+Never leave a partially assigned exam.
+
+==================================================
+26. CONCURRENCY
+
+Consider two administrators attempting to generate seating simultaneously.
+
+The system must prevent duplicate assignments.
+
+Use:
+
+- database unique constraints
+- transaction isolation appropriate to the application
+
+Do not introduce distributed locking unless absolutely necessary.
+
+If another assignment already exists, return a clear conflict.
+
+==================================================
+27. EXISTING ASSIGNMENTS
+
+An exam may already have assignments.
+
+Do NOT silently overwrite them.
+
+If assignments exist:
+
+display:
+
+"Seating has already been generated."
+
+Options:
+
+View Assignment
+
+Regenerate Assignment
+
+Regeneration must require explicit confirmation.
+
+==================================================
+28. REGENERATION
+
+Implement a safe regeneration workflow.
+
+Before regeneration:
+
+show:
+
+Current assignments:
+185
+
+Regenerating will replace all current seating assignments.
+
+Require explicit confirmation.
+
+Example:
+
+"Regenerate seating?"
+
+[Cancel]
+[Regenerate]
+
+==================================================
+29. REGENERATION TRANSACTION
+
+Regeneration should be atomic.
+
+Preferred:
+
+BEGIN
+
+delete current assignments for exam
+
+recalculate assignments
+
+insert new assignments
+
+COMMIT
+
+If anything fails:
+
+ROLLBACK
+
+The previous assignments should remain intact if the transaction fails.
+
+==================================================
+30. ASSIGNMENT VERSION
+
+If the architecture can support it cleanly, include an assignment version
+number.
+
+Example:
+
+version 1
+version 2
+
+This is useful for audit and future document generation.
+
+However:
+
+do not create a complex version-control system.
+
+If versioning is not necessary in the current architecture, document it as
+a future enhancement.
+
+==================================================
+31. ASSIGNMENT STATUS
+
+Keep status simple.
+
+Possible:
+
+DRAFT
+CONFIRMED
+
+If the existing architecture does not need this, do not introduce it.
+
+Do not create a large state machine.
+
+==================================================
+32. MANUAL ASSIGNMENT
+
+Do NOT implement drag-and-drop manual seating in Phase 5 unless explicitly
+required by PRD.md.
+
+The first release should focus on deterministic automatic assignment.
+
+Manual corrections can be considered later.
+
+==================================================
+33. SEARCH
+
+Provide assignment search by:
+
+- student number
+- student name
+- room
+- seat
+
+Search must be server-side.
+
+Do not load the entire assignment dataset into the browser.
+
+==================================================
+34. ASSIGNMENT LIST
+
+Create an assignment table.
+
+Example:
+
+------------------------------------------------------------
+CSC108 Final — Seating Assignment
+
+Student        Student ID   Building   Room   Seat
+Alice Student  100000001    IB         101    A01
+Bob Student    100000002    IB         101    A02
+Charlie Student 100000003   IB         101    A03
+------------------------------------------------------------
+
+Provide:
+
+- search
+- filtering
+- pagination
+- sorting where appropriate
+
+==================================================
+35. ROOM SUMMARY
+
+Display assignment statistics by room.
+
+Example:
+
+Room       Seats Used    Seats Available
+
+IB101      80            80
+IB102      75            80
+IB103      30            60
+
+This is useful for administrators.
+
+Do not create advanced analytics.
+
+==================================================
+36. ASSIGNMENT SUMMARY
+
+Display:
+
+Registered students:
+185
+
+Assigned:
+185
+
+Unassigned:
+0
+
+Available seats:
+220
+
+Unused seats:
+35
+
+Rooms used:
+3
+
+This should be calculated by the backend.
+
+==================================================
+37. UNASSIGNED STUDENTS
+
+If the system encounters any unassigned students after generation:
+
+This is a critical error.
+
+The transaction must fail.
+
+Do not produce a partial assignment.
+
+==================================================
+38. DUPLICATE SEATS
+
+If two students would receive the same seat:
+
+This is a critical error.
+
+The transaction must fail.
+
+The database constraint must also prevent it.
+
+==================================================
+39. DUPLICATE STUDENTS
+
+If one student would receive two seats:
+
+This is a critical error.
+
+The transaction must fail.
+
+The database constraint must also prevent it.
+
+==================================================
+40. ROOM CAPACITY
+
+Do not use:
+
+room.capacity
+
+as the actual seat inventory.
+
+Use:
+
+count(usable seats)
+
+from the selected exam rooms.
+
+Room capacity is a physical/institutional limit.
+
+Actual assignment capacity comes from usable seats.
+
+==================================================
+41. SEAT AVAILABILITY
+
+For Phase 5, a seat is available if:
+
+seat.is_usable = true
+
+and:
+
+seat is not already assigned to the exam.
+
+A seat assigned in another exam is NOT automatically unavailable.
+
+Physical seats are reusable across different exam times.
+
+==================================================
+42. ROOM SCHEDULING
+
+If the project already supports exam dates/times:
+
+Do not assign the same physical room to overlapping exams.
+
+If Phase 4 implemented room conflict detection, reuse it.
+
+Do not duplicate scheduling logic.
+
+==================================================
+43. ROOM VALIDATION
+
+Before assignment:
+
+For every selected exam room:
+
+verify room is active.
+
+For every seat:
+
+verify seat belongs to the selected room.
+
+For every seat:
+
+verify seat is usable.
+
+==================================================
+44. AUTHORIZATION
+
+Use Phase 1 authentication and authorization.
+
+Suggested:
+
+ADMIN:
+- generate assignments
+- regenerate assignments
+- view assignments
+
+STAFF:
+- generate assignments if authorized
+- regenerate if authorized
+- view assignments
+
+INSTRUCTOR:
+- view assignments for authorized exams
+- cannot regenerate unless explicitly authorized
+
+Backend authorization is mandatory.
+
+==================================================
+45. IDOR PROTECTION
+
+Protect:
+
+GET /api/exams/{exam_id}/assignments
+
+POST /api/exams/{exam_id}/assignments/preview
+
+POST /api/exams/{exam_id}/assignments
+
+POST /api/exams/{exam_id}/assignments/regenerate
+
+The backend must verify the authenticated user's access to the exam.
+
+Do not trust exam IDs from the frontend.
+
+==================================================
+46. API DESIGN
+
+Suggested endpoints:
+
+GET
+/api/exams/{exam_id}/assignments
+
+POST
+/api/exams/{exam_id}/assignments/preview
+
+POST
+/api/exams/{exam_id}/assignments
+
+POST
+/api/exams/{exam_id}/assignments/regenerate
+
+GET
+/api/exams/{exam_id}/assignments/summary
+
+GET
+/api/exams/{exam_id}/assignments/{assignment_id}
+
+Follow existing API conventions.
+
+Do not create unnecessary endpoints.
+
+==================================================
+47. PREVIEW API
+
+The preview API must:
+
+- read authoritative database state
+- validate capacity
+- generate deterministic assignments
+- return preview
+- NOT modify the database
+
+The preview result may contain:
+
+student
+room
+seat
+assignment_order
+
+but should not create permanent records.
+
+==================================================
+48. CONFIRM API
+
+The confirm API must:
+
+- re-read authoritative data
+- revalidate
+- generate assignments
+- insert transactionally
+- return summary
+
+Do not accept a client-generated list of assignments as authoritative.
+
+This prevents tampering.
+
+==================================================
+49. REGENERATION API
+
+The regeneration endpoint must:
+
+- verify permission
+- verify existing assignments
+- require explicit confirmation
+- execute transactionally
+
+Do not expose a destructive endpoint without authorization.
+
+==================================================
+50. RESPONSE MODELS
+
+Use Pydantic response models.
+
+Examples:
+
+SeatAssignmentResponse
+AssignmentPreviewResponse
+AssignmentSummaryResponse
+RoomAssignmentSummaryResponse
+
+Do not return raw ORM models.
+
+==================================================
+51. DATABASE INDEXES
+
+Add indexes for likely queries:
+
+exam_id
+student_id
+room_id
+seat_id
+
+Also support:
+
+unique(exam_id, student_id)
+unique(exam_id, seat_id)
+
+Do not add unnecessary indexes.
+
+==================================================
+52. DATABASE MIGRATION
+
+Create an Alembic migration for the assignment table.
+
+Do not modify old migrations unnecessarily.
+
+Verify:
+
+alembic upgrade head
+
+on a fresh database.
+
+==================================================
+53. FRONTEND ROUTE
+
+Create:
+
+/app/exams/[id]/seating
+
+This becomes the main seating administration page.
+
+==================================================
+54. SEATING PAGE
+
+Display:
+
+Exam information
+
+Roster:
+185
+
+Selected rooms:
+3
+
+Usable seats:
+220
+
+Current assignments:
+0
+
+Then:
+
+[ Generate Seating ]
+
+==================================================
+55. PREVIEW UI
+
+After generation preview:
+
+--------------------------------------------------
+Seating Preview
+
+Students: 185
+Seats: 220
+Assigned: 185
+Unused: 35
+
+[ Confirm Assignment ]
+[ Cancel ]
+--------------------------------------------------
+
+Do not modify the database until confirmation.
+
+==================================================
+56. CONFIRMED UI
+
+After confirmation:
+
+--------------------------------------------------
+Seating Assignment
+
+Status: Confirmed
+
+185 students assigned
+
+Rooms:
+IB101
+IB102
+IB103
+
+[ View Assignments ]
+[ Regenerate Seating ]
+--------------------------------------------------
+
+==================================================
+57. REGENERATION UI
+
+Show a strong confirmation dialog.
+
+Example:
+
+WARNING
+
+This will replace the current seating assignment
+for this examination.
+
+Current assignments: 185
+
+This action must be explicitly confirmed.
+
+[Cancel]
+[Regenerate]
+
+==================================================
+58. ASSIGNMENT TABLE
+
+Use a proper semantic table.
+
+Columns:
+
+Order
+Student Number
+Student Name
+Building
+Room
+Seat
+
+Allow:
+
+- search
+- pagination
+- room filtering
+
+Do not add unnecessary columns.
+
+==================================================
+59. PRIVACY
+
+Student information is sensitive.
+
+Only authorized users should see:
+
+- student number
+- student name
+- assigned seat
+
+Do not expose assignment data publicly.
+
+Do not put student information into URLs.
+
+Prefer opaque resource IDs.
+
+==================================================
+60. LOGGING
+
+Do not log:
+
+student names
+student numbers
+full assignment lists
+
+Safe logs:
+
+ASSIGNMENT_GENERATION_STARTED
+exam_id
+student_count
+available_seat_count
+
+ASSIGNMENT_GENERATION_COMPLETED
+exam_id
+assignment_count
+
+ASSIGNMENT_GENERATION_FAILED
+exam_id
+safe error code
+
+==================================================
+61. AUDIT EVENTS
+
+Create:
+
+SEATING_PREVIEW_GENERATED
+SEATING_ASSIGNMENT_CREATED
+SEATING_ASSIGNMENT_REGENERATED
+
+Audit information:
+
+actor
+exam
+timestamp
+action
+safe summary
+
+Do not log the full student-to-seat mapping in the audit log.
+
+==================================================
+62. NO AI
+
+Absolutely do not introduce AI.
+
+The assignment algorithm must be:
+
+deterministic
+testable
+explainable
+reproducible
+
+No:
+
+LLM
+machine learning
+random model
+optimization service
+external AI API
+
+==================================================
+63. TESTING — BASIC ASSIGNMENT
+
+Test:
+
+1. 5 students / 10 seats
+2. 10 students / 10 seats
+3. 10 students / 15 seats
+4. insufficient capacity
+5. zero usable seats
+
+==================================================
+64. TESTING — DETERMINISM
+
+Run the same input twice.
+
+Verify:
+
+student 1 receives same room and seat
+student 2 receives same room and seat
+...
+
+The entire mapping must be identical.
+
+==================================================
+65. TESTING — ORDERING
+
+Verify student order:
+
+100000001
+100000002
+100000003
+
+produces the expected assignment order.
+
+Verify room ordering.
+
+Verify seat ordering.
+
+==================================================
+66. TESTING — INVALID DATA
+
+Test:
+
+- student not in roster
+- seat not in room
+- room not selected for exam
+- unusable seat
+- inactive room
+- duplicate student
+- duplicate seat
+
+All must fail safely.
+
+==================================================
+67. TESTING — TRANSACTION
+
+Test:
+
+If assignment 50 fails:
+
+assignment 1–49 must NOT remain in the database.
+
+Verify rollback.
+
+==================================================
+68. TESTING — REGENERATION
+
+Test:
+
+1. Generate assignment version 1.
+2. Regenerate.
+3. Verify old assignment is replaced atomically.
+4. Verify new assignment remains internally consistent.
+
+==================================================
+69. TESTING — AUTHORIZATION
+
+Test:
+
+- unauthenticated user
+- unauthorized user
+- instructor read access
+- staff generation
+- admin generation
+- unauthorized regeneration
+
+==================================================
+70. TESTING — IDOR
+
+Test that a user cannot access another exam's assignments simply by changing:
+
+exam_id
+
+in the URL.
+
+==================================================
+71. TESTING — DATABASE CONSTRAINTS
+
+Verify:
+
+duplicate exam/student assignment rejected
+
+duplicate exam/seat assignment rejected
+
+invalid foreign keys rejected
+
+==================================================
+72. FRONTEND TESTS
+
+Test:
+
+- seating page
+- capacity display
+- preview
+- confirmation
+- assignment table
+- search
+- room filtering
+- regeneration confirmation
+- error states
+
+==================================================
+73. ACCESSIBILITY
+
+Ensure:
+
+- accessible tables
+- keyboard navigation
+- confirmation dialogs
+- accessible forms
+- clear error messages
+- visible focus states
+
+==================================================
+74. PERFORMANCE
+
+The system should support university-scale exams.
+
+Avoid:
+
+- loading all students unnecessarily
+- loading all assignments into browser
+- N+1 queries
+
+Use:
+
+- server-side pagination
+- efficient joins
+- indexes
+- batch insertion
+
+Do not introduce Redis or another infrastructure component.
+
+==================================================
+75. BULK INSERT
+
+Assignment generation may create hundreds or thousands of rows.
+
+Use an efficient database insertion strategy.
+
+Do not execute one database INSERT request per student if the ORM supports
+safe bulk insertion.
+
+Maintain transaction safety.
+
+==================================================
+76. FUTURE COMPATIBILITY
+
+The assignment model must support future:
+
+Phase 6:
+Crowdmark integration
+
+Phase 7:
+Personalized exam generation
+
+Phase 8:
+Seating map generation
+Signature list generation
+
+Therefore assignment data must provide:
+
+student
+student number
+exam
+building
+room
+seat
+assignment order
+
+Do not hard-code future document-generation behavior into this phase.
+
+==================================================
+77. DOCUMENTATION
+
+Update:
+
+README.md
+DATABASE.md
+DEVELOPMENT.md
+ARCHITECTURE.md
+
+Document:
+
+- assignment model
+- algorithm
+- ordering rules
+- capacity rules
+- regeneration behavior
+- authorization
+- API endpoints
+
+Especially document:
+
+Student ordering:
+student_number ASC
+
+Room ordering:
+building_code + room_number
+
+Seat ordering:
+row + seat_number
+
+==================================================
+78. ALGORITHM DOCUMENTATION
+
+Clearly document the algorithm.
+
+Example:
+
+1. Sort students by student number.
+2. Sort selected rooms by building code and room number.
+3. Retrieve usable seats.
+4. Sort seats by physical row and seat number.
+5. Flatten seats into deterministic order.
+6. Assign students sequentially.
+7. Validate the complete result.
+8. Persist atomically.
+
+This is intentionally simple.
+
+==================================================
+79. MANUAL VALIDATION
+
+Perform:
+
+1. Create an exam.
+2. Import 20 synthetic students.
+3. Configure two rooms.
+4. Generate seats.
+5. Verify capacity.
+6. Open Seating.
+7. Generate preview.
+8. Verify preview.
+9. Confirm.
+10. Verify every student has exactly one seat.
+11. Verify every seat is used by at most one student.
+12. Search for a student.
+13. Filter by room.
+14. Regenerate.
+15. Verify no duplicate assignments.
+16. Test insufficient capacity.
+17. Test unauthorized user.
+
+==================================================
+80. SECURITY REVIEW
+
+Verify:
+
+- backend authorization
+- IDOR protection
+- database constraints
+- transactional generation
+- transactional regeneration
+- no student data in logs
+- no student data in audit summaries
+- no secrets
+- no external AI
+- no Crowdmark credentials
+- no public assignment endpoints
+
+==================================================
+81. FINAL QUALITY CHECK
+
+Actually run:
+
+Backend:
+
+pytest
+ruff check
+type checking if configured
+
+Frontend:
+
+lint
+typecheck
+tests if configured
+
+Database:
+
+alembic upgrade head
+
+Do not claim commands passed unless they actually passed.
+
+==================================================
+82. FINAL GIT REVIEW
+
+Inspect:
+
+git status
+git diff --stat
+git diff
+
+Confirm:
+
+- Phase 5 only
+- deterministic seating
+- assignment table implemented
+- capacity validation
+- transactional generation
+- regeneration supported safely
+- authorization enforced
+- no Crowdmark
+- no QR codes
+- no PDF
+- no signature list
+- no seating map
+- no AI
+- no unnecessary infrastructure
+- no secrets
+- no real student data
+
+==================================================
+83. FINAL RESPONSE
+
+When complete, report:
+
+## Phase 5 Implemented
+
+Describe seating assignment functionality.
+
+## Algorithm
+
+Explain exact deterministic ordering.
+
+## Database
+
+List:
+
+- assignment table
+- foreign keys
+- unique constraints
+- indexes
+- migration
+
+## Assignment Workflow
+
+Explain:
+
+Preview
+→ Confirm
+→ Generate
+→ View
+
+## Regeneration
+
+Explain how regeneration works safely.
+
+## Capacity
+
+Explain how available seats are calculated.
+
+## API
+
+List endpoints.
+
+## Frontend
+
+List routes/pages.
+
+## Authorization
+
+Explain permissions.
+
+## Security
+
+Explain:
+
+- IDOR protection
+- PII handling
+- transaction safety
+- database constraints
+- audit logging
+
+## Tests
+
+Report actual test results.
+
+## Lint
+
+Report actual results.
+
+## Type Checking
+
+Report actual results.
+
+## Known Limitations
+
+Clearly state:
+
+- Crowdmark deferred
+- QR deferred
+- PDF generation deferred
+- signature list deferred
+- seating map deferred
+- advanced seating strategies deferred
+
+## Files Changed
+
+List important files.
+
+STOP AFTER PHASE 5.
+
+Do not begin Phase 6.
