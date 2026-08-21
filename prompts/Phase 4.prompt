@@ -1,0 +1,1737 @@
+You are working on the ExamFlow project.
+
+We are now starting:
+
+PHASE 4 — ROOM & SEAT MANAGEMENT
+
+The goal of this phase is to implement the physical examination location
+infrastructure used by ExamFlow.
+
+This phase establishes:
+
+- Buildings
+- Rooms
+- Room capacity
+- Seat layouts
+- Individual seats
+- Seat availability
+- Room selection for exams
+
+This phase provides the infrastructure required for the next phase:
+
+PHASE 5 — SEATING ASSIGNMENT
+
+IMPORTANT:
+
+This phase must NOT assign students to seats.
+
+Do NOT implement automatic seating assignment.
+
+Do NOT implement seating algorithms.
+
+Do NOT generate seating maps yet.
+
+Do NOT generate signature lists yet.
+
+Do NOT generate personalized exam PDFs yet.
+
+Do NOT integrate Crowdmark yet.
+
+==================================================
+1. READ PROJECT DOCUMENTATION FIRST
+==================================================
+
+Before coding, read:
+
+- doc/prd.md
+- doc/Architecture.md
+- doc/DATABASE.md
+- doc/SECURITY.md
+- doc/DEVELOPMENT.md
+- doc/AGENTS.md
+
+Also inspect:
+
+- Phase 1 Authentication
+- Phase 2 Course + Exam Management
+- Phase 3 Student + Roster Management
+
+Follow existing project conventions.
+
+Do not introduce a new architecture.
+
+First provide a concise implementation plan.
+
+Then implement the plan.
+
+==================================================
+2. PHASE 4 SCOPE
+==================================================
+
+Implement:
+
+1. Building management foundation
+2. Room management
+3. Room capacity
+4. Seat layout
+5. Seat records
+6. Seat availability
+7. Room selection for an exam
+8. Room validation
+9. Seat generation
+10. Room/seat management UI
+11. Authorization
+12. Audit events
+13. Database migrations
+14. Backend APIs
+15. Frontend UI
+16. Automated tests
+
+Do NOT implement:
+
+- Student-to-seat assignment
+- Automatic seating algorithm
+- Random seating
+- Alphabetical seating
+- Exam printing
+- PDF generation
+- Crowdmark integration
+- QR codes
+- Seating maps
+- Signature lists
+
+==================================================
+3. CORE DESIGN PRINCIPLE
+==================================================
+
+Keep the physical location model simple.
+
+The system should distinguish:
+
+Building
+    ↓
+Room
+    ↓
+Seat
+
+and separately:
+
+Exam
+    ↓
+Exam Room
+
+and later:
+
+Exam
+    ↓
+Student
+    ↓
+Seat Assignment
+
+Do not combine these concepts.
+
+==================================================
+4. BUILDING MODEL
+==================================================
+
+Create a Building entity if not already defined.
+
+Suggested fields:
+
+id
+building_code
+building_name
+created_at
+updated_at
+
+Examples:
+
+IB
+Instructional Centre
+HW
+Health Sciences Building
+
+Do not hard-code building names.
+
+==================================================
+5. BUILDING CODE
+==================================================
+
+building_code must be:
+
+- required
+- unique
+- normalized
+- reasonably length-limited
+
+Do not assume a specific university building-code format.
+
+Do not use building name as the unique identifier.
+
+==================================================
+6. ROOM MODEL
+==================================================
+
+Create a Room entity.
+
+Suggested fields:
+
+id
+building_id
+room_number
+room_name
+capacity
+is_active
+created_at
+updated_at
+
+Use only fields required by the product requirements.
+
+If room_name is unnecessary, do not create it.
+
+==================================================
+7. ROOM IDENTITY
+==================================================
+
+A room should be uniquely identified by:
+
+building + room_number
+
+For example:
+
+IB 101
+
+and:
+
+HW 101
+
+are different rooms.
+
+The database should enforce appropriate uniqueness.
+
+Do not make room_number globally unique.
+
+==================================================
+8. ROOM CAPACITY
+==================================================
+
+Room capacity represents the maximum number of usable examination seats.
+
+It should be:
+
+- positive
+- reasonable
+- validated by the backend
+
+Do not assume room capacity is simply the number of physical seats.
+
+Some physical seats may be unavailable.
+
+Therefore:
+
+room.capacity
+
+and:
+
+usable seats
+
+should be treated as related but distinct concepts.
+
+==================================================
+9. ACTIVE / INACTIVE ROOMS
+==================================================
+
+Rooms should support:
+
+active
+inactive
+
+An inactive room should not be selectable for a new exam unless explicitly
+authorized.
+
+Do not delete rooms simply because they are no longer available.
+
+Historical exam records may depend on them.
+
+==================================================
+10. ROOM DESCRIPTION
+==================================================
+
+Do not create unnecessary facilities-management fields.
+
+Do NOT add:
+
+- projector
+- windows
+- floor
+- temperature
+- accessibility equipment
+- maintenance schedule
+
+unless explicitly required by doc/prd.md.
+
+This is an exam administration system, not a facilities management system.
+
+==================================================
+11. SEAT MODEL
+==================================================
+
+Create a Seat entity.
+
+Suggested fields:
+
+id
+room_id
+seat_label
+row_label
+seat_number
+is_usable
+created_at
+updated_at
+
+Follow the actual architecture and requirements.
+
+The exact representation may be simplified if a better design exists.
+
+==================================================
+12. SEAT IDENTITY
+==================================================
+
+A seat must be uniquely identifiable within a room.
+
+For example:
+
+IB 101
+A01
+
+IB 101
+A02
+
+IB 101
+A03
+
+The same seat label may exist in another room.
+
+Therefore:
+
+unique(room_id, seat_label)
+
+should be enforced.
+
+==================================================
+13. SEAT LABELS
+==================================================
+
+Seat labels should be human-readable.
+
+Examples:
+
+A01
+A02
+A03
+
+or:
+
+R01-C01
+R01-C02
+
+Do not force a single physical layout format if the requirements do not
+require one.
+
+Keep the data model flexible enough to represent normal university
+classroom seating.
+
+==================================================
+14. ROW AND POSITION
+
+If row/position information is stored, treat it as physical metadata.
+
+For example:
+
+row_label = A
+seat_number = 1
+
+The system should be able to sort seats predictably.
+
+This will be important later for:
+
+- seating maps
+- signature lists
+- deterministic student assignment
+
+Do not implement those features yet.
+
+==================================================
+15. SEAT USABILITY
+==================================================
+
+A seat should support at least:
+
+usable
+unusable
+
+An unusable seat should not be available for exam seating assignment.
+
+Examples:
+
+- broken chair
+- blocked desk
+- instructor station
+- equipment location
+- physical obstruction
+
+Do not delete unusable seats.
+
+Historical assignments may depend on them.
+
+==================================================
+16. SEAT STATUS
+
+Keep seat status simple.
+
+Do NOT create a complicated state machine.
+
+For example:
+
+is_usable = true/false
+
+is sufficient unless doc/prd.md requires more.
+
+Do not create:
+
+AVAILABLE
+RESERVED
+OCCUPIED
+BLOCKED
+MAINTENANCE
+CLEANING
+etc.
+
+Seat occupancy belongs to an exam assignment, not to the physical seat itself.
+
+==================================================
+17. IMPORTANT SEPARATION
+
+A physical seat is NOT an exam seat assignment.
+
+Physical:
+
+Room IB 101
+Seat A01
+
+Exam-specific:
+
+Exam CSC108 Final
+Student 100000001
+Seat IB101-A01
+
+The second relationship belongs to Phase 5.
+
+Do not put:
+
+student_id
+
+inside the Seat table.
+
+==================================================
+18. SEAT GENERATION
+
+Implement a simple mechanism to create seats for a room.
+
+Example:
+
+Rows:
+A
+B
+C
+D
+
+Seats per row:
+10
+
+Generate:
+
+A01
+A02
+...
+A10
+
+B01
+B02
+...
+B10
+
+etc.
+
+The exact UI may vary.
+
+==================================================
+19. SEAT GENERATION SAFETY
+
+Generating seats must not blindly delete existing seats.
+
+If seats already exist:
+
+- detect them
+- avoid duplicates
+- report conflicts
+
+Do not destroy physical layout data automatically.
+
+If regeneration is required, it must be explicit and carefully validated.
+
+==================================================
+20. ROOM CAPACITY VS SEAT COUNT
+
+Do not assume:
+
+capacity == number of seats
+
+Instead:
+
+room.capacity
+    =
+maximum permitted exam capacity
+
+usable seat count
+    =
+number of usable seats currently available
+
+For example:
+
+Room capacity = 200
+
+Physical seats = 200
+
+Usable seats = 185
+
+The exam seating process should later use 185, not 200.
+
+==================================================
+21. ROOM API
+
+Implement only APIs needed by this phase.
+
+Possible endpoints:
+
+GET    /api/buildings
+POST   /api/buildings
+PATCH  /api/buildings/{id}
+
+GET    /api/rooms
+POST   /api/rooms
+GET    /api/rooms/{id}
+PATCH  /api/rooms/{id}
+
+GET    /api/rooms/{id}/seats
+POST   /api/rooms/{id}/seats
+PATCH  /api/rooms/{id}/seats/{seat_id}
+
+Add DELETE only if explicitly required.
+
+Prefer deactivation over destructive deletion.
+
+==================================================
+22. SEAT GENERATION API
+
+If seat generation is implemented as a backend operation:
+
+POST:
+
+/api/rooms/{room_id}/seats/generate
+
+The request may contain:
+
+row_count
+seats_per_row
+
+or an equivalent simple structure.
+
+The backend must validate all parameters.
+
+Do not allow arbitrary database manipulation through generation parameters.
+
+==================================================
+23. EXAM ROOM RELATIONSHIP
+
+An exam must be able to have one or more rooms.
+
+Create an appropriate relationship entity.
+
+Suggested:
+
+exam_rooms
+
+Fields may include:
+
+id
+exam_id
+room_id
+created_at
+updated_at
+
+Do not yet include:
+
+student_id
+seat_id
+
+Those belong to Phase 5.
+
+==================================================
+24. EXAM ROOM UNIQUENESS
+
+The same room should not be added twice to the same exam.
+
+Database constraint:
+
+unique(exam_id, room_id)
+
+must be enforced.
+
+==================================================
+25. EXAM ROOM CAPACITY
+
+The system should be able to calculate:
+
+Total exam capacity
+
+based on selected rooms and usable seats.
+
+For example:
+
+Exam:
+
+CSC108 Final
+
+Rooms:
+
+IB101 → 80 usable seats
+IB102 → 70 usable seats
+
+Total usable capacity:
+
+150
+
+This value is informational in Phase 4.
+
+Do not assign students yet.
+
+==================================================
+26. ROOM SELECTION FOR EXAMS
+
+Authorized users should be able to add rooms to an exam.
+
+Example:
+
+Exam
+CSC108 Final
+
+Selected rooms:
+
+IB101
+IB102
+IB103
+
+Display:
+
+Total available seats:
+230
+
+Do not create seating assignments.
+
+==================================================
+27. EXAM ROOM REMOVAL
+
+Authorized users should be able to remove a room from an exam if there are
+no later-phase dependencies preventing it.
+
+However:
+
+Do not allow removing a room in a way that would silently invalidate existing
+seating assignments once Phase 5 exists.
+
+Since Phase 5 does not yet exist, implement the basic relationship safely.
+
+Document future constraints.
+
+==================================================
+28. ROOM AVAILABILITY
+
+Phase 4 should provide a foundation for determining whether a room can be
+used for an exam.
+
+If doc/prd.md explicitly requires scheduling conflict detection, implement
+basic date/time conflict checking.
+
+Otherwise:
+
+Do NOT build a full room scheduling engine.
+
+At minimum, do not allow obviously duplicate room assignments to the same
+exam.
+
+Document any deferred scheduling functionality.
+
+==================================================
+29. ROOM CONFLICT CHECKING
+
+If conflict checking is implemented:
+
+Compare:
+
+exam date
+exam start time
+exam end time
+
+against other exams using the same room.
+
+Overlapping intervals should be detected.
+
+Example:
+
+Exam A:
+10:00–12:00
+
+Exam B:
+11:00–13:00
+
+Conflict.
+
+Exam B:
+12:00–14:00
+
+No overlap if end time is exclusive.
+
+Be explicit and consistent about interval semantics.
+
+==================================================
+30. TIMEZONE
+
+Use the same application/institutional timezone strategy established in
+previous phases.
+
+Do not create room-specific timezone logic.
+
+==================================================
+31. AUTHORIZATION
+
+Use Phase 1 authorization.
+
+Suggested:
+
+ADMIN:
+- manage buildings
+- manage rooms
+- manage seats
+- assign rooms to exams
+
+STAFF:
+- manage rooms and exam rooms if authorized
+
+INSTRUCTOR:
+- view room information for authorized exams
+- should not modify room infrastructure unless explicitly authorized
+
+Do not invent complex permissions.
+
+Backend enforcement is mandatory.
+
+==================================================
+32. IDOR PROTECTION
+
+Protect endpoints such as:
+
+GET /api/rooms/{id}
+
+GET /api/exams/{exam_id}/rooms
+
+PATCH /api/rooms/{id}
+
+POST /api/exams/{exam_id}/rooms
+
+The existence of a UUID must not automatically grant access.
+
+Verify authorization and resource relationships.
+
+==================================================
+33. FRONTEND ROUTES
+
+Create simple administrative pages.
+
+Suggested:
+
+/app/buildings
+/app/rooms
+/app/rooms/[id]
+
+and:
+
+/app/exams/[id]/rooms
+
+Follow existing application structure.
+
+==================================================
+34. BUILDING UI
+
+Provide:
+
+Building list
+Create building
+Edit building
+
+Keep it simple.
+
+Do not build a facilities-management dashboard.
+
+==================================================
+35. ROOM LIST UI
+
+Display:
+
+Building
+Room Number
+Capacity
+Usable Seats
+Status
+
+Provide:
+
+- search
+- filtering
+- pagination
+
+Do not load all rooms if the institution has many rooms.
+
+==================================================
+36. ROOM DETAIL UI
+
+Display:
+
+Building
+Room number
+Capacity
+Active/inactive
+Seat count
+Usable seat count
+
+Provide:
+
+- edit room
+- manage seats
+- generate seats if authorized
+
+==================================================
+37. SEAT MANAGEMENT UI
+
+Display a clear seat table.
+
+Example:
+
+------------------------------------------------
+Room IB 101
+
+Row    Seat    Status
+A      A01     Usable
+A      A02     Usable
+A      A03     Unusable
+B      B01     Usable
+------------------------------------------------
+
+Provide simple filtering.
+
+Do not create a visual seating map yet.
+
+A table is sufficient in Phase 4.
+
+==================================================
+38. SEAT GENERATION UI
+
+Provide a simple form:
+
+Number of rows:
+[ 10 ]
+
+Seats per row:
+[ 12 ]
+
+[ Generate Seats ]
+
+Before execution, display a confirmation.
+
+For example:
+
+"This will create 120 physical seats."
+
+Do not silently overwrite existing seats.
+
+==================================================
+39. EXAM ROOM UI
+
+On the exam detail page provide:
+
+Rooms
+
+[ Add Room ]
+
+Display:
+
+Building
+Room
+Capacity
+Usable Seats
+
+Total:
+
+XXX usable seats
+
+Do not show student seat assignments yet.
+
+==================================================
+40. VALIDATION
+
+Backend validation must enforce:
+
+Building:
+
+- building_code required
+- unique
+- reasonable length
+
+Room:
+
+- building exists
+- room number required
+- capacity > 0
+
+Seat:
+
+- room exists
+- seat label required
+- unique within room
+
+Exam Room:
+
+- exam exists
+- room exists
+- no duplicate room relationship
+
+==================================================
+41. DATABASE CONSTRAINTS
+
+Use database constraints.
+
+At minimum:
+
+Building:
+
+unique(building_code)
+
+Room:
+
+unique(building_id, room_number)
+
+Seat:
+
+unique(room_id, seat_label)
+
+ExamRoom:
+
+unique(exam_id, room_id)
+
+Use foreign keys correctly.
+
+==================================================
+42. DATABASE MIGRATION
+
+Create new Alembic migration(s).
+
+Create:
+
+buildings
+rooms
+seats
+exam_rooms
+
+Add:
+
+- primary keys
+- foreign keys
+- indexes
+- unique constraints
+
+Do not modify historical migrations unnecessarily.
+
+Verify on a fresh database.
+
+==================================================
+43. INDEXES
+
+Add indexes based on actual query patterns.
+
+Likely:
+
+buildings.building_code
+rooms.building_id
+rooms.room_number
+seats.room_id
+exam_rooms.exam_id
+exam_rooms.room_id
+
+Do not add unnecessary indexes.
+
+==================================================
+44. SERVICE LAYER
+
+Follow the existing architecture:
+
+API
+ ↓
+Service
+ ↓
+Database
+
+Keep room/seat business logic in services.
+
+Do not create a generic "location engine."
+
+==================================================
+45. API RESPONSE MODELS
+
+Use Pydantic models.
+
+Examples:
+
+BuildingResponse
+RoomResponse
+SeatResponse
+ExamRoomResponse
+
+Do not return raw ORM objects.
+
+==================================================
+46. PAGINATION
+
+Use pagination for:
+
+- buildings if needed
+- rooms
+- seats where appropriate
+- exam room lists if large
+
+Do not load an enormous number of records into the browser.
+
+==================================================
+47. SEARCH
+
+Provide basic search:
+
+Rooms:
+
+- building code
+- building name
+- room number
+
+Do not create full-text search infrastructure.
+
+==================================================
+48. ROOM CAPACITY CALCULATION
+
+The backend should calculate usable seat count.
+
+Do not trust a frontend-provided number.
+
+Example:
+
+usable_seats =
+COUNT(seats WHERE is_usable = true)
+
+If no physical seat records have been generated yet, return an appropriate
+value and state.
+
+Do not silently assume every capacity seat exists.
+
+==================================================
+49. ROOM CAPACITY VALIDATION
+
+If:
+
+usable seats > room.capacity
+
+the system should flag this as inconsistent.
+
+Do not automatically delete seats.
+
+Provide a clear validation error or warning according to the product design.
+
+==================================================
+50. EXAM CAPACITY
+
+For an exam:
+
+total_usable_capacity =
+sum(usable seats in selected rooms)
+
+Display this value.
+
+Do not yet compare it against student roster size unless Phase 3 data is
+already available and the product requires the warning.
+
+If you implement the comparison, make it informational only.
+
+Example:
+
+Students registered: 180
+Usable seats: 160
+
+Warning:
+
+"Selected rooms do not currently provide enough usable seats."
+
+Do NOT automatically change rooms.
+
+==================================================
+51. NO AUTOMATIC ASSIGNMENT
+
+This is critical.
+
+Do NOT implement:
+
+student → room
+student → seat
+random seat
+alphabetical seat
+alternating seat
+spacing algorithm
+
+Those belong to Phase 5.
+
+==================================================
+52. NO SEATING MAP
+
+Do not generate a graphical seating map.
+
+The seat table is enough.
+
+Phase 8 will generate the instructor-facing seating map.
+
+==================================================
+53. NO SIGNATURE LIST
+
+Do not generate signature lists.
+
+Phase 8 will generate them after seating assignments exist.
+
+==================================================
+54. NO CROWDMARK
+
+Do not integrate Crowdmark.
+
+Do not create:
+
+crowdmark_id
+crowdmark_api_key
+crowdmark_template
+crowdmark_document
+
+Those belong to later phases.
+
+==================================================
+55. NO PDF GENERATION
+
+Do not generate personalized exams.
+
+Do not create PDF files.
+
+Do not create document templates.
+
+==================================================
+56. NO AI
+
+Do not introduce:
+
+OpenAI
+LLM
+RAG
+LangChain
+LlamaIndex
+embeddings
+machine learning
+
+Room and seat management is deterministic.
+
+==================================================
+57. AUDIT EVENTS
+
+Add audit events for important administrative actions.
+
+Examples:
+
+BUILDING_CREATED
+BUILDING_UPDATED
+
+ROOM_CREATED
+ROOM_UPDATED
+ROOM_DEACTIVATED
+
+SEAT_GENERATED
+SEAT_UPDATED
+
+EXAM_ROOM_ADDED
+EXAM_ROOM_REMOVED
+
+Do not log every read operation.
+
+Do not log unnecessary sensitive information.
+
+==================================================
+58. AUDIT DATA
+
+Audit records should contain:
+
+actor
+action
+resource type
+resource ID
+timestamp
+safe summary
+
+Do not log:
+
+- passwords
+- tokens
+- secrets
+- student PII
+
+Student data should not be included in Phase 4 audit events unless absolutely
+necessary.
+
+==================================================
+59. TESTING — BUILDINGS
+
+Test:
+
+1. Create building
+2. Duplicate building code rejected
+3. Retrieve building
+4. Update building
+5. Authorization
+6. Inactive/deactivated behavior
+
+==================================================
+60. TESTING — ROOMS
+
+Test:
+
+1. Create room
+2. Duplicate room within same building rejected
+3. Same room number in different buildings allowed
+4. Invalid capacity rejected
+5. Retrieve room
+6. Update room
+7. Inactive room behavior
+8. Authorization
+
+==================================================
+61. TESTING — SEATS
+
+Test:
+
+1. Create seat
+2. Duplicate seat label within room rejected
+3. Same seat label in different rooms allowed
+4. Mark seat unusable
+5. Seat count
+6. Usable seat count
+7. Seat generation
+8. Seat generation does not create duplicates
+
+==================================================
+62. TESTING — EXAM ROOMS
+
+Test:
+
+1. Add room to exam
+2. Duplicate room rejected
+3. Remove room
+4. Calculate total usable capacity
+5. Unauthorized modification rejected
+6. Invalid exam rejected
+7. Invalid room rejected
+
+==================================================
+63. TESTING — IDOR
+
+Explicitly test that a user cannot:
+
+- access unauthorized room
+- modify unauthorized room
+- modify another exam's room assignments
+
+Changing a UUID must not bypass authorization.
+
+==================================================
+64. TESTING — SEAT GENERATION
+
+Test:
+
+Example:
+
+5 rows
+10 seats per row
+
+Expected:
+
+50 seats.
+
+Also test:
+
+- invalid row count
+- invalid seats per row
+- duplicate generation
+- transaction rollback
+- existing seats are preserved
+
+==================================================
+65. FRONTEND TESTING
+
+Test:
+
+- building list
+- room list
+- room detail
+- seat list
+- seat generation
+- exam room selection
+- capacity display
+- validation errors
+- authorization behavior
+
+Do not create excessive UI tests.
+
+==================================================
+66. ACCESSIBILITY
+
+Follow existing accessibility standards.
+
+Ensure:
+
+- form labels
+- keyboard navigation
+- semantic tables
+- accessible buttons
+- confirmation dialogs
+- readable validation errors
+- focus management
+
+==================================================
+67. DEVELOPMENT SEED DATA
+
+If seed data is useful, create synthetic development data.
+
+Example:
+
+Buildings:
+
+TEST
+Test Building
+
+Rooms:
+
+TEST 101
+TEST 102
+
+Generate synthetic seats.
+
+Never use actual university room data unless it has been explicitly provided
+as development-safe data.
+
+==================================================
+68. PRODUCTION DATA
+
+Do not commit real:
+
+- room lists
+- building lists
+- student information
+- exam information
+
+to Git.
+
+Production institutional data must be imported or configured separately.
+
+==================================================
+69. DOCUMENTATION
+
+Update:
+
+README.md
+doc/DATABASE.md
+doc/DEVELOPMENT.md
+
+Update doc/Architecture.md if necessary.
+
+Document:
+
+- building model
+- room model
+- seat model
+- exam-room relationship
+- seat generation
+- development seed data
+- API endpoints
+
+Do not document future functionality as if it already exists.
+
+==================================================
+70. DEPENDENCIES
+
+Do not add unnecessary dependencies.
+
+Do not introduce:
+
+Redis
+RabbitMQ
+Kafka
+Elasticsearch
+Kubernetes
+microservices
+
+A PostgreSQL-backed implementation is sufficient.
+
+==================================================
+71. PERFORMANCE
+
+The system should support normal university-scale room inventories.
+
+Use:
+
+- pagination
+- indexes
+- efficient queries
+
+Avoid:
+
+- loading all seats unnecessarily
+- N+1 queries
+- recalculating large datasets repeatedly
+
+Do not introduce caching prematurely.
+
+==================================================
+72. CONCURRENCY
+
+Database constraints must protect against duplicate:
+
+- buildings
+- rooms
+- seats
+- exam-room relationships
+
+Handle concurrent conflicts gracefully.
+
+Do not introduce distributed locking.
+
+==================================================
+73. DATA INTEGRITY
+
+Do not allow:
+
+Room without Building
+
+Seat without Room
+
+ExamRoom without Exam
+
+ExamRoom without Room
+
+Database foreign keys must enforce these relationships.
+
+==================================================
+74. HISTORICAL DATA
+
+Do not physically delete buildings, rooms, or seats if doing so could break
+historical exam information.
+
+Prefer:
+
+is_active
+
+or:
+
+is_usable
+
+where appropriate.
+
+Historical records must remain understandable.
+
+==================================================
+75. IMPORTANT FUTURE COMPATIBILITY
+
+Phase 4 must provide clean inputs for Phase 5.
+
+Phase 5 will need to query:
+
+Exam
+  ↓
+Selected Rooms
+  ↓
+Usable Seats
+  ↓
+Students
+  ↓
+Seat Assignments
+
+Therefore:
+
+- seat identity must be stable
+- room identity must be stable
+- seat ordering must be deterministic
+- usable seats must be queryable
+- exam-room relationships must be explicit
+
+Do not implement the assignment algorithm yet.
+
+==================================================
+76. SEAT ORDERING
+
+Define a deterministic ordering.
+
+For example:
+
+row_label ASC
+seat_number ASC
+
+or:
+
+seat_label ASC
+
+The exact strategy should be documented.
+
+This ordering will later be used by seating assignment.
+
+Do not depend on PostgreSQL's natural row order.
+
+==================================================
+77. API DOCUMENTATION
+
+Document all new endpoints through FastAPI/OpenAPI.
+
+Use:
+
+- request models
+- response models
+- clear status codes
+- authorization requirements
+
+Do not expose internal database details unnecessarily.
+
+==================================================
+78. ERROR HANDLING
+
+Use:
+
+401:
+unauthenticated
+
+403:
+unauthorized
+
+404:
+resource not found
+
+409:
+duplicate/conflict
+
+422:
+validation error
+
+Do not expose stack traces.
+
+==================================================
+79. MANUAL VALIDATION
+
+Perform:
+
+1. Login as ADMIN.
+2. Create building.
+3. Create room.
+4. Set room capacity.
+5. Generate seats.
+6. Mark one seat unusable.
+7. Verify usable seat count.
+8. Create/open an exam.
+9. Add room to exam.
+10. Verify total usable capacity.
+11. Add another room.
+12. Verify capacity calculation.
+13. Remove room.
+14. Test duplicate room.
+15. Test duplicate seat.
+16. Test unauthorized user.
+17. Test inactive room.
+
+==================================================
+80. FINAL SECURITY REVIEW
+
+Verify:
+
+- authentication required
+- authorization enforced backend-side
+- IDOR protection
+- no secrets
+- no real student data
+- no real production room data
+- database constraints
+- safe seat generation
+- safe room management
+- audit events
+- no Crowdmark credentials
+- no AI service
+- no unnecessary external services
+
+==================================================
+81. FINAL QUALITY CHECK
+
+Actually run:
+
+Backend:
+
+pytest
+ruff check
+type checking if configured
+
+Frontend:
+
+lint
+typecheck
+tests if configured
+
+Database:
+
+alembic upgrade head
+
+Verify against a fresh database.
+
+Do not claim success unless the commands actually pass.
+
+==================================================
+82. FINAL GIT REVIEW
+
+Inspect:
+
+git status
+git diff --stat
+git diff
+
+Confirm:
+
+- Phase 4 only
+- no seating assignment
+- no Student → Seat relationship
+- no PDF generation
+- no Crowdmark integration
+- no QR code
+- no seating map
+- no signature list
+- no AI
+- no unnecessary infrastructure
+- no secrets
+- no production data
+
+==================================================
+83. FINAL RESPONSE
+
+When complete, report:
+
+## Phase 4 Implemented
+
+Describe the functionality.
+
+## Database
+
+List:
+
+- buildings
+- rooms
+- seats
+- exam_rooms
+- constraints
+- indexes
+- migrations
+
+## Room Management
+
+Explain:
+
+- room creation
+- room status
+- capacity
+- seat generation
+
+## Seat Management
+
+Explain:
+
+- seat identity
+- ordering
+- usability
+- generation
+
+## Exam Rooms
+
+Explain:
+
+- how rooms are associated with exams
+- usable capacity calculation
+
+## API
+
+List new endpoints.
+
+## Frontend
+
+List new routes/pages.
+
+## Authorization
+
+Explain permissions.
+
+## Security
+
+Explain:
+
+- IDOR protection
+- authorization
+- audit
+- data protection
+
+## Tests
+
+Report actual results.
+
+## Lint
+
+Report actual results.
+
+## Type Checking
+
+Report actual results.
+
+## Known Limitations
+
+Clearly list:
+
+- student-to-seat assignment deferred
+- seating algorithm deferred
+- seating maps deferred
+- signature lists deferred
+- Crowdmark deferred
+- PDF generation deferred
+
+## Files Changed
+
+List important files.
+
+STOP AFTER PHASE 4.
+
+Do not begin Phase 5.
