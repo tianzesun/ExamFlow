@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.course import Course
 from app.models.document import Document
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
@@ -10,6 +11,7 @@ from app.models.user import User
 
 __all__ = [
     "User",
+    "Course",
     "Exam",
     "Student",
     "ExamStudent",
