@@ -4,10 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getExam, updateExam } from "@/lib/api/exams";
-import { getAssignments, removeAssignment } from "@/lib/api/assignments";
+import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
 import { uploadPdf, generatePdf, getPdfDownloadUrl, listDocuments, PdfDocument } from "@/lib/api/pdf";
 import { Exam } from "@/lib/types";
-import { Assignment } from "@/lib/api/assignments";
 import { useAuth } from "@/lib/auth/context";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -35,7 +34,7 @@ export default function ExamDetailPage() {
   const examId = params.id as string;
 
   const [exam, setExam] = useState<Exam | null>(null);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [summary, setSummary] = useState<AssignmentSummary | null>(null);
   const [documents, setDocuments] = useState<PdfDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,11 +47,11 @@ export default function ExamDetailPage() {
   const fetchData = () => {
     Promise.all([
       getExam(examId),
-      getAssignments(examId).catch(() => []),
+      getAssignmentSummary(examId).catch(() => null),
       listDocuments(examId).catch(() => []),
-    ]).then(([e, a, d]) => {
+    ]).then(([e, s, d]) => {
       setExam(e);
-      setAssignments(a);
+      setSummary(s);
       setDocuments(d);
     }).catch((err) => setError(err.message)).finally(() => setLoading(false));
   };
@@ -98,16 +97,6 @@ export default function ExamDetailPage() {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
       setGenerating(false);
-    }
-  };
-
-  const handleRemoveAssignment = async (assignmentId: string) => {
-    if (!confirm("Remove this seat assignment?")) return;
-    try {
-      await removeAssignment(examId, assignmentId);
-      fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Remove failed");
     }
   };
 
@@ -212,38 +201,23 @@ export default function ExamDetailPage() {
         )}
       </div>
 
-      {/* Assignments Section */}
+      {/* Seating Summary */}
       <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="text-lg font-medium text-black dark:text-white">Seat Assignments ({assignments.length})</h2>
-        {assignments.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-500">No assignments yet. Go to Seating to assign students.</p>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium text-black dark:text-white">Seating Assignment</h2>
+          <Link href={`/app/exams/${exam.id}/seating`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">
+            {summary && summary.assigned_students > 0 ? "View Details →" : "Configure →"}
+          </Link>
+        </div>
+        {summary ? (
+          <div className="mt-3 grid grid-cols-4 gap-4 text-sm">
+            <div><span className="text-zinc-500">Registered:</span> <span className="font-medium">{summary.registered_students}</span></div>
+            <div><span className="text-zinc-500">Assigned:</span> <span className="font-medium">{summary.assigned_students}</span></div>
+            <div><span className="text-zinc-500">Seats:</span> <span className="font-medium">{summary.available_seats}</span></div>
+            <div><span className="text-zinc-500">Unused:</span> <span className="font-medium">{summary.unused_seats}</span></div>
+          </div>
         ) : (
-          <table className="mt-4 w-full">
-            <thead>
-              <tr className="border-b dark:border-zinc-700">
-                <th className="py-2 text-left text-sm font-medium text-zinc-500">Student #</th>
-                <th className="py-2 text-left text-sm font-medium text-zinc-500">Name</th>
-                <th className="py-2 text-left text-sm font-medium text-zinc-500">Seat</th>
-                <th className="py-2 text-left text-sm font-medium text-zinc-500">Method</th>
-                {canEdit && <th className="py-2 text-right text-sm font-medium text-zinc-500"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {assignments.map((a) => (
-                <tr key={a.id} className="border-b dark:border-zinc-800/50">
-                  <td className="py-2 text-sm">{a.student_number}</td>
-                  <td className="py-2 text-sm">{a.full_name}</td>
-                  <td className="py-2 text-sm font-medium">{a.seat_code}</td>
-                  <td className="py-2 text-xs text-zinc-500">{a.method}</td>
-                  {canEdit && (
-                    <td className="py-2 text-right">
-                      <button onClick={() => handleRemoveAssignment(a.id)} className="text-xs text-red-600 hover:text-red-800 dark:text-red-400">Remove</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <p className="mt-2 text-sm text-zinc-500">Loading summary...</p>
         )}
       </div>
     </div>
