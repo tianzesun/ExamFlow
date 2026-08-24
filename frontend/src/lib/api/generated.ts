@@ -64,6 +64,6 @@ export async function listGeneratedExams(
   return fetchApi(`/api/exams/${examId}/generated${qs ? "?" + qs : ""}`);
 }
 
-export function getGeneratedExamDownloadUrl(generatedExamId: string): string {
-  return `${API_BASE}/api/generated-exams/${generatedExamId}/download`;
+export function getGeneratedExamDownloadUrl(examId: string, generatedExamId: string): string {
+  return `${API_BASE}/api/exams/${examId}/generated/${generatedExamId}/download`;
 }

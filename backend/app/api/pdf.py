@@ -1,4 +1,5 @@
 import os
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
+from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import pdf_service
 
@@ -41,6 +43,21 @@ class GenerationResultResponse(BaseModel):
     generated: int
     failed: int
     generation_version: int
+
+
+def _sanitize_filename(filename: str) -> str:
+    safe = re.sub(r'[^\w\-_\. ]', '', filename)
+    safe = safe.replace('..', '')
+    return safe[:200] if safe else "download.pdf"
+
+
+def _verify_generated_ownership(db: Session, generated_exam_id: UUID, exam_id: UUID) -> GeneratedExam:
+    ge = pdf_service.get_generated_exam(db, generated_exam_id)
+    if not ge:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated exam not found")
+    if str(ge.exam_id) != str(exam_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return ge
 
 
 # ── Validate ────────────────────────────────────────────────
@@ -99,15 +116,14 @@ def list_generated(
 
 # ── Download ────────────────────────────────────────────────
 
-@router.get("/api/generated-exams/{generated_exam_id}/download")
+@router.get("/api/exams/{exam_id}/generated/{generated_exam_id}/download")
 def download_generated(
+    exam_id: UUID,
     generated_exam_id: UUID,
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    ge = pdf_service.get_generated_exam(db, generated_exam_id)
-    if not ge:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated exam not found")
+    ge = _verify_generated_ownership(db, generated_exam_id, exam_id)
 
     filepath = pdf_service.get_generated_exam_path(ge)
     if not os.path.exists(filepath):
@@ -117,8 +133,9 @@ def download_generated(
         with open(filepath, "rb") as f:
             yield from f
 
+    safe_name = _sanitize_filename(ge.file_name)
     return StreamingResponse(
         iterfile(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{ge.file_name}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
     )

@@ -95,7 +95,7 @@ export default function ExamDetailPage() {
 
   const handleActivate = async (templateId: string) => {
     try {
-      await activateTemplate(templateId);
+      await activateTemplate(examId, templateId);
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Activation failed");
@@ -105,7 +105,7 @@ export default function ExamDetailPage() {
   const handleArchive = async (templateId: string) => {
     if (!confirm("Archive this template?")) return;
     try {
-      await archiveTemplate(templateId);
+      await archiveTemplate(examId, templateId);
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Archive failed");
@@ -197,7 +197,7 @@ export default function ExamDetailPage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <a href={getTemplateDownloadUrl(activeTemplate.id)} target="_blank" rel="noopener noreferrer"
+                <a href={getTemplateDownloadUrl(examId, activeTemplate.id)} target="_blank" rel="noopener noreferrer"
                   className="rounded border border-green-300 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-400">
                   Download
                 </a>
@@ -256,7 +256,7 @@ export default function ExamDetailPage() {
                     {canEdit && (
                       <td className="py-1.5 text-right">
                         <div className="flex justify-end gap-2">
-                          <a href={getTemplateDownloadUrl(t.id)} target="_blank" rel="noopener noreferrer"
+                          <a href={getTemplateDownloadUrl(examId, t.id)} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-zinc-500 hover:text-black dark:text-zinc-400">Download</a>
                           {!t.is_active && (
                             <button onClick={() => handleActivate(t.id)} className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400">Activate</button>

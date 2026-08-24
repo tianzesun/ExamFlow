@@ -1,4 +1,5 @@
 import os
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -27,6 +28,21 @@ class TemplateResponse(BaseModel):
     crowdmark_exam_id: str | None
     crowdmark_url: str | None
     created_at: str | None
+
+
+def _sanitize_filename(filename: str) -> str:
+    safe = re.sub(r'[^\w\-_\. ]', '', filename)
+    safe = safe.replace('..', '')
+    return safe[:200] if safe else "download.pdf"
+
+
+def _verify_template_ownership(db: Session, template_id: UUID, exam_id: UUID):
+    template = template_service.get_template(db, template_id)
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    if str(template.exam_id) != str(exam_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return template
 
 
 # ── Upload ──────────────────────────────────────────────────
@@ -97,15 +113,14 @@ def list_templates(
 
 # ── Download ────────────────────────────────────────────────
 
-@router.get("/api/exam-templates/{template_id}/download")
+@router.get("/api/exams/{exam_id}/templates/{template_id}/download")
 def download_template(
+    exam_id: UUID,
     template_id: UUID,
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    template = template_service.get_template(db, template_id)
-    if not template:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    template = _verify_template_ownership(db, template_id, exam_id)
 
     filepath = template_service.get_template_path(template)
     if not os.path.exists(filepath):
@@ -115,21 +130,25 @@ def download_template(
         with open(filepath, "rb") as f:
             yield from f
 
+    safe_name = _sanitize_filename(template.original_filename)
     return StreamingResponse(
         iterfile(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{template.original_filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
     )
 
 
 # ── Activate ────────────────────────────────────────────────
 
-@router.post("/api/exam-templates/{template_id}/activate", response_model=TemplateResponse)
+@router.post("/api/exams/{exam_id}/templates/{template_id}/activate", response_model=TemplateResponse)
 def activate_template(
+    exam_id: UUID,
     template_id: UUID,
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
+    _verify_template_ownership(db, template_id, exam_id)
+
     try:
         template = template_service.activate_template(db, template_id, user.id)
     except ValueError as e:
@@ -153,12 +172,15 @@ def activate_template(
 
 # ── Archive ─────────────────────────────────────────────────
 
-@router.post("/api/exam-templates/{template_id}/archive", response_model=TemplateResponse)
+@router.post("/api/exams/{exam_id}/templates/{template_id}/archive", response_model=TemplateResponse)
 def archive_template(
+    exam_id: UUID,
     template_id: UUID,
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
+    _verify_template_ownership(db, template_id, exam_id)
+
     try:
         template = template_service.archive_template(db, template_id, user.id)
     except ValueError as e:

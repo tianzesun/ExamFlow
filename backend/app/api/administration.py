@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
+from app.models.audit_log import AuditLog
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import admin_service
@@ -30,11 +31,27 @@ def generate_qr(
 @router.get("/api/verify/{token}")
 def verify_qr(
     token: str,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     ge = db.query(GeneratedExam).filter(GeneratedExam.qr_token == token).first()
     if not ge:
+        db.add(AuditLog(
+            action="QR_VERIFY_FAILED",
+            entity_type="generated_exam",
+            new_values={"ip": request.client.host if request.client else "unknown"},
+        ))
+        db.commit()
         return {"valid": False, "message": "Invalid token"}
+
+    db.add(AuditLog(
+        action="QR_VERIFIED",
+        entity_type="generated_exam",
+        entity_id=ge.id,
+        new_values={"ip": request.client.host if request.client else "unknown"},
+    ))
+    db.commit()
+
     return {
         "valid": True,
         "message": "Valid Exam Document",

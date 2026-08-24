@@ -1,10 +1,10 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.database import Base
+from app.utils import utcnow
 
 
 class AuditLog(Base):
@@ -17,4 +17,4 @@ class AuditLog(Base):
     entity_id = Column(UUID(as_uuid=True))
     old_values = Column(JSONB)
     new_values = Column(JSONB)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

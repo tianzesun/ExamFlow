@@ -46,12 +46,12 @@ export async function listTemplates(examId: string): Promise<ExamTemplate[]> {
   return response.json();
 }
 
-export function getTemplateDownloadUrl(templateId: string): string {
-  return `${API_BASE}/api/exam-templates/${templateId}/download`;
+export function getTemplateDownloadUrl(examId: string, templateId: string): string {
+  return `${API_BASE}/api/exams/${examId}/templates/${templateId}/download`;
 }
 
-export async function activateTemplate(templateId: string): Promise<ExamTemplate> {
-  const response = await fetch(`${API_BASE}/api/exam-templates/${templateId}/activate`, {
+export async function activateTemplate(examId: string, templateId: string): Promise<ExamTemplate> {
+  const response = await fetch(`${API_BASE}/api/exams/${examId}/templates/${templateId}/activate`, {
     method: "POST",
     credentials: "include",
   });
@@ -62,8 +62,8 @@ export async function activateTemplate(templateId: string): Promise<ExamTemplate
   return response.json();
 }
 
-export async function archiveTemplate(templateId: string): Promise<ExamTemplate> {
-  const response = await fetch(`${API_BASE}/api/exam-templates/${templateId}/archive`, {
+export async function archiveTemplate(examId: string, templateId: string): Promise<ExamTemplate> {
+  const response = await fetch(`${API_BASE}/api/exams/${examId}/templates/${templateId}/archive`, {
     method: "POST",
     credentials: "include",
   });

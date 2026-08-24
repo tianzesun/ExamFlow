@@ -2,7 +2,6 @@ import io
 import os
 import secrets
 import zipfile
-from datetime import datetime
 from uuid import UUID
 
 import fitz  # PyMuPDF
@@ -20,6 +19,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
+from app.utils import utcnow
 
 # ── QR Code Generation ──────────────────────────────────────
 
@@ -52,7 +52,7 @@ def generate_qr_for_exams(db: Session, exam_id: UUID, user_id: UUID) -> int:
     count = 0
     for ge in generated:
         ge.qr_token = generate_qr_token()
-        ge.qr_generated_at = datetime.utcnow()
+        ge.qr_generated_at = utcnow()
         count += 1
 
     if count:
@@ -303,7 +303,7 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
         ("Template", f"v{template.version}" if template else "None"),
         ("Personalized Exams", str(doc_count)),
         ("", ""),
-        ("Generated", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")),
+        ("Generated", utcnow().strftime("%Y-%m-%d %H:%M UTC")),
     ]
 
     for label, value in lines:
@@ -385,7 +385,7 @@ def generate_exam_package(
             f"Date: {exam.exam_date}\n"
             f"Students: {len(generated)}\n"
             f"Rooms: {len(rooms)}\n"
-            f"Generated: {datetime.utcnow().isoformat()}\n"
+            f"Generated: {utcnow().isoformat()}\n"
         )
         zf.writestr(f"{safe_name}/README.txt", manifest)
 

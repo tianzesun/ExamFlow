@@ -200,7 +200,7 @@ export default function DocumentsPage() {
                     </td>
                     <td className="py-2 text-xs text-zinc-500">{g.created_at ? new Date(g.created_at).toLocaleDateString() : ""}</td>
                     <td className="py-2 text-right">
-                      <a href={getGeneratedExamDownloadUrl(g.id)} target="_blank" rel="noopener noreferrer"
+                      <a href={getGeneratedExamDownloadUrl(examId, g.id)} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400">Download</a>
                     </td>
                   </tr>

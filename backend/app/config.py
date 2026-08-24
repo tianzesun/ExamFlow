@@ -41,3 +41,22 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def validate_production_settings() -> list[str]:
+    settings = get_settings()
+    errors = []
+
+    if settings.APP_ENV == "production":
+        if settings.AUTH_DEV_MODE:
+            errors.append("AUTH_DEV_MODE must be false in production")
+        if not settings.OIDC_ISSUER:
+            errors.append("OIDC_ISSUER is required in production")
+        if not settings.OIDC_CLIENT_ID:
+            errors.append("OIDC_CLIENT_ID is required in production")
+        if not settings.OIDC_CLIENT_SECRET:
+            errors.append("OIDC_CLIENT_SECRET is required in production")
+        if "localhost" in settings.CORS_ALLOWED_ORIGINS:
+            errors.append("CORS_ALLOWED_ORIGINS should not contain localhost in production")
+
+    return errors
