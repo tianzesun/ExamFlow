@@ -46,6 +46,26 @@ function AppContent({ children }: { children: React.ReactNode }) {
             >
               Home
             </Link>
+            <Link
+              href="/app/courses"
+              className={`text-sm ${
+                pathname.startsWith("/app/courses")
+                  ? "font-medium text-black dark:text-white"
+                  : "text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              Courses
+            </Link>
+            <Link
+              href="/app/exams"
+              className={`text-sm ${
+                pathname.startsWith("/app/exams")
+                  ? "font-medium text-black dark:text-white"
+                  : "text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              Exams
+            </Link>
             {user.role === "ADMIN" && (
               <Link
                 href="/app/admin"
