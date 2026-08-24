@@ -66,6 +66,16 @@ function AppContent({ children }: { children: React.ReactNode }) {
             >
               Exams
             </Link>
+            <Link
+              href="/app/rooms"
+              className={`text-sm ${
+                pathname.startsWith("/app/rooms")
+                  ? "font-medium text-black dark:text-white"
+                  : "text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              Rooms
+            </Link>
             {user.role === "ADMIN" && (
               <Link
                 href="/app/admin"
