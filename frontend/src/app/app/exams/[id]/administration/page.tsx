@@ -4,9 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getExam } from "@/lib/api/exams";
-import { getAssignmentSummary, AssignmentSummary, getExamRooms } from "@/lib/api/assignments";
-import { listTemplates, ExamTemplate } from "@/lib/api/templates";
-import { listGeneratedExams, GeneratedExam } from "@/lib/api/generated";
+import { getReadiness, ReadinessResult, CheckResult } from "@/lib/api/readiness";
+import { getExamRooms } from "@/lib/api/assignments";
 import {
   generateQr, generatePackage, getPackageDownloadUrl,
   getSignatureListUrl, getSeatingMapUrl,
@@ -14,16 +13,22 @@ import {
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
 
+const CHECK_LABELS: Record<string, string> = {
+  roster: "Roster imported",
+  rooms: "Rooms configured",
+  seating: "Seating assigned",
+  template: "Template active",
+  documents: "Exams generated",
+  qr: "QR codes ready",
+};
+
 export default function AdministrationPage() {
   const params = useParams();
   const { user } = useAuth();
   const examId = params.id as string;
 
   const [exam, setExam] = useState<Exam | null>(null);
-  const [summary, setSummary] = useState<AssignmentSummary | null>(null);
-  const [templates, setTemplates] = useState<ExamTemplate[]>([]);
-  const [generated, setGenerated] = useState<GeneratedExam[]>([]);
-  const [totalGenerated, setTotalGenerated] = useState(0);
+  const [readiness, setReadiness] = useState<ReadinessResult | null>(null);
   const [examRooms, setExamRooms] = useState<{ id: string; building: string; room_number: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,17 +44,12 @@ export default function AdministrationPage() {
     setLoading(true);
     Promise.all([
       getExam(examId),
-      getAssignmentSummary(examId).catch(() => null),
-      listTemplates(examId).catch(() => []),
-      listGeneratedExams(examId, { page_size: 1000 }).catch(() => ({ exams: [], total: 0 })),
+      getReadiness(examId).catch(() => null),
       getExamRooms(examId).catch(() => []),
-    ]).then(([e, s, t, g, r]) => {
+    ]).then(([e, r, rooms]) => {
       setExam(e);
-      setSummary(s);
-      setTemplates(t);
-      setGenerated(g.exams);
-      setTotalGenerated(g.total);
-      setExamRooms(r);
+      setReadiness(r);
+      setExamRooms(rooms);
     }).catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, [examId]);
 
@@ -82,23 +82,14 @@ export default function AdministrationPage() {
     }
   };
 
-  const activeTemplate = templates.find(t => t.is_active);
-  const qrCount = generated.filter(g => g.qr_token).length;
-  const assigned = summary?.assigned_students ?? 0;
-  const allAssigned = assigned > 0 && summary?.registered_students === assigned;
-  const hasTemplate = !!activeTemplate;
-  const hasExams = totalGenerated > 0;
-
-  const checks = [
-    { label: "Template ready", ok: hasTemplate },
-    { label: "Roster ready", ok: (summary?.registered_students ?? 0) > 0 },
-    { label: "Seating ready", ok: allAssigned },
-    { label: "Personalized exams ready", ok: hasExams },
-  ];
-
-  const allReady = checks.every(c => c.ok);
-
   if (loading && !exam) return <div className="text-zinc-600 dark:text-zinc-400">Loading...</div>;
+
+  const checks = readiness?.checks || [];
+  const allReady = readiness?.ready ?? false;
+  const documentsCheck = checks.find(c => c.name === "documents");
+  const generatedCount = documentsCheck?.count ?? 0;
+  const qrCheck = checks.find(c => c.name === "qr");
+  const qrCount = qrCheck?.count ?? 0;
 
   return (
     <div className="space-y-6">
@@ -114,14 +105,21 @@ export default function AdministrationPage() {
       {/* Status Overview */}
       <div className="grid grid-cols-2 gap-6">
         <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="text-lg font-medium text-black dark:text-white">Status Checklist</h2>
+          <h2 className="text-lg font-medium text-black dark:text-white">Readiness Checklist</h2>
           <div className="mt-3 space-y-2">
-            {checks.map(({ label, ok }) => (
-              <div key={label} className="flex items-center gap-2 text-sm">
-                <span className={ok ? "text-green-600 dark:text-green-400" : "text-zinc-400"}>
-                  {ok ? "✓" : "○"}
+            {checks.map((check: CheckResult) => (
+              <div key={check.name} className="flex items-center gap-2 text-sm">
+                <span className={
+                  check.status === "PASS" ? "text-green-600 dark:text-green-400" :
+                  check.status === "FAIL" ? "text-red-600 dark:text-red-400" :
+                  "text-yellow-600 dark:text-yellow-400"
+                }>
+                  {check.status === "PASS" ? "✓" : check.status === "FAIL" ? "✗" : "○"}
                 </span>
-                <span className={ok ? "text-black dark:text-white" : "text-zinc-500"}>{label}</span>
+                <span className={check.status === "PASS" ? "text-black dark:text-white" : "text-zinc-500"}>
+                  {CHECK_LABELS[check.name] || check.name}
+                </span>
+                <span className="text-xs text-zinc-400 ml-auto">{check.message}</span>
               </div>
             ))}
           </div>
@@ -133,10 +131,11 @@ export default function AdministrationPage() {
         <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
           <h2 className="text-lg font-medium text-black dark:text-white">Summary</h2>
           <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between"><dt className="text-zinc-500">Template</dt><dd className="font-medium">{activeTemplate ? `v${activeTemplate.version}` : "None"}</dd></div>
-            <div className="flex justify-between"><dt className="text-zinc-500">Students</dt><dd className="font-medium">{summary?.registered_students ?? 0} / {assigned} assigned</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Template</dt><dd className="font-medium">{checks.find(c => c.name === "template")?.message || "None"}</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Students</dt><dd className="font-medium">{checks.find(c => c.name === "roster")?.count ?? 0} registered</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Assigned</dt><dd className="font-medium">{checks.find(c => c.name === "seating")?.count ?? 0} / {checks.find(c => c.name === "seating")?.required ?? 0}</dd></div>
             <div className="flex justify-between"><dt className="text-zinc-500">Rooms</dt><dd className="font-medium">{examRooms.length}</dd></div>
-            <div className="flex justify-between"><dt className="text-zinc-500">Personalized Exams</dt><dd className="font-medium">{totalGenerated}</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Personalized Exams</dt><dd className="font-medium">{generatedCount}</dd></div>
             <div className="flex justify-between"><dt className="text-zinc-500">QR Codes</dt><dd className="font-medium">{qrCount}</dd></div>
           </dl>
         </div>
@@ -147,11 +146,11 @@ export default function AdministrationPage() {
         <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
           <h2 className="text-lg font-medium text-black dark:text-white">Actions</h2>
           <div className="mt-4 flex flex-wrap gap-3">
-            <button onClick={handleGenerateQr} disabled={generatingQr || !hasExams}
+            <button onClick={handleGenerateQr} disabled={generatingQr || generatedCount === 0}
               className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300">
-              {generatingQr ? "Generating QR..." : `Generate QR Codes (${totalGenerated - qrCount} pending)`}
+              {generatingQr ? "Generating QR..." : `Generate QR Codes (${generatedCount - qrCount} pending)`}
             </button>
-            <button onClick={() => setShowConfirm(true)} disabled={generatingPkg || !allReady || !hasExams}
+            <button onClick={() => setShowConfirm(true)} disabled={generatingPkg || !allReady || generatedCount === 0}
               className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black">
               {generatingPkg ? "Generating..." : "Generate Exam Package"}
             </button>
@@ -165,7 +164,7 @@ export default function AdministrationPage() {
           <h2 className="text-lg font-medium text-blue-900 dark:text-blue-100">Confirm Package Generation</h2>
           <p className="mt-2 text-sm text-blue-800 dark:text-blue-300">
             This will generate the official exam administration package containing personalized exams,
-            signature lists, and seating maps for {summary?.registered_students ?? 0} students across {examRooms.length} rooms.
+            signature lists, and seating maps for {checks.find(c => c.name === "roster")?.count ?? 0} students across {examRooms.length} rooms.
           </p>
           <div className="mt-4 flex gap-3">
             <button onClick={handleGeneratePackage} disabled={generatingPkg}
