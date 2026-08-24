@@ -35,3 +35,12 @@ export interface ExamListResponse {
   page: number;
   page_size: number;
 }
+
+export interface ExamStudent {
+  id: string;
+  exam_id: string;
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  created_at: string;
+}

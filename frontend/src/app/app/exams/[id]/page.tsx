@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { getExam, updateExam } from "@/lib/api/exams";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -84,6 +85,15 @@ export default function ExamDetailPage() {
         <span className={`inline-block rounded px-2 py-1 text-xs font-medium ${STATUS_COLORS[exam.status] || ""}`}>
           {exam.status}
         </span>
+      </div>
+
+      <div className="flex gap-3">
+        <Link
+          href={`/app/exams/${exam.id}/roster`}
+          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        >
+          Manage Roster
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 gap-6">
