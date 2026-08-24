@@ -9,6 +9,7 @@ from app.api.exams import router as exams_router
 from app.api.pdf import router as pdf_router
 from app.api.rooms import router as rooms_router
 from app.api.roster import router as roster_router
+from app.api.templates import router as templates_router
 from app.config import get_settings
 
 settings = get_settings()
@@ -67,6 +68,7 @@ app.include_router(roster_router)
 app.include_router(rooms_router)
 app.include_router(assignments_router)
 app.include_router(pdf_router)
+app.include_router(templates_router)
 
 
 @app.get("/health")
