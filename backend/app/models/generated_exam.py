@@ -19,6 +19,8 @@ class GeneratedExam(Base):
     storage_key = Column(String(1000), nullable=False)
     file_size = Column(BigInteger, nullable=False)
     file_hash = Column(String(128), nullable=False)
+    qr_token = Column(String(64), nullable=True, unique=True)
+    qr_generated_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), nullable=False, default="GENERATED")
     generation_version = Column(Integer, nullable=False, default=1)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

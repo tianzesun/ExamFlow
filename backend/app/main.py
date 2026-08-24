@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin import router as admin_router
+from app.api.administration import router as administration_router
 from app.api.assignments import router as assignments_router
 from app.api.auth import router as auth_router
 from app.api.courses import router as courses_router
@@ -69,6 +70,7 @@ app.include_router(rooms_router)
 app.include_router(assignments_router)
 app.include_router(pdf_router)
 app.include_router(templates_router)
+app.include_router(administration_router)
 
 
 @app.get("/health")

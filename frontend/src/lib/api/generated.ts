@@ -22,6 +22,7 @@ export interface GeneratedExam {
   status: string;
   generation_version: number;
   template_version: number | null;
+  qr_token: string | null;
   created_at: string | null;
 }
 

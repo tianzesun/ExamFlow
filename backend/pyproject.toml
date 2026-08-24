@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.13.0",
     "python-multipart>=0.0.9",
     "pymupdf>=1.24.0",
+    "qrcode[pil]>=7.0",
 ]
 
 [project.optional-dependencies]
