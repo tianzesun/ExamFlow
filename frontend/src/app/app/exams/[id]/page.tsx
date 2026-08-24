@@ -140,6 +140,9 @@ export default function ExamDetailPage() {
         <Link href={`/app/exams/${exam.id}/seating`} className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300">
           Seating
         </Link>
+        <Link href={`/app/exams/${exam.id}/documents`} className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300">
+          Documents
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 gap-6">
