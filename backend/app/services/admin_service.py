@@ -5,7 +5,6 @@ import zipfile
 from uuid import UUID
 
 import fitz  # PyMuPDF
-import qrcode
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -25,22 +24,6 @@ from app.utils import utcnow
 
 def generate_qr_token() -> str:
     return secrets.token_urlsafe(32)
-
-
-def generate_qr_image(token: str, size: int = 200) -> bytes:
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(token)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    img = img.resize((size, size))
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.read()
 
 
 def generate_qr_for_exams(db: Session, exam_id: UUID, user_id: UUID) -> int:

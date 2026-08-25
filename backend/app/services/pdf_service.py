@@ -2,7 +2,6 @@ import hashlib
 import io
 import os
 import uuid
-from dataclasses import dataclass
 from uuid import UUID
 
 import fitz  # PyMuPDF
@@ -19,19 +18,8 @@ from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
 
-
-@dataclass
-class GenerationResult:
-    student_id: str
-    student_number: str
-    status: str
-    generated_exam_id: str | None = None
-    error: str | None = None
-
-
 MARGIN_TOP = 50
 MARGIN_LEFT = 50
-HEADER_HEIGHT = 80
 
 
 def _draw_header(
@@ -138,7 +126,7 @@ def generate_all_exams(
     db: Session,
     exam_id: UUID,
     user_id: UUID,
-) -> list[GenerationResult]:
+) -> dict:
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise ValueError("Exam not found")
@@ -188,7 +176,9 @@ def generate_all_exams(
     storage_dir = os.path.join("storage", "exams", str(exam_id), "generated")
     os.makedirs(storage_dir, exist_ok=True)
 
-    results: list[GenerationResult] = []
+    generated_count = 0
+    failed_count = 0
+    failed_student = None
     generated_objects: list[GeneratedExam] = []
 
     for assignment, student, seat, room in assignments:
@@ -217,30 +207,21 @@ def generate_all_exams(
                 created_by=user_id,
             )
             generated_objects.append(ge)
-
-            results.append(GenerationResult(
-                student_id=str(student.id),
-                student_number=student.student_number,
-                status="GENERATED",
-            ))
-        except Exception as e:
-            results.append(GenerationResult(
-                student_id=str(student.id),
-                student_number=student.student_number,
-                status="FAILED",
-                error=str(e),
-            ))
+            generated_count += 1
+        except Exception:
+            failed_count += 1
+            if not failed_student:
+                failed_student = student.student_number
 
     # Check for failures
-    failed = [r for r in results if r.status == "FAILED"]
-    if failed:
+    if failed_count > 0:
         # Rollback: delete any files we just created
         for ge in generated_objects:
             if os.path.exists(ge.storage_key):
                 os.remove(ge.storage_key)
         raise ValueError(
-            f"Generation failed for {len(failed)} student(s). "
-            f"First error: {failed[0].error}"
+            f"Generation failed for {failed_count} student(s). "
+            f"First failure near student: {failed_student}"
         )
 
     # All succeeded — commit
@@ -259,7 +240,11 @@ def generate_all_exams(
     ))
     db.commit()
 
-    return results
+    return {
+        "generated": generated_count,
+        "failed": failed_count,
+        "generation_version": new_version,
+    }
 
 
 def get_generated_exams(
@@ -312,7 +297,3 @@ def get_generated_exams(
 
 def get_generated_exam(db: Session, generated_exam_id: UUID) -> GeneratedExam | None:
     return db.query(GeneratedExam).filter(GeneratedExam.id == generated_exam_id).first()
-
-
-def get_generated_exam_path(ge: GeneratedExam) -> str:
-    return ge.storage_key

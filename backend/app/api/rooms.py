@@ -18,6 +18,13 @@ class RoomCreate(BaseModel):
     capacity: int
 
 
+class RoomUpdate(BaseModel):
+    building: str | None = None
+    room_number: str | None = None
+    capacity: int | None = None
+    is_active: bool | None = None
+
+
 class RoomResponse(BaseModel):
     id: UUID
     building: str
@@ -69,6 +76,26 @@ def get_room(
     _user: User = Depends(get_current_user),
 ):
     room = room_service.get_room(db, room_id)
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    return room
+
+
+@router.patch("/{room_id}", response_model=RoomResponse)
+def update_room(
+    room_id: UUID,
+    data: RoomUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN")),
+):
+    room = room_service.update_room(
+        db, room_id,
+        building=data.building,
+        room_number=data.room_number,
+        capacity=data.capacity,
+        is_active=data.is_active,
+        user_id=user.id,
+    )
     if not room:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
     return room

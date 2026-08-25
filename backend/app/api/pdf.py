@@ -16,22 +16,6 @@ from app.services import pdf_service
 router = APIRouter(tags=["generated-exams"])
 
 
-class GenerateRequest(BaseModel):
-    pass
-
-
-class GeneratedExamResponse(BaseModel):
-    id: str
-    student_number: str
-    full_name: str
-    file_name: str
-    file_size: int
-    status: str
-    generation_version: int
-    template_version: int | None
-    created_at: str | None
-
-
 class GeneratedExamListResponse(BaseModel):
     exams: list[dict]
     total: int
@@ -81,17 +65,14 @@ def generate_exams(
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        results = pdf_service.generate_all_exams(db, exam_id, user.id)
+        result = pdf_service.generate_all_exams(db, exam_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    generated = sum(1 for r in results if r.status == "GENERATED")
-    failed = sum(1 for r in results if r.status == "FAILED")
-
     return GenerationResultResponse(
-        generated=generated,
-        failed=failed,
-        generation_version=results[0].generated_exam_id is not None and 1 or 1,
+        generated=result["generated"],
+        failed=result["failed"],
+        generation_version=result["generation_version"],
     )
 
 

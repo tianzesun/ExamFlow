@@ -2,75 +2,69 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { FileText, AlertTriangle } from "lucide-react";
 import { devLogin, getDevTokens } from "@/lib/api/auth";
-import { DevToken } from "@/lib/auth/types";
+import { useAuth } from "@/lib/auth/context";
+import { Button, Card, Input, PageLoader } from "@/components";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [tokens, setTokens] = useState<DevToken[]>([]);
+  const { refreshUser } = useAuth();
+  const [tokens, setTokens] = useState<{ token: string; role: string; name: string }[]>([]);
   const [selectedToken, setSelectedToken] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     getDevTokens()
-      .then(setTokens)
-      .catch(() => setError("Failed to load development tokens"));
+      .then((t) => setTokens(t))
+      .catch(() => setError("Failed to load dev tokens"))
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async () => {
     if (!selectedToken) return;
-
-    setIsLoading(true);
-    setError(null);
-
+    setSigningIn(true);
+    setError("");
     try {
       await devLogin(selectedToken);
+      await refreshUser();
       router.push("/app");
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError("Invalid token");
     } finally {
-      setIsLoading(false);
+      setSigningIn(false);
     }
   };
 
+  if (loading) return <PageLoader />;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-      <div className="w-full max-w-md space-y-8 rounded-lg border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-black dark:text-white">
-            ExamFlow
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Development Authentication
-          </p>
-          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-            DEVELOPMENT ONLY - Not for production use
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-black">
+      <Card className="w-full max-w-md p-8">
+        <div className="flex flex-col items-center text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-black dark:bg-white">
+            <FileText className="h-6 w-6 text-white dark:text-black" />
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-black dark:text-white">Sign in to ExamFlow</h1>
+          <p className="mt-1 text-sm text-zinc-500">Select a development token to continue</p>
         </div>
 
-        {error && (
-          <div className="rounded-md bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
-            {error}
+        <div className="mt-6 space-y-4">
+          <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertTriangle className="h-3.5 w-3.5" /> Development Mode
+            </div>
+            <p className="mt-1">This is for development only. Production uses SSO authentication.</p>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label
-              htmlFor="token"
-              className="block text-sm font-medium text-zinc-900 dark:text-zinc-100"
-            >
-              Select Development User
-            </label>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">User</label>
             <select
-              id="token"
               value={selectedToken}
               onChange={(e) => setSelectedToken(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-              required
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
             >
               <option value="">Select a user...</option>
               {tokens.map((t) => (
@@ -81,19 +75,22 @@ export default function LoginPage() {
             </select>
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading || !selectedToken}
-            className="w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-          >
-            {isLoading ? "Signing in..." : "Sign in (Development)"}
-          </button>
-        </form>
+          {error && (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+              {error}
+            </div>
+          )}
 
-        <div className="text-center text-xs text-zinc-500 dark:text-zinc-500">
-          Phase 1 - Development Authentication
+          <Button
+            onClick={handleLogin}
+            disabled={!selectedToken}
+            loading={signingIn}
+            className="w-full"
+          >
+            Sign in
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

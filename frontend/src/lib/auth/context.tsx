@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { CurrentUser } from "./types";
-import { getCurrentUser } from "../api/auth";
+import { getCurrentUser, clearToken } from "../api/auth";
 
 interface AuthContextType {
   user: CurrentUser | null;
@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    clearToken();
     // In production, this would call a logout endpoint
     // and clear the session cookie
   };

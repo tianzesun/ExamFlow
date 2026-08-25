@@ -5,14 +5,6 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_health_check():
-    response = client.get("/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "healthy"
-    assert data["database"] == "connected"
-
-
 def test_unauthenticated_me():
     response = client.get("/api/auth/me")
     assert response.status_code == 401

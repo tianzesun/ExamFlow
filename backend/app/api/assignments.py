@@ -78,7 +78,7 @@ def add_exam_room(
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        exam_room = assignment_service.add_exam_room(db, exam_id, data.room_id)
+        exam_room = assignment_service.add_exam_room(db, exam_id, data.room_id, user.id)
         return {"id": str(exam_room.id), "room_id": str(exam_room.room_id)}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -92,7 +92,7 @@ def remove_exam_room(
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        if not assignment_service.remove_exam_room(db, exam_id, room_id):
+        if not assignment_service.remove_exam_room(db, exam_id, room_id, user.id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not selected for this exam")
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

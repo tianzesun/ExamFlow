@@ -94,8 +94,11 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
         GeneratedExam.status == "GENERATED",
     ).scalar() or 0
 
-    qr_status = "PASS" if (qr_count == generated_count and generated_count > 0) else "WARN"
-    if generated_count > 0 and qr_count != generated_count:
+    if generated_count == 0:
+        qr_status = "WARN"
+    elif qr_count == generated_count:
+        qr_status = "PASS"
+    else:
         qr_status = "FAIL"
     checks.append(CheckResult(
         name="qr",

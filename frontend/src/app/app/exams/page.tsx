@@ -2,168 +2,140 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Plus, Calendar, Filter, X } from "lucide-react";
 import { getExams, ExamFilters } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
-import { Exam, Course } from "@/lib/types";
-
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  CONFIGURED: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  READY: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  GENERATED: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  COMPLETED: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  ARCHIVED: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500",
-};
+import { Card, Badge, Button, Select, Table, TableHead, TableBody, Th, Td, PageLoader, EmptyState, STATUS_BADGES } from "@/components";
 
 export default function ExamsPage() {
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExamFilters>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    getExams(filters, page)
-      .then((examRes) => {
-        if (!cancelled) {
-          setExams(examRes.exams);
-          setTotal(examRes.total);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [page, filters]);
-
-  useEffect(() => {
-    getCourses(1, 100)
-      .then((res) => setCourses(res.courses))
-      .catch(() => {});
+    getCourses(1, 100).then((d) => setCourses(d.courses)).catch(() => {});
   }, []);
 
-  const totalPages = Math.ceil(total / 20);
+  useEffect(() => {
+    setLoading(true);
+    getExams(filters, page, 20)
+      .then((d) => { setExams(d.exams); setTotal(d.total); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [filters, page]);
+
+  const hasFilters = filters.course_id || filters.term || filters.status;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-black dark:text-white">Exams</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-500">{total} exams</p>
+          <p className="text-sm text-zinc-500">{total} exam{total !== 1 ? "s" : ""}</p>
         </div>
-        <Link
-          href="/app/exams/new"
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        >
-          Create Exam
+        <Link href="/app/exams/new">
+          <Button><Plus className="h-4 w-4" /> Create Exam</Button>
         </Link>
       </div>
 
-      {error && (
-        <div className="rounded-md bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
-          {error}
-        </div>
-      )}
-
       {/* Filters */}
-      <div className="flex gap-3">
-        <select
-          value={filters.course_id || ""}
-          onChange={(e) => setFilters({ ...filters, course_id: e.target.value || undefined })}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-        >
-          <option value="">All Courses</option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>{c.course_code} - {c.course_name}</option>
-          ))}
-        </select>
-        <select
-          value={filters.status || ""}
-          onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined })}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-        >
-          <option value="">All Statuses</option>
-          {Object.keys(STATUS_COLORS).map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </div>
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2 text-sm text-zinc-500">
+            <Filter className="h-4 w-4" /> Filters:
+          </div>
+          <Select
+            options={courses.map((c) => ({ value: c.id, label: `${c.course_code} — ${c.course_name}` }))}
+            placeholder="All courses"
+            value={filters.course_id || ""}
+            onChange={(e) => setFilters((f) => ({ ...f, course_id: e.target.value || undefined }))}
+            className="w-48"
+          />
+          <Select
+            options={[
+              { value: "Fall", label: "Fall" },
+              { value: "Winter", label: "Winter" },
+              { value: "Spring", label: "Spring" },
+              { value: "Summer", label: "Summer" },
+            ]}
+            placeholder="All terms"
+            value={filters.term || ""}
+            onChange={(e) => setFilters((f) => ({ ...f, term: e.target.value || undefined }))}
+            className="w-36"
+          />
+          <Select
+            options={[
+              { value: "DRAFT", label: "Draft" },
+              { value: "CONFIGURED", label: "Configured" },
+              { value: "READY", label: "Ready" },
+              { value: "GENERATED", label: "Generated" },
+              { value: "COMPLETED", label: "Completed" },
+              { value: "ARCHIVED", label: "Archived" },
+            ]}
+            placeholder="All statuses"
+            value={filters.status || ""}
+            onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+            className="w-40"
+          />
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={() => { setFilters({}); setPage(1); }}>
+              <X className="h-3 w-3" /> Clear
+            </Button>
+          )}
+        </div>
+      </Card>
 
       {loading ? (
-        <div className="text-zinc-600 dark:text-zinc-400">Loading...</div>
+        <PageLoader />
       ) : exams.length === 0 ? (
-        <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <p className="text-zinc-500 dark:text-zinc-500">No exams found.</p>
-          <Link href="/app/exams/new" className="mt-2 text-sm text-black hover:underline dark:text-white">
-            Create your first exam
-          </Link>
-        </div>
+        <EmptyState
+          title={hasFilters ? "No exams match filters" : "No exams yet"}
+          description={hasFilters ? "Try adjusting your filters" : "Create your first exam to get started"}
+          action={!hasFilters ? <Link href="/app/exams/new"><Button>Create Exam</Button></Link> : undefined}
+        />
       ) : (
-        <>
-          <div className="rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                  <th className="px-4 py-3 text-left text-sm font-medium text-zinc-500 dark:text-zinc-500">Course</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-zinc-500 dark:text-zinc-500">Exam</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-zinc-500 dark:text-zinc-500">Term</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-zinc-500 dark:text-zinc-500">Date</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-zinc-500 dark:text-zinc-500">Status</th>
+        <Card>
+          <Table>
+            <TableHead>
+              <Th>Course</Th>
+              <Th>Exam</Th>
+              <Th>Term</Th>
+              <Th>Date</Th>
+              <Th>Status</Th>
+            </TableHead>
+            <TableBody>
+              {exams.map((exam) => (
+                <tr key={exam.id} className="transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/30">
+                  <Td>
+                    <Link href={`/app/exams/${exam.id}`} className="font-medium text-black hover:underline dark:text-white">
+                      {exam.course_code}
+                    </Link>
+                  </Td>
+                  <Td className="text-zinc-600 dark:text-zinc-400">{exam.exam_name}</Td>
+                  <Td className="text-zinc-600 dark:text-zinc-400">{exam.term} {exam.academic_year}</Td>
+                  <Td>
+                    <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
+                      <Calendar className="h-3 w-3" /> {exam.exam_date}
+                    </span>
+                  </Td>
+                  <Td><Badge variant={STATUS_BADGES[exam.status]}>{exam.status}</Badge></Td>
                 </tr>
-              </thead>
-              <tbody>
-                {exams.map((exam) => (
-                  <tr
-                    key={exam.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/50"
-                  >
-                    <td className="px-4 py-3">
-                      <Link href={`/app/exams/${exam.id}`} className="text-sm font-medium text-black hover:underline dark:text-white">
-                        {exam.course_code}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{exam.exam_name}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-500">{exam.term} {exam.academic_year}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-500">{exam.exam_date}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[exam.status] || ""}`}>
-                        {exam.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="rounded border border-zinc-300 px-3 py-1 text-sm disabled:opacity-50 dark:border-zinc-700"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-                className="rounded border border-zinc-300 px-3 py-1 text-sm disabled:opacity-50 dark:border-zinc-700"
-              >
-                Next
-              </button>
+              ))}
+            </TableBody>
+          </Table>
+          {total > 20 && (
+            <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <span className="text-sm text-zinc-500">Page {page} of {Math.ceil(total / 20)}</span>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
+                <Button variant="secondary" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page * 20 >= total}>Next</Button>
+              </div>
             </div>
           )}
-        </>
+        </Card>
       )}
     </div>
   );

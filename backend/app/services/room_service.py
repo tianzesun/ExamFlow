@@ -65,3 +65,44 @@ def delete_room(db: Session, room_id: UUID, user_id: UUID) -> bool:
     db.delete(room)
     db.commit()
     return True
+
+
+def update_room(
+    db: Session,
+    room_id: UUID,
+    building: str | None = None,
+    room_number: str | None = None,
+    capacity: int | None = None,
+    is_active: bool | None = None,
+    user_id: UUID | None = None,
+) -> Room | None:
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        return None
+
+    old_values = {}
+    if building is not None and building != room.building:
+        old_values["building"] = room.building
+        room.building = building
+    if room_number is not None and room_number != room.room_number:
+        old_values["room_number"] = room.room_number
+        room.room_number = room_number
+    if capacity is not None and capacity != room.capacity:
+        old_values["capacity"] = room.capacity
+        room.capacity = capacity
+    if is_active is not None and is_active != room.is_active:
+        old_values["is_active"] = room.is_active
+        room.is_active = is_active
+
+    if old_values and user_id:
+        db.add(AuditLog(
+            user_id=user_id,
+            action="ROOM_UPDATED",
+            entity_type="room",
+            entity_id=room.id,
+            old_values=old_values,
+        ))
+
+    db.commit()
+    db.refresh(room)
+    return room

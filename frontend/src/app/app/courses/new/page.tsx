@@ -2,105 +2,76 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createCourse } from "@/lib/api/courses";
+import { Card, CardContent, Input, Button } from "@/components";
 
 export default function NewCoursePage() {
   const router = useRouter();
   const [form, setForm] = useState({ course_code: "", course_name: "", department: "" });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-
+    setError("");
     try {
-      await createCourse({
-        course_code: form.course_code,
-        course_name: form.course_name,
-        department: form.department || undefined,
-      });
+      await createCourse(form);
       router.push("/app/courses");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create course");
+    } catch (err: any) {
+      setError(err.message || "Failed to create course");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-lg">
-      <h1 className="text-2xl font-bold text-black dark:text-white">Create Course</h1>
+    <div className="mx-auto max-w-lg space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-black dark:text-white">Create Course</h1>
+        <p className="text-sm text-zinc-500">Add a new course to the system</p>
+      </div>
 
-      {error && (
-        <div className="mt-4 rounded-md bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
-          {error}
-        </div>
-      )}
+      <Card>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              label="Course Code"
+              placeholder="e.g. CSC108"
+              value={form.course_code}
+              onChange={(e) => setForm({ ...form, course_code: e.target.value })}
+              required
+            />
+            <Input
+              label="Course Name"
+              placeholder="e.g. Introduction to Computer Science"
+              value={form.course_name}
+              onChange={(e) => setForm({ ...form, course_name: e.target.value })}
+              required
+            />
+            <Input
+              label="Department"
+              placeholder="e.g. Computer Science"
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+            />
 
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <div>
-          <label htmlFor="course_code" className="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Course Code *
-          </label>
-          <input
-            id="course_code"
-            type="text"
-            required
-            value={form.course_code}
-            onChange={(e) => setForm({ ...form, course_code: e.target.value })}
-            placeholder="e.g. MATH 101"
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-          />
-        </div>
+            {error && (
+              <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                {error}
+              </div>
+            )}
 
-        <div>
-          <label htmlFor="course_name" className="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Course Name *
-          </label>
-          <input
-            id="course_name"
-            type="text"
-            required
-            value={form.course_name}
-            onChange={(e) => setForm({ ...form, course_name: e.target.value })}
-            placeholder="e.g. Calculus I"
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="department" className="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Department
-          </label>
-          <input
-            id="department"
-            type="text"
-            value={form.department}
-            onChange={(e) => setForm({ ...form, department: e.target.value })}
-            placeholder="e.g. Mathematics"
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-          />
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-          >
-            {loading ? "Creating..." : "Create Course"}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+            <div className="flex gap-3 pt-2">
+              <Button type="submit" loading={loading}>Create Course</Button>
+              <Link href="/app/courses">
+                <Button variant="secondary" type="button">Cancel</Button>
+              </Link>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

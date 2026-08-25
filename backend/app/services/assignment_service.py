@@ -39,7 +39,7 @@ class AssignmentSummary:
 
 # ── Exam Rooms ──────────────────────────────────────────────
 
-def add_exam_room(db: Session, exam_id: UUID, room_id: UUID) -> ExamRoom:
+def add_exam_room(db: Session, exam_id: UUID, room_id: UUID, user_id: UUID | None = None) -> ExamRoom:
     existing = db.query(ExamRoom).filter(
         ExamRoom.exam_id == exam_id,
         ExamRoom.room_id == room_id,
@@ -53,12 +53,20 @@ def add_exam_room(db: Session, exam_id: UUID, room_id: UUID) -> ExamRoom:
 
     exam_room = ExamRoom(exam_id=exam_id, room_id=room_id)
     db.add(exam_room)
+    if user_id:
+        db.add(AuditLog(
+            user_id=user_id,
+            action="EXAM_ROOM_ADDED",
+            entity_type="exam",
+            entity_id=exam_id,
+            new_values={"room_id": str(room_id), "building": room.building, "room_number": room.room_number},
+        ))
     db.commit()
     db.refresh(exam_room)
     return exam_room
 
 
-def remove_exam_room(db: Session, exam_id: UUID, room_id: UUID) -> bool:
+def remove_exam_room(db: Session, exam_id: UUID, room_id: UUID, user_id: UUID | None = None) -> bool:
     exam_room = db.query(ExamRoom).filter(
         ExamRoom.exam_id == exam_id,
         ExamRoom.room_id == room_id,
@@ -75,6 +83,14 @@ def remove_exam_room(db: Session, exam_id: UUID, room_id: UUID) -> bool:
     if has_assignments:
         raise ValueError("Cannot remove room with existing assignments")
 
+    if user_id:
+        db.add(AuditLog(
+            user_id=user_id,
+            action="EXAM_ROOM_REMOVED",
+            entity_type="exam",
+            entity_id=exam_id,
+            old_values={"room_id": str(room_id)},
+        ))
     db.delete(exam_room)
     db.commit()
     return True
@@ -420,12 +436,17 @@ def assign_student(
     if not seat:
         raise ValueError("Seat not found or not usable")
 
+    # Use current max version for this exam
+    max_version = db.query(func.max(ExamAssignment.version)).filter(
+        ExamAssignment.exam_id == exam_id
+    ).scalar() or 0
+
     assignment = ExamAssignment(
         exam_id=exam_id,
         exam_student_id=exam_student.id,
         seat_id=seat_id,
         assignment_method=method,
-        version=1,
+        version=max_version + 1,
     )
     db.add(assignment)
 
