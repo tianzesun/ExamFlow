@@ -5,13 +5,13 @@ type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200",
+    "bg-accent text-white hover:bg-accent-strong focus-visible:outline-accent dark:text-white",
   secondary:
-    "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800",
+    "border border-line bg-surface text-ink-2 hover:bg-surface-hover hover:text-ink dark:border-line dark:bg-surface dark:text-ink-2 dark:hover:bg-surface-hover dark:hover:text-ink",
   danger:
-    "bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:text-white dark:hover:bg-red-700",
+    "bg-danger text-white hover:opacity-90 dark:bg-danger dark:text-white",
   ghost:
-    "text-zinc-600 hover:bg-zinc-100 hover:text-black dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white",
+    "text-ink-2 hover:bg-surface-hover hover:text-ink dark:text-ink-2 dark:hover:bg-surface-hover dark:hover:text-ink",
 };
 
 const sizeClasses: Record<Size, string> = {
@@ -32,7 +32,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || loading}
-        className={`inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+        className={`inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
         {...props}
       >
         {loading && (

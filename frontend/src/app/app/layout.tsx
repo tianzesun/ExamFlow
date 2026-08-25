@@ -16,6 +16,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Spinner } from "@/components";
+import { CourseProvider } from "@/lib/course-context";
+import { CourseSwitcher } from "@/components/dashboard/CourseSwitcher";
 
 const NAV_ITEMS = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -38,14 +40,14 @@ function Breadcrumbs() {
   });
 
   return (
-    <nav className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+    <nav className="flex items-center gap-1 text-xs text-ink-3" aria-label="Breadcrumb">
       {breadcrumbs.map((bc, i) => (
         <span key={bc.href} className="flex items-center gap-1">
           {i > 0 && <ChevronRight className="h-3 w-3" />}
           {bc.isLast ? (
-            <span className="font-medium text-zinc-700 dark:text-zinc-300">{bc.label}</span>
+            <span className="font-medium text-ink-2">{bc.label}</span>
           ) : (
-            <Link href={bc.href} className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            <Link href={bc.href} className="transition-colors hover:text-ink">
               {bc.label}
             </Link>
           )}
@@ -58,7 +60,10 @@ function Breadcrumbs() {
 function AppContent({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isDashboard = pathname === "/app";
 
   useEffect(() => {
     if (!loading && !user) {
@@ -68,25 +73,24 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-        <Spinner className="h-6 w-6" />
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <Spinner className="h-6 w-6 text-ink-3" />
       </div>
     );
   }
 
   if (!user) return null;
 
-  const pathname = usePathname();
-
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+    <CourseProvider>
+      <div className={isDashboard ? "app-canvas flex h-screen flex-col overflow-hidden" : "app-canvas"}>
       {/* Top Nav */}
-      <nav className="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-6">
-            <Link href="/app" className="flex items-center gap-2 text-lg font-bold text-black dark:text-white">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-white dark:bg-white dark:text-black">
-                <FileText className="h-4 w-4" />
+      <nav className="sticky top-0 z-50 border-b border-line bg-surface/90 backdrop-blur">
+        <div className="flex w-full items-center justify-between gap-4 px-4 py-2.5">
+          <div className="flex items-center gap-8">
+            <Link href="/app" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-ink">
+              <div className="flex h-7 w-7 items-center justify-center rounded-md border border-line-strong bg-white dark:bg-surface-2">
+                <FileText className="h-3.5 w-3.5 text-accent" />
               </div>
               ExamFlow
             </Link>
@@ -100,13 +104,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+                    className={`relative inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
                       isActive
-                        ? "bg-zinc-100 font-medium text-black dark:bg-zinc-800 dark:text-white"
-                        : "text-zinc-600 hover:bg-zinc-50 hover:text-black dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-white"
+                        ? "bg-surface-hover font-medium text-ink"
+                        : "text-ink-2 hover:bg-surface-hover hover:text-ink"
                     }`}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <item.icon className={`h-4 w-4 ${isActive ? "text-accent" : "text-ink-3"}`} />
                     {item.label}
                   </Link>
                 );
@@ -115,15 +119,24 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Course context switcher */}
+            <div className="hidden md:block">
+              <CourseSwitcher />
+            </div>
             {/* Desktop user */}
-            <div className="hidden items-center gap-3 md:flex">
-              <div className="text-right">
-                <p className="text-sm font-medium text-black dark:text-white">{user.display_name}</p>
-                <p className="text-xs text-zinc-500">{user.role}</p>
+            <div className="hidden items-center gap-2 md:flex">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-2 text-xs font-semibold text-ink ring-1 ring-line">
+                  {(user.display_name || "U").charAt(0).toUpperCase()}
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium leading-tight text-ink">{user.display_name}</p>
+                  <p className="text-[11px] leading-tight text-ink-3">{user.role}</p>
+                </div>
               </div>
               <button
                 onClick={() => { logout(); router.push("/login"); }}
-                className="rounded-md p-2 text-zinc-500 hover:bg-zinc-100 hover:text-black dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                className="rounded-md p-1.5 text-ink-3 hover:bg-surface-hover hover:text-ink"
                 title="Logout"
               >
                 <LogOut className="h-4 w-4" />
@@ -132,7 +145,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             {/* Mobile hamburger */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 md:hidden"
+              className="rounded-md p-1.5 text-ink-2 hover:bg-surface-hover md:hidden"
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -141,7 +154,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
         {/* Mobile nav */}
         {mobileOpen && (
-          <div className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-800 md:hidden">
+          <div className="border-t border-line px-4 py-3 md:hidden">
+            <div className="mb-2">
+              <CourseSwitcher />
+            </div>
             <div className="flex flex-col gap-1">
               {NAV_ITEMS.filter((item) => !item.adminOnly || user.role === "ADMIN").map((item) => {
                 const isActive = item.exact
@@ -154,41 +170,50 @@ function AppContent({ children }: { children: React.ReactNode }) {
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
                       isActive
-                        ? "bg-zinc-100 font-medium text-black dark:bg-zinc-800 dark:text-white"
-                        : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"
+                        ? "bg-surface-hover font-medium text-ink"
+                        : "text-ink-2 hover:bg-surface-hover hover:text-ink"
                     }`}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <item.icon className={`h-4 w-4 ${isActive ? "text-accent" : "text-ink-3"}`} />
                     {item.label}
                   </Link>
                 );
               })}
             </div>
-            <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-black dark:text-white">{user.display_name}</p>
-                  <p className="text-xs text-zinc-500">{user.role}</p>
-                </div>
-                <button
-                  onClick={() => { logout(); router.push("/login"); setMobileOpen(false); }}
-                  className="rounded-md p-2 text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-                >
-                  <LogOut className="h-4 w-4" />
-                </button>
+            <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
+              <div>
+                <p className="text-sm font-medium text-ink">{user.display_name}</p>
+                <p className="text-xs text-ink-3">{user.role}</p>
               </div>
+              <button
+                onClick={() => { logout(); router.push("/login"); setMobileOpen(false); }}
+                className="rounded-md p-2 text-ink-3 hover:bg-surface-hover hover:text-ink"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           </div>
         )}
       </nav>
 
-      {/* Breadcrumbs */}
-      <div className="mx-auto max-w-7xl px-4 pt-4">
-        <Breadcrumbs />
-      </div>
+      {/* Breadcrumbs (hidden on the full-bleed dashboard) */}
+      {!isDashboard && (
+        <div className="mx-auto max-w-7xl px-4 pt-4">
+          <Breadcrumbs />
+        </div>
+      )}
 
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main
+        className={
+          isDashboard
+            ? "flex min-h-0 w-full flex-1 flex-col"
+            : "min-h-0 w-full flex-1 px-4 py-6"
+        }
+      >
+        {children}
+      </main>
     </div>
+    </CourseProvider>
   );
 }
 
