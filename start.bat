@@ -12,10 +12,16 @@ if not exist ".env.local" (
     exit /b 1
 )
 
+REM Kill any existing instances on the app ports (avoids duplicate backends)
+echo [0/2] Cleaning up existing instances...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8000 ^| findstr LISTENING') do taskkill /PID %%a /F >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /PID %%a /F >nul 2>&1
+timeout /t 2 >nul
+
 REM Start Backend
 echo [1/2] Starting Backend (FastAPI)...
 cd backend
-start "ExamFlow Backend" cmd /k "title ExamFlow Backend && .venv\Scripts\activate && uvicorn app.main:app --reload --port 8000"
+start "ExamFlow Backend" cmd /k "title ExamFlow Backend && .venv\Scripts\activate && uvicorn app.main:app --reload --port 8000 --host 127.0.0.1"
 cd ..
 
 REM Start Frontend

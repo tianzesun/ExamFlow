@@ -17,9 +17,23 @@ if (-not (Test-Path ".env.local")) {
     exit 1
 }
 
+# Kill any existing instances on the app ports (avoids duplicate backends)
+Write-Host "[0/2] Cleaning up existing instances..." -ForegroundColor Green
+foreach ($port in @(8000, 3000)) {
+    $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+    foreach ($conn in $conns) {
+        try {
+            Stop-Process -Id $conn.OwningProcess -Force -ErrorAction Stop
+        } catch {
+            cmd /c "taskkill /PID $($conn.OwningProcess) /F" >$null 2>&1
+        }
+    }
+}
+Start-Sleep -Seconds 2
+
 # Start Backend
 Write-Host "[1/2] Starting Backend (FastAPI)..." -ForegroundColor Green
-$backendJob = Start-Process -FilePath "pwsh" -ArgumentList "-Command", "Set-Location backend; .venv/Scripts/Activate.ps1; uvicorn app.main:app --reload --port 8000" -PassThru -WindowStyle Normal
+$backendJob = Start-Process -FilePath "pwsh" -ArgumentList "-Command", "Set-Location backend; .venv/Scripts/Activate.ps1; uvicorn app.main:app --reload --port 8000 --host 127.0.0.1" -PassThru -WindowStyle Normal
 Write-Host "  Backend PID: $($backendJob.Id)" -ForegroundColor DarkGray
 
 # Wait for backend to be ready
@@ -27,7 +41,7 @@ Write-Host "  Waiting for backend..." -ForegroundColor DarkGray
 $ready = $false
 for ($i = 0; $i -lt 30; $i++) {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -TimeoutSec 2 -ErrorAction Stop
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
             $ready = $true
             break
