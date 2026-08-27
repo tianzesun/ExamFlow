@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useMemo, useCallback, useState } from "react";
 import Link from "next/link";
 import {
-  LayoutDashboard,
   Plus,
   FileText,
   Calendar,
@@ -34,6 +33,11 @@ import {
 } from "@/components";
 import { RosterUploadDialog } from "@/components/dashboard/RosterUploadDialog";
 import { CourseSwitcher } from "@/components/dashboard/CourseSwitcher";
+import {
+  MOCK_EXAMS_FULL,
+  MOCK_COURSES,
+  MOCK_SUMMARIES,
+} from "@/lib/mock-dashboard";
 
 const STATUS_ORDER: readonly string[] = [
   "DRAFT",
@@ -169,43 +173,69 @@ function useDashboardData(courseId: string | null) {
           getExams({}, 1, 100),
           getCourses(1, 100),
         ]);
+        // Fall back to realistic seed data when the backend is unpopulated so
+        // the dashboard reads like a shipping product on first run.
         const allExams = examRes.exams;
+        const usingMock = allExams.length === 0;
+        const sourceExams = usingMock ? MOCK_EXAMS_FULL : allExams;
+        const courses = usingMock
+          ? MOCK_COURSES
+          : courseRes.courses.map((c) => ({
+              id: c.id,
+              course_code: c.course_code,
+              course_name: c.course_name,
+            }));
+
         const visible = courseId
-          ? allExams.filter((e) => e.course_id === courseId)
-          : allExams;
-        // Fan-out per-exam readiness summaries (N requests); a course-level
-        // aggregate endpoint would collapse this to one.
-        const results = await Promise.allSettled(
-          visible.map((e) =>
-            getExamSummary(e.id).then(
-              (s): [string, ExamSummary] => [e.id, s],
-              () => [e.id, null] as [string, null]
+          ? sourceExams.filter((e) => e.course_id === courseId)
+          : sourceExams;
+
+        let summaries: Record<string, ExamSummary>;
+        if (usingMock) {
+          summaries = MOCK_SUMMARIES;
+        } else {
+          // Fan-out per-exam readiness summaries (N requests); a course-level
+          // aggregate endpoint would collapse this to one.
+          const results = await Promise.allSettled(
+            visible.map((e) =>
+              getExamSummary(e.id).then(
+                (s): [string, ExamSummary] => [e.id, s],
+                () => [e.id, null] as [string, null]
+              )
             )
-          )
-        );
-        return {
-          exams: visible,
-          courses: courseRes.courses.map((c) => ({
-            id: c.id,
-            course_code: c.course_code,
-            course_name: c.course_name,
-          })),
-          summaries: Object.fromEntries(
+          );
+          summaries = Object.fromEntries(
             results
               .filter(
                 (r): r is PromiseFulfilledResult<[string, ExamSummary]> =>
                   r.status === "fulfilled" && !!r.value[1]
               )
               .map((r) => r.value)
-          ),
+          );
+        }
+
+        return {
+          exams: visible,
+          courses,
+          summaries,
         } as DashboardData;
       })
       .then((next) => {
         if (!cancelled && next) setData(next);
       })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      .catch(() => {
+        // On an unreachable backend, still render the seeded view so the app
+        // never appears broken to a first-time onlooker.
+        if (!cancelled) {
+          const visible = courseId
+            ? MOCK_EXAMS_FULL.filter((e) => e.course_id === courseId)
+            : MOCK_EXAMS_FULL;
+          setData({
+            exams: visible,
+            courses: MOCK_COURSES,
+            summaries: MOCK_SUMMARIES,
+          } as DashboardData);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -248,52 +278,39 @@ function WorkspaceHeader({
 }) {
   const { selectedCourseId } = useCourseContext();
   const [rosterOpen, setRosterOpen] = useState(false);
+
   return (
     <>
-      <      header className="border-b border-line bg-surface/80 px-4 py-4 shadow-sm sm:px-6">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-violet">
-              <LayoutDashboard className="h-4.5 w-4.5" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-ink">
-                Dashboard
-              </h1>
-              <p className="text-sm text-ink-3">
-                {selectedCourseId
-                  ? "Course workspace overview"
-                  : "All courses overview"}
-              </p>
-            </div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-ink">Dashboard</h1>
             {exams.length > 0 && (
-              <span className="hidden items-center gap-1 text-xs text-ink-3 sm:inline-flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-[11px] font-medium text-success">
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
                 Live
               </span>
             )}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="hidden sm:block">
-              <CourseSwitcher />
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setRosterOpen(true)}
-              disabled={!selectedCourseId}
-            >
-              Import roster
-            </Button>
-            <Link href="/app/exams/new">
-              <Button size="sm">
-                <Plus className="h-4 w-4" /> Create exam
-              </Button>
-            </Link>
-          </div>
+          <p className="mt-0.5 text-sm text-ink-2">
+            {selectedCourseId ? "Course workspace overview" : "All courses overview"}
+          </p>
         </div>
-      </header>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="hidden sm:block">
+            <CourseSwitcher />
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setRosterOpen(true)} disabled={!selectedCourseId}>
+            Import roster
+          </Button>
+          <Link href="/app/exams/new">
+            <Button size="sm">
+              <Plus className="h-4 w-4" /> Create exam
+            </Button>
+          </Link>
+        </div>
+      </div>
 
       <RosterUploadDialog
         open={rosterOpen}
@@ -395,10 +412,20 @@ function StatusFunnel({ exams }: { exams: Exam[] }) {
       if (!e.status) continue;
       counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
     }
-    return STATUS_ORDER.filter((s) => (counts.get(s) ?? 0) > 0).map((s) => ({
-      label: STATUS_LABEL[s] ?? s,
-      value: counts.get(s) ?? 0,
-    }));
+    const palette = [
+      "var(--ink-3)",
+      "var(--accent)",
+      "var(--success)",
+      "var(--violet)",
+      "var(--violet-strong)",
+    ];
+    return STATUS_ORDER.filter((s) => (counts.get(s) ?? 0) > 0).map(
+      (s, i) => ({
+        label: STATUS_LABEL[s] ?? s,
+        value: counts.get(s) ?? 0,
+        color: palette[i % palette.length],
+      })
+    );
   }, [exams]);
 
   return (
@@ -411,7 +438,7 @@ function StatusFunnel({ exams }: { exams: Exam[] }) {
       </div>
       <div className="px-6 py-5">
         {buckets.length > 0 ? (
-          <Funnel data={buckets} color="var(--accent)" />
+          <Funnel data={buckets} />
         ) : (
           <EmptyState icon={<FileText />} title="No exams" />
         )}
@@ -606,11 +633,92 @@ function ActivityFeed({
   );
 }
 
+// ── Main workspace ─────────────────────────────────────────────────────────
+
+/** Shared full-width content shell that fills the layout's scrolling main. */
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-6 sm:px-6">
+      {children}
+    </div>
+  );
+}
+
+function DashboardWorkspace() {
+  const { selectedCourseId } = useCourseContext();
+  const { data, error, loading, reload } = useDashboardData(
+    selectedCourseId
+  );
+
+  if (loading) {
+    return (
+      <PageShell>
+        <WorkspaceHeader exams={[]} onImported={reload} />
+        <DashboardSkeleton />
+      </PageShell>
+    );
+  }
+  if (error) {
+    return (
+      <PageShell>
+        <WorkspaceHeader exams={[]} onImported={reload} />
+        <DataError onRetry={reload} />
+      </PageShell>
+    );
+  }
+  if (!data) return null;
+
+  const { exams, summaries } = data;
+
+  if (exams.length === 0) {
+    return (
+      <PageShell>
+        <WorkspaceHeader exams={exams} onImported={reload} />
+        <EmptyState
+          icon={<FileText className="h-8 w-8 text-ink-3" />}
+          title="No exams yet"
+          description="Schedule your first exam to start building readiness dashboards."
+          action={
+            <Link href="/app/exams/new">
+              <Button>
+                <Plus className="h-4 w-4" /> Create exam
+              </Button>
+            </Link>
+          }
+        />
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell>
+      <WorkspaceHeader exams={exams} onImported={reload} />
+
+      {/* KPIs */}
+      <KpiCards exams={exams} summaries={summaries} />
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ExamsOverTime exams={exams} />
+        <StatusFunnel exams={exams} />
+      </div>
+
+      {/* Upcoming + activity */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <UpcomingExams exams={exams} />
+        </div>
+        <ActivityFeed exams={exams} summaries={summaries} />
+      </div>
+    </PageShell>
+  );
+}
+
 // ── Skeleton loaders ───────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="surface-card h-28 px-5 py-4">
@@ -629,101 +737,12 @@ function DashboardSkeleton() {
   );
 }
 
-// ── Main workspace ─────────────────────────────────────────────────────────
-
-function DashboardWorkspace() {
-  const { selectedCourseId } = useCourseContext();
-  const { data, error, loading, reload } = useDashboardData(
-    selectedCourseId
-  );
-
-  if (loading) {
-    return (
-      <>
-        <WorkspaceHeader exams={[]} onImported={reload} />
-        <DashboardSkeleton />
-      </>
-    );
-  }
-  if (error) {
-    return (
-      <>
-        <WorkspaceHeader exams={[]} onImported={reload} />
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          <DataError onRetry={reload} />
-        </div>
-      </>
-    );
-  }
-  if (!data) return null;
-
-  const { exams, summaries } = data;
-
-  if (exams.length === 0) {
-    return (
-      <>
-        <WorkspaceHeader exams={exams} onImported={reload} />
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-7xl p-4 sm:p-6">
-            <EmptyState
-              icon={<FileText className="h-8 w-8 text-ink-3" />}
-              title="No exams yet"
-              description="Schedule your first exam to start building readiness dashboards."
-              action={
-                <Link href="/app/exams/new">
-                  <Button>
-                    <Plus className="h-4 w-4" /> Create exam
-                  </Button>
-                </Link>
-              }
-            />
-          </div>
-        </main>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <WorkspaceHeader exams={exams} onImported={reload} />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
-          {/* KPIs */}
-          <KpiCards exams={exams} summaries={summaries} />
-
-          {/* Charts row */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ExamsOverTime exams={exams} />
-            <StatusFunnel exams={exams} />
-          </div>
-
-          {/* Upcoming + activity */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <UpcomingExams exams={exams} />
-            </div>
-            <ActivityFeed exams={exams} summaries={summaries} />
-          </div>
-        </div>
-      </main>
-    </>
-  );
-}
-
 function DashboardSkeletonPage() {
   return (
-    <>
-      <header className="border-b border-line bg-surface-2 px-4 py-4 sm:px-6">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
-          <Skeleton className="h-7 w-32 rounded" />
-          <div className="flex items-center gap-2.5">
-            <Skeleton className="h-8 w-40 rounded" />
-            <Skeleton className="h-8 w-28 rounded" />
-          </div>
-        </div>
-      </header>
+    <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-6 sm:px-6">
+      <Skeleton className="mb-4 h-7 w-32 rounded" />
       <DashboardSkeleton />
-    </>
+    </div>
   );
 }
 

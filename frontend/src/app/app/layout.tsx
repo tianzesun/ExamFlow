@@ -73,14 +73,14 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   return (
     <CourseProvider>
-      <div className={isDashboard ? "app-canvas flex h-screen flex-col overflow-hidden" : "app-canvas"}>
+      <div className="app-canvas flex h-screen flex-col overflow-hidden">
       {/* Top Nav */}
-      <nav className="sticky top-0 z-50 border-b border-line bg-surface/90 backdrop-blur">
+      <nav className="glass sticky top-0 z-50 border-b border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
         <div className="flex w-full items-center justify-between gap-4 px-4 py-2.5">
           <div className="flex items-center gap-8">
             <Link href="/app" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-ink">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md border border-line-strong bg-white dark:bg-surface-2">
-                <FileText className="h-3.5 w-3.5 text-accent" />
+              <div className="relative flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-accent to-violet shadow-sm shadow-accent/20">
+                <FileText className="h-3.5 w-3.5 text-white" />
               </div>
               ExamFlow
             </Link>
@@ -212,13 +212,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main
-        className={
-          isDashboard
-            ? "flex min-h-0 w-full flex-1 flex-col"
-            : "min-h-0 w-full flex-1 px-4 py-6"
-        }
-      >
+      <main className="min-h-0 w-full flex-1 overflow-y-auto">
         {children}
       </main>
     </div>
