@@ -51,6 +51,15 @@ const STATUS_LABEL: Record<string, string> = {
   ARCHIVED: "Archived",
 };
 
+const STATUS_DOT: Record<string, string> = {
+  DRAFT: "bg-ink-3",
+  CONFIGURED: "bg-accent",
+  READY: "bg-warning",
+  GENERATED: "bg-violet",
+  COMPLETED: "bg-success",
+  ARCHIVED: "bg-ink-3",
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function examDateTime(exam: Exam): Date {
@@ -433,44 +442,52 @@ function UpcomingExams({ exams }: { exams: Exam[] }) {
         </p>
       </div>
       <div className="divide-y divide-line">
-        {upcoming.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-ink-2">
-            No upcoming exams.
-          </p>
-        ) : (
-          upcoming.map((e) => {
-            const when = examDateTime(e);
-            return (
-              <Link
-                key={e.id}
-                href={`/app/exams/${e.id}`}
-                className="flex items-center justify-between gap-4 px-6 py-3 transition-colors hover:bg-surface-hover"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {e.course_code} — {e.exam_name}
-                  </p>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
-                    <Calendar className="h-3.5 w-3.5" />
-                    {fmtDate(e.exam_date)}{" "}
-                    <span aria-hidden="true">•</span>{" "}
-                    <Clock className="h-3.5 w-3.5" />
-                    {fmtTime(e.start_time)}
+          {upcoming.length === 0 ? (
+            <div className="py-10 text-center">
+              <Calendar className="mx-auto h-8 w-8 text-ink-3" />
+              <p className="mt-3 text-sm text-ink-2">No upcoming exams scheduled.</p>
+            </div>
+          ) : (
+            upcoming.map((e) => {
+              const when = examDateTime(e);
+              const dotColor = STATUS_DOT[e.status] ?? "bg-ink-3";
+              return (
+                <Link
+                  key={e.id}
+                  href={`/app/exams/${e.id}`}
+                  className="flex items-center justify-between gap-4 px-6 py-3 transition-colors hover:bg-surface-hover"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">
+                        {e.course_code} — {e.exam_name}
+                      </p>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {fmtDate(e.exam_date)}{" "}
+                        <span aria-hidden="true">•</span>{" "}
+                        <Clock className="h-3.5 w-3.5" />
+                        {fmtTime(e.start_time)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <Badge
-                    variant={STATUS_BADGES[e.status]}
-                    className="text-[10px]"
-                  >
-                    {STATUS_LABEL[e.status] ?? e.status}
-                  </Badge>
-                  <Countdown target={when} />
-                </div>
-              </Link>
-            );
-          })
-        )}
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant={STATUS_BADGES[e.status]}
+                      className="text-[10px]"
+                    >
+                      {STATUS_LABEL[e.status] ?? e.status}
+                    </Badge>
+                    <Countdown target={when} />
+                  </div>
+                </Link>
+              );
+            })
+          )}
       </div>
     </Card>
   );
