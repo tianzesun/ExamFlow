@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Calendar, Clock, Users, MapPin, ArrowRight } from "lucide-react";
+import { NumberTicker } from "@/components/ui/NumberTicker";
 
 interface Exam {
   id: string;
@@ -39,7 +40,14 @@ export function ExamCard({ exam }: ExamCardProps) {
 
   return (
     <Link href={`/app/exams/${exam.id}`} className="block h-full">
-      <div className="hoverable flex h-full flex-col rounded-lg border border-line bg-surface p-4">
+      <div
+        className={`relative overflow-hidden rounded-lg border bg-surface p-4 transition-all duration-200 group hover:translate-y-[-2px] hover:shadow-md border-line`}
+      >
+        {/* status accent border bar */}
+        <span
+          className={`absolute top-0 left-0 block h-full w-0.5 ${status.dot}`}
+          aria-hidden="true"
+        />
         {/* Header */}
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -74,7 +82,11 @@ export function ExamCard({ exam }: ExamCardProps) {
                 <Users className="mr-1 inline h-3 w-3 text-ink-3" />
                 {exam.assigned_count ?? 0} / {exam.student_count} students
               </span>
-              <span className="tnum font-medium text-ink">{progress}%</span>
+              <NumberTicker
+                value={progress}
+                suffix="%"
+                className="font-medium text-ink"
+              />
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-surface-hover">
               <div
@@ -91,7 +103,7 @@ export function ExamCard({ exam }: ExamCardProps) {
             <MapPin className="h-3.5 w-3.5 text-ink-3" />
             {exam.room_count ?? 0} room{(exam.room_count ?? 0) !== 1 ? "s" : ""} assigned
           </span>
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
             Open
             <ArrowRight className="h-3.5 w-3.5" />
           </span>

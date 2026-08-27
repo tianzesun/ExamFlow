@@ -44,22 +44,44 @@ export default function DocumentsPage() {
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
   const fetchData = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      getExam(examId),
-      getAssignmentSummary(examId).catch(() => null),
-      listTemplates(examId).catch(() => []),
-      listGeneratedExams(examId, { page, page_size: 50, query: searchQuery || undefined }),
-    ]).then(([e, s, t, g]) => {
-      setExam(e);
-      setSummary(s);
-      setTemplates(t);
-      setGenerated(g.exams);
-      setTotalGenerated(g.total);
-    }).catch((err) => setError(err.message)).finally(() => setLoading(false));
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setLoading(true);
+      })
+      .then(async () => {
+        if (cancelled) return null;
+        const [e, s, t, g] = await Promise.all([
+          getExam(examId),
+          getAssignmentSummary(examId).catch(() => null),
+          listTemplates(examId).catch(() => []),
+          listGeneratedExams(examId, { page, page_size: 50, query: searchQuery || undefined }),
+        ]);
+        if (cancelled) return null;
+        return { exam: e, summary: s, templates: t, generated: g } as const;
+      })
+      .then((next) => {
+        if (!cancelled && next) {
+          setExam(next.exam);
+          setSummary(next.summary);
+          setTemplates(next.templates);
+          setGenerated(next.generated.exams);
+          setTotalGenerated(next.generated.total);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [examId, page, searchQuery]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const cleanup = fetchData();
+    return cleanup;
+  }, [fetchData]);
 
   const handleValidate = async () => {
     setError(null);

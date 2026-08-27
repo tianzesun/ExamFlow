@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, AlertTriangle } from "lucide-react";
 import { devLogin, getDevTokens } from "@/lib/api/auth";
 import { useAuth } from "@/lib/auth/context";
-import { Button, Card, Input, PageLoader } from "@/components";
+import { Button, Card, PageLoader } from "@/components";
 
 export default function LoginPage() {
   const router = useRouter();

@@ -19,8 +19,8 @@ export default function NewCoursePage() {
     try {
       await createCourse(form);
       router.push("/app/courses");
-    } catch (err: any) {
-      setError(err.message || "Failed to create course");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create course");
     } finally {
       setLoading(false);
     }

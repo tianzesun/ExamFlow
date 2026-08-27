@@ -16,7 +16,6 @@ import { Card, CardContent } from "@/components/card";
 import { Button } from "@/components/button";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
-import { Badge } from "@/components/badge";
 import {
   CheckCircle, XCircle, AlertCircle, AlertTriangle,
   Download, FileText, ClipboardCheck,
@@ -50,19 +49,41 @@ export default function AdministrationPage() {
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
   const fetchData = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      getExam(examId),
-      getReadiness(examId).catch(() => null),
-      getExamRooms(examId).catch(() => []),
-    ]).then(([e, r, rooms]) => {
-      setExam(e);
-      setReadiness(r);
-      setExamRooms(rooms);
-    }).catch((err) => setError(err.message)).finally(() => setLoading(false));
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setLoading(true);
+      })
+      .then(async () => {
+        if (cancelled) return null;
+        const [e, r, rooms] = await Promise.all([
+          getExam(examId),
+          getReadiness(examId).catch(() => null),
+          getExamRooms(examId).catch(() => []),
+        ]);
+        if (cancelled) return null;
+        return { exam: e, readiness: r, rooms } as const;
+      })
+      .then((next) => {
+        if (!cancelled && next) {
+          setExam(next.exam);
+          setReadiness(next.readiness);
+          setExamRooms(next.rooms);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [examId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const cleanup = fetchData();
+    return cleanup;
+  }, [fetchData]);
 
   const handleGenerateQr = async () => {
     setGeneratingQr(true);

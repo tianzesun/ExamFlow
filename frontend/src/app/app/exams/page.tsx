@@ -1,142 +1,463 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Calendar, Filter, X } from "lucide-react";
-import { getExams, ExamFilters } from "@/lib/api/exams";
+import {
+  Plus,
+  Calendar,
+  Search,
+  LayoutGrid,
+  List,
+  GripVertical,
+} from "lucide-react";
+import { getExams, updateExam, type ExamFilters } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
-import { Card, Badge, Button, Select, Table, TableHead, TableBody, Th, Td, PageLoader, EmptyState, STATUS_BADGES } from "@/components";
+import type { Exam, Course } from "@/lib/types";
+import {
+  Card,
+  Badge,
+  Button,
+  Select,
+  SkeletonRow,
+  STATUS_BADGES,
+  EmptyState,
+} from "@/components";
+
+const BOARD_COLUMNS = [
+  "DRAFT",
+  "CONFIGURED",
+  "READY",
+  "GENERATED",
+  "COMPLETED",
+] as const;
+type ColumnStatus = (typeof BOARD_COLUMNS)[number];
+
+const COLUMN_META: Record<ColumnStatus, { label: string; accent: string }> = {
+  DRAFT: { label: "Draft", accent: "var(--ink-3)" },
+  CONFIGURED: { label: "Configured", accent: "var(--accent)" },
+  READY: { label: "Ready", accent: "var(--warning)" },
+  GENERATED: { label: "Generated", accent: "var(--violet)" },
+  COMPLETED: { label: "Completed", accent: "var(--success)" },
+};
+
+function examDateLabel(exam: Exam): string {
+  return new Date(`${exam.exam_date}T${exam.start_time || "00:00"}`).toLocaleDateString(
+    undefined,
+    { month: "short", day: "numeric", year: "numeric" }
+  );
+}
 
 export default function ExamsPage() {
-  const [exams, setExams] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<ExamFilters>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [courseFilter, setCourseFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"board" | "table">("board");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<ColumnStatus | null>(null);
 
   useEffect(() => {
-    getCourses(1, 100).then((d) => setCourses(d.courses)).catch(() => {});
+    getCourses(1, 100)
+      .then((d) => setCourses(d.courses))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    getExams(filters, page, 20)
-      .then((d) => { setExams(d.exams); setTotal(d.total); })
-      .catch(() => {})
+    const filters: ExamFilters = {};
+    if (courseFilter) filters.course_id = courseFilter;
+    Promise.all([getExams(filters, 1, 200), getCourses(1, 100)])
+      .then(([examRes]) => {
+        setExams(examRes.exams ?? []);
+        setTotal(examRes.total ?? 0);
+      })
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Failed to load exams")
+      )
       .finally(() => setLoading(false));
-  }, [filters, page]);
+  }, [courseFilter]);
 
-  const hasFilters = filters.course_id || filters.term || filters.status;
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return exams.filter(
+      (e) =>
+        q.length === 0 ||
+        e.exam_name.toLowerCase().includes(q) ||
+        e.course_code.toLowerCase().includes(q)
+    );
+  }, [exams, search]);
+
+  const grouped = useMemo(() => {
+    const map: Record<ColumnStatus, Exam[]> = {
+      DRAFT: [],
+      CONFIGURED: [],
+      READY: [],
+      GENERATED: [],
+      COMPLETED: [],
+    };
+    for (const e of filtered) {
+      if (e.status in map) map[e.status as ColumnStatus].push(e);
+    }
+    return map;
+  }, [filtered]);
+
+  const moveExam = async (id: string, status: ColumnStatus) => {
+    // Optimistic update; revert on failure.
+    const prev = exams;
+    setExams((cur) =>
+      cur.map((e) => (e.id === id ? { ...e, status } : e))
+    );
+    setDraggingId(null);
+    try {
+      await updateExam(id, { status });
+    } catch {
+      setExams(prev);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="animate-fade-in space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-black dark:text-white">Exams</h1>
-          <p className="text-sm text-zinc-500">{total} exam{total !== 1 ? "s" : ""}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Exams</h1>
+          <p className="tnum mt-1 text-sm text-ink-2">
+            {total} exam{total !== 1 ? "s" : ""} in the system
+          </p>
         </div>
-        <Link href="/app/exams/new">
-          <Button><Plus className="h-4 w-4" /> Create Exam</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-md border border-line bg-surface p-0.5">
+            <button
+              type="button"
+              onClick={() => setView("board")}
+              aria-pressed={view === "board"}
+              className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition-colors ${
+                view === "board"
+                  ? "bg-surface-hover text-ink"
+                  : "text-ink-3 hover:text-ink"
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4" /> Board
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("table")}
+              aria-pressed={view === "table"}
+              className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition-colors ${
+                view === "table"
+                  ? "bg-surface-hover text-ink"
+                  : "text-ink-3 hover:text-ink"
+              }`}
+            >
+              <List className="h-4 w-4" /> Table
+            </button>
+          </div>
+          <Link href="/app/exams/new">
+            <Button>
+              <Plus className="h-4 w-4" /> Create Exam
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
-            <Filter className="h-4 w-4" /> Filters:
-          </div>
-          <Select
-            options={courses.map((c) => ({ value: c.id, label: `${c.course_code} — ${c.course_name}` }))}
-            placeholder="All courses"
-            value={filters.course_id || ""}
-            onChange={(e) => setFilters((f) => ({ ...f, course_id: e.target.value || undefined }))}
-            className="w-48"
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+          <input
+            type="text"
+            placeholder="Search exams..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-md border border-line bg-surface px-3 py-1.5 pl-8 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
           />
-          <Select
-            options={[
-              { value: "Fall", label: "Fall" },
-              { value: "Winter", label: "Winter" },
-              { value: "Spring", label: "Spring" },
-              { value: "Summer", label: "Summer" },
-            ]}
-            placeholder="All terms"
-            value={filters.term || ""}
-            onChange={(e) => setFilters((f) => ({ ...f, term: e.target.value || undefined }))}
-            className="w-36"
-          />
-          <Select
-            options={[
-              { value: "DRAFT", label: "Draft" },
-              { value: "CONFIGURED", label: "Configured" },
-              { value: "READY", label: "Ready" },
-              { value: "GENERATED", label: "Generated" },
-              { value: "COMPLETED", label: "Completed" },
-              { value: "ARCHIVED", label: "Archived" },
-            ]}
-            placeholder="All statuses"
-            value={filters.status || ""}
-            onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value || undefined }))}
-            className="w-40"
-          />
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={() => { setFilters({}); setPage(1); }}>
-              <X className="h-3 w-3" /> Clear
-            </Button>
-          )}
         </div>
-      </Card>
-
-      {loading ? (
-        <PageLoader />
-      ) : exams.length === 0 ? (
-        <EmptyState
-          title={hasFilters ? "No exams match filters" : "No exams yet"}
-          description={hasFilters ? "Try adjusting your filters" : "Create your first exam to get started"}
-          action={!hasFilters ? <Link href="/app/exams/new"><Button>Create Exam</Button></Link> : undefined}
+        <Select
+          options={courses.map((c) => ({
+            value: c.id,
+            label: `${c.course_code} — ${c.course_name}`,
+          }))}
+          placeholder="All courses"
+          value={courseFilter}
+          onChange={(e) => setCourseFilter(e.target.value)}
+          className="w-48"
         />
-      ) : (
-        <Card>
-          <Table>
-            <TableHead>
-              <Th>Course</Th>
-              <Th>Exam</Th>
-              <Th>Term</Th>
-              <Th>Date</Th>
-              <Th>Status</Th>
-            </TableHead>
-            <TableBody>
-              {exams.map((exam) => (
-                <tr key={exam.id} className="transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/30">
-                  <Td>
-                    <Link href={`/app/exams/${exam.id}`} className="font-medium text-black hover:underline dark:text-white">
-                      {exam.course_code}
-                    </Link>
-                  </Td>
-                  <Td className="text-zinc-600 dark:text-zinc-400">{exam.exam_name}</Td>
-                  <Td className="text-zinc-600 dark:text-zinc-400">{exam.term} {exam.academic_year}</Td>
-                  <Td>
-                    <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
-                      <Calendar className="h-3 w-3" /> {exam.exam_date}
-                    </span>
-                  </Td>
-                  <Td><Badge variant={STATUS_BADGES[exam.status]}>{exam.status}</Badge></Td>
-                </tr>
-              ))}
-            </TableBody>
-          </Table>
-          {total > 20 && (
-            <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <span className="text-sm text-zinc-500">Page {page} of {Math.ceil(total / 20)}</span>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
-                <Button variant="secondary" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page * 20 >= total}>Next</Button>
-              </div>
-            </div>
-          )}
+      </div>
+
+      {/* Body */}
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonRow key={i} lines={3} />
+          ))}
+        </div>
+      ) : error ? (
+        <Card className="p-10">
+          <EmptyState
+            title="Couldn't load exams"
+            description={error}
+          />
         </Card>
+      ) : exams.length === 0 ? (
+        <Card className="p-10">
+          <EmptyState
+            title="No exams yet"
+            description="Create your first exam to get started"
+            action={
+              <Link href="/app/exams/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> Create Exam
+                </Button>
+              </Link>
+            }
+          />
+        </Card>
+      ) : view === "board" ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {BOARD_COLUMNS.map((status) => (
+             <KanbanColumn
+               key={status}
+               status={status}
+               exams={grouped[status]}
+               draggingId={draggingId}
+               isOver={dragOver === status}
+              onDragEnterColumn={() => setDragOver(status)}
+              onDropColumn={() => {
+                if (draggingId) moveExam(draggingId, status);
+                setDraggingId(null);
+                setDragOver(null);
+              }}
+              onDragEndColumn={() => {
+                setDraggingId(null);
+                setDragOver(null);
+              }}
+              onCardDragStart={(id) => setDraggingId(id)}
+              onCardDragEnd={() => {
+                setDraggingId(null);
+                setDragOver(null);
+              }}
+              onStatusChange={moveExam}
+            />
+          ))}
+        </div>
+      ) : (
+        <ExamsTable exams={filtered} onStatusChange={moveExam} />
       )}
     </div>
+  );
+}
+
+/* ── Kanban column ── */
+function KanbanColumn({
+  status,
+  exams,
+  draggingId,
+  isOver,
+  onDragEnterColumn,
+  onDropColumn,
+  onDragEndColumn,
+  onCardDragStart,
+  onCardDragEnd,
+  onStatusChange,
+}: {
+  status: ColumnStatus;
+  exams: Exam[];
+  draggingId: string | null;
+  isOver: boolean;
+  onDragEnterColumn: () => void;
+  onDropColumn: () => void;
+  onDragEndColumn: () => void;
+  onCardDragStart: (id: string) => void;
+  onCardDragEnd: () => void;
+  onStatusChange: (id: string, status: ColumnStatus) => void;
+}) {
+  const meta = COLUMN_META[status];
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        onDragEnterColumn();
+      }}
+      onDrop={onDropColumn}
+      onDragLeave={onDragEndColumn}
+      className={`flex flex-col rounded-lg border bg-surface-2 transition-colors ${
+        isOver ? "border-accent" : "border-line"
+      }`}
+    >
+      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: meta.accent }}
+          />
+          <span className="text-sm font-medium text-ink">{meta.label}</span>
+        </div>
+        <span className="tnum rounded-full bg-surface px-1.5 py-0.5 text-xs font-medium text-ink-3">
+          {exams.length}
+        </span>
+      </div>
+      <div className="flex min-h-24 flex-col gap-2 p-2">
+        {exams.length === 0 ? (
+          <p className="px-2 py-4 text-center text-xs text-ink-3">
+            Drop exams here
+          </p>
+        ) : (
+          exams.map((exam) => (
+            <KanbanCard
+              key={exam.id}
+              exam={exam}
+              isDragging={draggingId === exam.id}
+              onDragStart={() => onCardDragStart(exam.id)}
+              onDragEnd={onCardDragEnd}
+              onStatusChange={onStatusChange}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Kanban card (draggable + keyboard-accessible status change) ── */
+function KanbanCard({
+  exam,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  onStatusChange,
+}: {
+  exam: Exam;
+  isDragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onStatusChange: (id: string, status: ColumnStatus) => void;
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", exam.id);
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+      className={`group surface-card relative cursor-grab rounded-md p-3 transition-all duration-200 ${
+        isDragging
+          ? "translate-y-[-4px] scale-[1.02] opacity-60 shadow-lg ring-2 ring-accent/30"
+          : "hover:shadow-sm"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink">
+            {exam.exam_name}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-ink-2">
+            {exam.course_code}
+          </p>
+          <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-3">
+            <Calendar className="h-3 w-3" />
+            {examDateLabel(exam)}
+          </div>
+        </div>
+      </div>
+
+      {/* Keyboard-accessible alternative to drag */}
+      <div className="mt-2 flex items-center gap-1.5">
+        <Badge variant={STATUS_BADGES[exam.status]}>{exam.status}</Badge>
+        <label className="sr-only" htmlFor={`status-${exam.id}`}>
+          Change status of {exam.exam_name}
+        </label>
+        <Select
+          id={`status-${exam.id}`}
+          value={exam.status}
+          onChange={(e) => onStatusChange(exam.id, e.target.value as ColumnStatus)}
+          options={BOARD_COLUMNS.map((s) => ({
+            value: s,
+            label: COLUMN_META[s].label,
+          }))}
+          className="h-7 w-full text-xs"
+        />
+      </div>
+
+      <Link
+        href={`/app/exams/${exam.id}`}
+        className="mt-1 inline-flex items-center text-xs font-medium text-accent hover:text-accent-strong"
+      >
+        Open
+      </Link>
+    </div>
+  );
+}
+
+/* ── Table view ── */
+function ExamsTable({
+  exams,
+  onStatusChange,
+}: {
+  exams: Exam[];
+  onStatusChange: (id: string, status: ColumnStatus) => void;
+}) {
+  return (
+    <Card>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line">
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
+                Course
+              </th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
+                Exam
+              </th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
+                Term
+              </th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
+                Date
+              </th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {exams.map((exam) => (
+              <tr key={exam.id} className="transition-colors hover:bg-surface-hover">
+                <td className="px-4 py-3">
+                  <Link
+                    href={`/app/exams/${exam.id}`}
+                    className="font-medium text-ink hover:text-accent"
+                  >
+                    {exam.course_code}
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-ink-2">{exam.exam_name}</td>
+                <td className="px-4 py-3 text-ink-2">
+                  {exam.term} {exam.academic_year}
+                </td>
+                <td className="px-4 py-3 text-ink-2">{examDateLabel(exam)}</td>
+                <td className="px-4 py-3">
+                  <Select
+                    value={exam.status}
+                    onChange={(e) =>
+                      onStatusChange(exam.id, e.target.value as ColumnStatus)
+                    }
+                    options={BOARD_COLUMNS.map((s) => ({
+                      value: s,
+                      label: COLUMN_META[s].label,
+                    }))}
+                    className="h-7 text-xs"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

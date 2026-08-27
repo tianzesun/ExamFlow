@@ -3,7 +3,7 @@
 import { useAuth } from "@/lib/auth/context";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
   BookOpen,
@@ -13,9 +13,15 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronRight,
+  Search,
 } from "lucide-react";
-import { Spinner } from "@/components";
+import {
+  Spinner,
+  CommandPalette,
+  NotificationDropdown,
+  Breadcrumbs as BreadcrumbsGlobal,
+  type CommandItem,
+} from "@/components";
 import { CourseProvider } from "@/lib/course-context";
 import { CourseSwitcher } from "@/components/dashboard/CourseSwitcher";
 
@@ -27,43 +33,27 @@ const NAV_ITEMS = [
   { href: "/app/admin", label: "Admin", icon: Shield, adminOnly: true },
 ];
 
-function Breadcrumbs() {
-  const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
-
-  if (segments.length <= 1) return null;
-
-  const breadcrumbs = segments.map((seg, i) => {
-    const href = "/" + segments.slice(0, i + 1).join("/");
-    const label = seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, " ");
-    return { href, label, isLast: i === segments.length - 1 };
-  });
-
-  return (
-    <nav className="flex items-center gap-1 text-xs text-ink-3" aria-label="Breadcrumb">
-      {breadcrumbs.map((bc, i) => (
-        <span key={bc.href} className="flex items-center gap-1">
-          {i > 0 && <ChevronRight className="h-3 w-3" />}
-          {bc.isLast ? (
-            <span className="font-medium text-ink-2">{bc.label}</span>
-          ) : (
-            <Link href={bc.href} className="transition-colors hover:text-ink">
-              {bc.label}
-            </Link>
-          )}
-        </span>
-      ))}
-    </nav>
-  );
-}
-
 function AppContent({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const isDashboard = pathname === "/app";
+
+  const commandItems = useMemo<CommandItem[]>(
+    () =>
+      NAV_ITEMS.filter(
+        (item) => !item.adminOnly || user?.role === "ADMIN",
+      ).map((item) => ({
+        id: item.href,
+        label: item.label,
+        href: item.href,
+        icon: <item.icon className="h-4 w-4" />,
+      })),
+    [user?.role],
+  );
 
   useEffect(() => {
     if (!loading && !user) {
@@ -119,6 +109,25 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Command palette toggle (Search) */}
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden rounded-md p-1.5 text-ink-2 hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent sm:flex"
+              aria-label="Search (⌘K)"
+              title="Search (⌘K)"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <CommandPalette
+              open={paletteOpen}
+              onOpen={setPaletteOpen}
+              items={commandItems}
+            />
+            {/* Notifications */}
+            <div className="hidden sm:block">
+              <NotificationDropdown />
+            </div>
             {/* Course context switcher */}
             <div className="hidden md:block">
               <CourseSwitcher />
@@ -199,7 +208,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
       {/* Breadcrumbs (hidden on the full-bleed dashboard) */}
       {!isDashboard && (
         <div className="mx-auto max-w-7xl px-4 pt-4">
-          <Breadcrumbs />
+          <BreadcrumbsGlobal />
         </div>
       )}
 

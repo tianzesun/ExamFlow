@@ -19,8 +19,8 @@ export default function NewRoomPage() {
     try {
       await createRoom(form);
       router.push("/app/rooms");
-    } catch (err: any) {
-      setError(err.message || "Failed to create room");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create room");
     } finally {
       setLoading(false);
     }

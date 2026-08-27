@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getExam, updateExam } from "@/lib/api/exams";
@@ -17,7 +17,7 @@ import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
-import { Calendar, Clock, FileText, Download, Upload, ArrowLeft } from "lucide-react";
+import { Calendar, Clock, FileText, Download } from "lucide-react";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["CONFIGURED", "ARCHIVED"],
@@ -46,19 +46,42 @@ export default function ExamDetailPage() {
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
-  const fetchData = () => {
-    Promise.all([
-      getExam(examId),
-      getAssignmentSummary(examId).catch(() => null),
-      listTemplates(examId).catch(() => []),
-    ]).then(([e, s, t]) => {
-      setExam(e);
-      setSummary(s);
-      setTemplates(t);
-    }).catch((err) => setError(err.message)).finally(() => setLoading(false));
-  };
+  const fetchData = useCallback(() => {
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setLoading(true);
+      })
+      .then(async () => {
+        if (cancelled) return null;
+        const [e, s, t] = await Promise.all([
+          getExam(examId),
+          getAssignmentSummary(examId).catch(() => null),
+          listTemplates(examId).catch(() => []),
+        ]);
+        if (cancelled) return null;
+        return { exam: e, summary: s, templates: t } as const;
+      })
+      .then((next) => {
+        if (!cancelled && next) {
+          setExam(next.exam);
+          setSummary(next.summary);
+          setTemplates(next.templates);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [examId]);
 
-  useEffect(() => { fetchData(); }, [examId]);
+  useEffect(() => {
+    const cleanup = fetchData();
+    return cleanup;
+  }, [fetchData]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (!exam) return;

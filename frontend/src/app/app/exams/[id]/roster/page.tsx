@@ -14,11 +14,10 @@ import { Exam, ExamStudent } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
 import { Card, CardContent } from "@/components/card";
 import { Button } from "@/components/button";
-import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
-import { Users, Upload, AlertCircle, CheckCircle, XCircle, ArrowLeft } from "lucide-react";
+import { Users, Upload, AlertCircle, CheckCircle, XCircle } from "lucide-react";
 
 export default function RosterPage() {
   const params = useParams();
@@ -59,7 +58,7 @@ export default function RosterPage() {
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

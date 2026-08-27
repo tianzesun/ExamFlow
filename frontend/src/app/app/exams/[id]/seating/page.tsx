@@ -55,24 +55,46 @@ export default function SeatingPage() {
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
   const fetchAll = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      getExam(examId),
-      getRooms(1, 200),
-      getExamRooms(examId),
-      getAssignmentSummary(examId),
-      getAssignments(examId, { page, page_size: 50, query: searchQuery || undefined, room_id: filterRoom || undefined }),
-    ]).then(([e, r, er, s, a]) => {
-      setExam(e);
-      setAllRooms(r.rooms);
-      setExamRooms(er);
-      setSummary(s);
-      setAssignments(a.assignments);
-      setTotalAssignments(a.total);
-    }).catch((err) => setError(err.message)).finally(() => setLoading(false));
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setLoading(true);
+      })
+      .then(async () => {
+        if (cancelled) return null;
+        const [e, r, er, s, a] = await Promise.all([
+          getExam(examId),
+          getRooms(1, 200),
+          getExamRooms(examId),
+          getAssignmentSummary(examId),
+          getAssignments(examId, { page, page_size: 50, query: searchQuery || undefined, room_id: filterRoom || undefined }),
+        ]);
+        if (cancelled) return null;
+        return { exam: e, rooms: r, examRooms: er, summary: s, assignments: a } as const;
+      })
+      .then((next) => {
+        if (!cancelled && next) {
+          setExam(next.exam);
+          setAllRooms(next.rooms.rooms);
+          setExamRooms(next.examRooms);
+          setSummary(next.summary);
+          setAssignments(next.assignments.assignments);
+          setTotalAssignments(next.assignments.total);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [examId, page, searchQuery, filterRoom]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    const cleanup = fetchAll();
+    return cleanup;
+  }, [fetchAll]);
 
   const handleAddRoom = async () => {
     if (!selectedAddRoom) return;

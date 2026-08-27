@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createExam } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
+import type { Course } from "@/lib/types";
 import { Card, CardContent, Input, Select, Button } from "@/components";
 
 export default function NewExamPage() {
   const router = useRouter();
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [form, setForm] = useState({
     course_id: "",
     exam_name: "",
@@ -33,8 +34,8 @@ export default function NewExamPage() {
     try {
       await createExam(form);
       router.push("/app/exams");
-    } catch (err: any) {
-      setError(err.message || "Failed to create exam");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create exam");
     } finally {
       setLoading(false);
     }
