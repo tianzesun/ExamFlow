@@ -644,16 +644,20 @@ function DashboardWorkspace() {
   if (loading) {
     return (
       <div className="animate-fade-in space-y-6">
-        <WorkspaceHeader exams={[]} onImported={reload} />
-        <DashboardSkeleton />
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <WorkspaceHeader exams={[]} onImported={reload} />
+          <DashboardSkeleton />
+        </div>
       </div>
     );
   }
   if (error) {
     return (
       <div className="animate-fade-in space-y-6">
-        <WorkspaceHeader exams={[]} onImported={reload} />
-        <DataError onRetry={reload} />
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <WorkspaceHeader exams={[]} onImported={reload} />
+          <DataError onRetry={reload} />
+        </div>
       </div>
     );
   }
@@ -664,44 +668,48 @@ function DashboardWorkspace() {
   if (exams.length === 0) {
     return (
       <div className="animate-fade-in space-y-6">
-        <WorkspaceHeader exams={exams} onImported={reload} />
-        <EmptyState
-          icon={<FileText className="h-8 w-8 text-ink-3" />}
-          title="No exams yet"
-          description="Schedule your first exam to start building readiness dashboards."
-          action={
-            <Link href="/app/exams/new">
-              <Button>
-                <Plus className="h-4 w-4" /> Create exam
-              </Button>
-            </Link>
-          }
-        />
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <WorkspaceHeader exams={exams} onImported={reload} />
+          <EmptyState
+            icon={<FileText className="h-8 w-8 text-ink-3" />}
+            title="No exams yet"
+            description="Schedule your first exam to start building readiness dashboards."
+            action={
+              <Link href="/app/exams/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> Create exam
+                </Button>
+              </Link>
+            }
+          />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="animate-fade-in space-y-6">
-      <WorkspaceHeader exams={exams} onImported={reload} />
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <WorkspaceHeader exams={exams} onImported={reload} />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCards exams={exams} summaries={summaries} />
-      </div>
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ExamsOverTime exams={exams} />
-        <StatusFunnel exams={exams} />
-      </div>
-
-      {/* Upcoming + activity */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <UpcomingExams exams={exams} />
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCards exams={exams} summaries={summaries} />
         </div>
-        <ActivityFeed exams={exams} summaries={summaries} />
+
+        {/* Charts row */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <ExamsOverTime exams={exams} />
+          <StatusFunnel exams={exams} />
+        </div>
+
+        {/* Upcoming + activity */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <UpcomingExams exams={exams} />
+          </div>
+          <ActivityFeed exams={exams} summaries={summaries} />
+        </div>
       </div>
     </div>
   );
@@ -733,8 +741,10 @@ function DashboardSkeleton() {
 function DashboardSkeletonPage() {
   return (
     <div className="animate-fade-in space-y-6">
-      <Skeleton className="mb-4 h-7 w-32 rounded" />
-      <DashboardSkeleton />
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <Skeleton className="mb-4 h-7 w-32 rounded" />
+        <DashboardSkeleton />
+      </div>
     </div>
   );
 }
