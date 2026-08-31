@@ -635,15 +635,6 @@ function ActivityFeed({
 
 // ── Main workspace ─────────────────────────────────────────────────────────
 
-/** Shared full-width content shell that fills the layout's scrolling main. */
-function PageShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-6 sm:px-6">
-      {children}
-    </div>
-  );
-}
-
 function DashboardWorkspace() {
   const { selectedCourseId } = useCourseContext();
   const { data, error, loading, reload } = useDashboardData(
@@ -652,18 +643,18 @@ function DashboardWorkspace() {
 
   if (loading) {
     return (
-      <PageShell>
+      <div className="animate-fade-in space-y-6">
         <WorkspaceHeader exams={[]} onImported={reload} />
         <DashboardSkeleton />
-      </PageShell>
+      </div>
     );
   }
   if (error) {
     return (
-      <PageShell>
+      <div className="animate-fade-in space-y-6">
         <WorkspaceHeader exams={[]} onImported={reload} />
         <DataError onRetry={reload} />
-      </PageShell>
+      </div>
     );
   }
   if (!data) return null;
@@ -672,7 +663,7 @@ function DashboardWorkspace() {
 
   if (exams.length === 0) {
     return (
-      <PageShell>
+      <div className="animate-fade-in space-y-6">
         <WorkspaceHeader exams={exams} onImported={reload} />
         <EmptyState
           icon={<FileText className="h-8 w-8 text-ink-3" />}
@@ -686,16 +677,18 @@ function DashboardWorkspace() {
             </Link>
           }
         />
-      </PageShell>
+      </div>
     );
   }
 
   return (
-    <PageShell>
+    <div className="animate-fade-in space-y-6">
       <WorkspaceHeader exams={exams} onImported={reload} />
 
       {/* KPIs */}
-      <KpiCards exams={exams} summaries={summaries} />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCards exams={exams} summaries={summaries} />
+      </div>
 
       {/* Charts row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -710,7 +703,7 @@ function DashboardWorkspace() {
         </div>
         <ActivityFeed exams={exams} summaries={summaries} />
       </div>
-    </PageShell>
+    </div>
   );
 }
 
@@ -739,7 +732,7 @@ function DashboardSkeleton() {
 
 function DashboardSkeletonPage() {
   return (
-    <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-6 sm:px-6">
+    <div className="animate-fade-in space-y-6">
       <Skeleton className="mb-4 h-7 w-32 rounded" />
       <DashboardSkeleton />
     </div>
