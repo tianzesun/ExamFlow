@@ -29,7 +29,11 @@ import {
   Skeleton,
   SkeletonRow,
   SeatMapThumb,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@/components";
+import { PageTransition } from "@/components/page-transition";
 import { useAuth } from "@/lib/auth/context";
 
 const buildingInitials = (name: string) =>
@@ -144,59 +148,43 @@ export default function RoomsPage() {
   }, [rooms, seatMap]);
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+    <PageTransition>
+      <div className="space-y-6">
+        {/* Page header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-ink">Rooms</h1>
+              {!loading && rooms.length > 0 && (
+                <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
+                  {total}
+                </span>
+              )}
+            </div>
+            <p className="tnum mt-1 text-sm text-ink-2">
+              {total} room{total !== 1 ? "s" : ""} in the system
+            </p>
+          </div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-ink">Rooms</h1>
-            {!loading && rooms.length > 0 && (
-              <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
-                {total}
-              </span>
+            <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "table")}>
+              <TabsList>
+                <TabsTrigger value="grid">
+                  <LayoutGrid className="h-4 w-4" /> Grid
+                </TabsTrigger>
+                <TabsTrigger value="table">
+                  <List className="h-4 w-4" /> Table
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {canCreate && (
+              <Link href="/app/rooms/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> Create Room
+                </Button>
+              </Link>
             )}
           </div>
-          <p className="tnum mt-1 text-sm text-ink-2">
-            {total} room{total !== 1 ? "s" : ""} in the system
-          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex items-center rounded-md border border-line bg-surface p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("grid")}
-              aria-pressed={view === "grid"}
-              className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition-colors ${
-                view === "grid"
-                  ? "bg-surface-hover text-ink"
-                  : "text-ink-3 hover:text-ink"
-              }`}
-            >
-              <LayoutGrid className="h-4 w-4" /> Grid
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("table")}
-              aria-pressed={view === "table"}
-              className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition-colors ${
-                view === "table"
-                  ? "bg-surface-hover text-ink"
-                  : "text-ink-3 hover:text-ink"
-              }`}
-            >
-              <List className="h-4 w-4" /> Table
-            </button>
-          </div>
-          {canCreate && (
-            <Link href="/app/rooms/new">
-              <Button>
-                <Plus className="h-4 w-4" /> Create Room
-              </Button>
-            </Link>
-          )}
-        </div>
-      </div>
 
       {loading ? (
         <div className="space-y-4">
@@ -389,6 +377,7 @@ export default function RoomsPage() {
         </>
       )}
     </div>
+    </PageTransition>
   );
 }
 

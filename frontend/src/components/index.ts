@@ -91,4 +91,12 @@ export {
   AvatarImage,
 } from "./ui/avatar";
 export { Toaster } from "./ui/sonner";
+export { Label } from "./ui/label";
+export { Textarea } from "./ui/textarea";
+export { Checkbox } from "./ui/checkbox";
+export {
+  RadioGroup,
+  RadioGroupItem,
+} from "./ui/radio-group";
+export { Switch } from "./ui/switch";
 export { PageTransition } from "./page-transition";
