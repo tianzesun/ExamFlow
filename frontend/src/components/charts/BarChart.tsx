@@ -1,22 +1,27 @@
 "use client";
 
 import {
-  AreaChart as RechartsAreaChart,
-  Area,
+  BarChart as RechartsBarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 
-interface AreaChartProps {
-  data: Array<{ label: string; value: number }>;
+interface BarChartProps {
+  data: Array<Record<string, string | number>>;
+  bars: Array<{
+    key: string;
+    color?: string;
+    name?: string;
+  }>;
   xKey?: string;
-  yKey?: string;
-  color?: string;
   height?: number;
   className?: string;
+  showLegend?: boolean;
 }
 
 function CustomTooltip({
@@ -25,7 +30,7 @@ function CustomTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ value: number }>;
+  payload?: Array<{ name: string; value: number; color: string }>;
   label?: string;
 }) {
   if (!active || !payload || !payload.length) return null;
@@ -33,19 +38,23 @@ function CustomTooltip({
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2 shadow-md">
       <p className="text-xs font-medium text-ink">{label}</p>
-      <p className="text-sm text-ink-2">
-        {payload[0].value} exam{payload[0].value !== 1 ? "s" : ""}
-      </p>
+      {payload.map((entry) => (
+        <p key={entry.name} className="text-xs text-ink-2" style={{ color: entry.color }}>
+          {entry.name}: {entry.value}
+        </p>
+      ))}
     </div>
   );
 }
 
-export function AreaChart({
+export function BarChart({
   data,
-  color = "var(--accent)",
-  height = 220,
+  bars,
+  xKey = "label",
+  height = 300,
   className = "",
-}: AreaChartProps) {
+  showLegend = true,
+}: BarChartProps) {
   if (!data.length) {
     return (
       <div
@@ -57,26 +66,25 @@ export function AreaChart({
     );
   }
 
+  const defaultColors = [
+    "var(--accent)",
+    "var(--violet)",
+    "var(--success)",
+    "var(--warning)",
+    "var(--danger)",
+  ];
+
   return (
     <div className={`w-full ${className}`} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <RechartsAreaChart
-          data={data}
-          margin={{ top: 8, right: 8, left: -20, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.22} />
-              <stop offset="100%" stopColor={color} stopOpacity={0} />
-            </linearGradient>
-          </defs>
+        <RechartsBarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
           <CartesianGrid
             strokeDasharray="3 3"
             stroke="var(--line)"
             vertical={false}
           />
           <XAxis
-            dataKey="label"
+            dataKey={xKey}
             tick={{ fontSize: 10, fill: "var(--ink-3)" }}
             tickLine={false}
             axisLine={false}
@@ -87,16 +95,17 @@ export function AreaChart({
             axisLine={false}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke={color}
-            strokeWidth={2}
-            fill="url(#areaGradient)"
-            dot={{ r: 3, fill: color, strokeWidth: 3, stroke: "var(--surface)" }}
-            activeDot={{ r: 5, fill: color }}
-          />
-        </RechartsAreaChart>
+          {showLegend && <Legend />}
+          {bars.map((bar, index) => (
+            <Bar
+              key={bar.key}
+              dataKey={bar.key}
+              name={bar.name || bar.key}
+              fill={bar.color || defaultColors[index % defaultColors.length]}
+              radius={[4, 4, 0, 0]}
+            />
+          ))}
+        </RechartsBarChart>
       </ResponsiveContainer>
     </div>
   );

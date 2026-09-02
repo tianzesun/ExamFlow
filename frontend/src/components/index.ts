@@ -15,6 +15,8 @@ export { NumberTicker } from "./ui/NumberTicker";
 export { Sparkline } from "./charts/Sparkline";
 export { AreaChart } from "./charts/AreaChart";
 export { Funnel } from "./charts/Funnel";
+export { BarChart } from "./charts/BarChart";
+export { DonutChart } from "./charts/DonutChart";
 export { SeatMapThumb } from "./charts/SeatMapThumb";
 export { CommandPalette, type CommandItem } from "./ui/CommandPalette";
 export { NotificationDropdown } from "./ui/NotificationDropdown";
@@ -30,3 +32,46 @@ export {
   QuickActions,
 } from "./dashboard";
 
+// shadcn/ui components
+export {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogTrigger,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "./ui/dialog";
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuGroup,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+} from "./ui/dropdown-menu";
+export {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "./ui/tabs";
+export { PageTransition } from "./page-transition";

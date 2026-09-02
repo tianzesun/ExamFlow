@@ -30,7 +30,12 @@ import {
   Funnel,
   StatCard,
   type StatCardProps,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components";
+import { PageTransition } from "@/components/page-transition";
 import { RosterUploadDialog } from "@/components/dashboard/RosterUploadDialog";
 import { CourseSwitcher } from "@/components/dashboard/CourseSwitcher";
 import {
@@ -371,11 +376,21 @@ function KpiCards({ exams, summaries }: { exams: Exam[]; summaries: Record<strin
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {cards.map((c) => (
-        <StatCard key={c.label} {...c} />
-      ))}
-    </div>
+    <TooltipProvider>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.map((c) => (
+          <Tooltip key={c.label}>
+            <TooltipTrigger className="cursor-default">
+              <StatCard {...c} />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{c.label}: {c.value}</p>
+              {c.change && <p className="text-xs text-muted-foreground">{c.change}</p>}
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -482,7 +497,7 @@ function UpcomingExams({ exams }: { exams: Exam[] }) {
                 <Link
                   key={e.id}
                   href={`/app/exams/${e.id}`}
-                  className="flex items-center justify-between gap-4 px-6 py-3 transition-colors hover:bg-surface-hover"
+                  className="flex items-center justify-between gap-4 px-6 py-3 transition-all duration-150 hover:bg-surface-hover hover:pl-8"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span
@@ -751,8 +766,10 @@ function DashboardSkeletonPage() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<DashboardSkeletonPage />}>
-      <DashboardWorkspace />
-    </Suspense>
+    <PageTransition>
+      <Suspense fallback={<DashboardSkeletonPage />}>
+        <DashboardWorkspace />
+      </Suspense>
+    </PageTransition>
   );
 }
