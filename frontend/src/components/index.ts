@@ -74,4 +74,21 @@ export {
   TabsTrigger,
   TabsContent,
 } from "./ui/tabs";
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "./ui/popover";
+export {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "./ui/alert";
+export { Separator } from "./ui/separator";
+export {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "./ui/avatar";
+export { Toaster } from "./ui/sonner";
 export { PageTransition } from "./page-transition";

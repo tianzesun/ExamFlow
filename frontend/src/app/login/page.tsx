@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, AlertTriangle } from "lucide-react";
+import { FileText, ArrowRight, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 import { devLogin, getDevTokens } from "@/lib/api/auth";
 import { useAuth } from "@/lib/auth/context";
-import { Button, Card, PageLoader } from "@/components";
+import { Button } from "@/components";
+import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,59 +40,136 @@ export default function LoginPage() {
     }
   };
 
-  if (loading) return <PageLoader />;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-black">
-      <Card className="w-full max-w-md p-8">
-        <div className="flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-black dark:bg-white">
-            <FileText className="h-6 w-6 text-white dark:text-black" />
-          </div>
-          <h1 className="mt-4 text-xl font-bold text-black dark:text-white">Sign in to ExamFlow</h1>
-          <p className="mt-1 text-sm text-zinc-500">Select a development token to continue</p>
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4">
+      {/* Background gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-violet/5" />
 
-        <div className="mt-6 space-y-4">
-          <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-            <div className="flex items-center gap-1.5 font-medium">
-              <AlertTriangle className="h-3.5 w-3.5" /> Development Mode
-            </div>
-            <p className="mt-1">This is for development only. Production uses SSO authentication.</p>
-          </div>
+      {/* Floating decorative elements */}
+      <div className="absolute left-1/4 top-1/4 h-64 w-64 rounded-full bg-accent/5 blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-violet/5 blur-3xl" />
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">User</label>
-            <select
-              value={selectedToken}
-              onChange={(e) => setSelectedToken(e.target.value)}
-              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative w-full max-w-md"
+      >
+        <div className="surface-card p-8">
+          {/* Logo */}
+          <div className="flex flex-col items-center text-center">
+            <motion.div
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-violet shadow-lg shadow-accent/20"
             >
-              <option value="">Select a user...</option>
-              {tokens.map((t) => (
-                <option key={t.token} value={t.token}>
-                  {t.name} ({t.role})
-                </option>
-              ))}
-            </select>
+              <FileText className="h-7 w-7 text-white" />
+            </motion.div>
+            <motion.h1
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="mt-5 text-2xl font-bold tracking-tight text-ink"
+            >
+              Welcome to ExamFlow
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="mt-2 text-sm text-ink-2"
+            >
+              Sign in to manage your examinations
+            </motion.p>
           </div>
 
-          {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              {error}
-            </div>
-          )}
-
-          <Button
-            onClick={handleLogin}
-            disabled={!selectedToken}
-            loading={signingIn}
-            className="w-full"
+          {/* Form */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="mt-8 space-y-5"
           >
-            Sign in
-          </Button>
+            {/* Dev mode warning */}
+            <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-warning">
+                <Sparkles className="h-3.5 w-3.5" />
+                Development Mode
+              </div>
+              <p className="mt-1 text-xs text-ink-2">
+                Select a test user below. Production uses SSO authentication.
+              </p>
+            </div>
+
+            {/* User select */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-ink">
+                Select User
+              </label>
+              <select
+                value={selectedToken}
+                onChange={(e) => setSelectedToken(e.target.value)}
+                className={cn(
+                  "w-full rounded-lg border bg-surface px-4 py-2.5 text-sm text-ink transition-colors",
+                  "border-line hover:border-line-strong",
+                  "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20",
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                <option value="">Choose a user...</option>
+                {tokens.map((t) => (
+                  <option key={t.token} value={t.token}>
+                    {t.name} ({t.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Error message */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-lg border border-danger/20 bg-danger/5 p-3 text-sm text-danger"
+              >
+                {error}
+              </motion.div>
+            )}
+
+            {/* Submit button */}
+            <Button
+              onClick={handleLogin}
+              disabled={!selectedToken}
+              loading={signingIn}
+              className="w-full"
+              size="lg"
+            >
+              {signingIn ? (
+                "Signing in..."
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+
+            {/* Footer text */}
+            <p className="text-center text-xs text-ink-3">
+              University Examination Administration System
+            </p>
+          </motion.div>
         </div>
-      </Card>
+      </motion.div>
     </div>
   );
 }

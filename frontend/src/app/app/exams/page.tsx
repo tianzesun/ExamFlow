@@ -21,7 +21,15 @@ import {
   SkeletonRow,
   STATUS_BADGES,
   EmptyState,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@/components";
+import { PageTransition } from "@/components/page-transition";
 
 const BOARD_COLUMNS = [
   "DRAFT",
@@ -118,49 +126,34 @@ export default function ExamsPage() {
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">Exams</h1>
-          <p className="tnum mt-1 text-sm text-ink-2">
-            {total} exam{total !== 1 ? "s" : ""} in the system
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-md border border-line bg-surface p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("board")}
-              aria-pressed={view === "board"}
-              className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition-colors ${
-                view === "board"
-                  ? "bg-surface-hover text-ink"
-                  : "text-ink-3 hover:text-ink"
-              }`}
-            >
-              <LayoutGrid className="h-4 w-4" /> Board
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("table")}
-              aria-pressed={view === "table"}
-              className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition-colors ${
-                view === "table"
-                  ? "bg-surface-hover text-ink"
-                  : "text-ink-3 hover:text-ink"
-              }`}
-            >
-              <List className="h-4 w-4" /> Table
-            </button>
+    <PageTransition>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-ink">Exams</h1>
+            <p className="tnum mt-1 text-sm text-ink-2">
+              {total} exam{total !== 1 ? "s" : ""} in the system
+            </p>
           </div>
-          <Link href="/app/exams/new">
-            <Button>
-              <Plus className="h-4 w-4" /> Create Exam
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Tabs value={view} onValueChange={(v) => setView(v as "board" | "table")}>
+              <TabsList>
+                <TabsTrigger value="board">
+                  <LayoutGrid className="h-4 w-4" /> Board
+                </TabsTrigger>
+                <TabsTrigger value="table">
+                  <List className="h-4 w-4" /> Table
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Link href="/app/exams/new">
+              <Button>
+                <Plus className="h-4 w-4" /> Create Exam
+              </Button>
+            </Link>
+          </div>
         </div>
-      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -246,6 +239,7 @@ export default function ExamsPage() {
         <ExamsTable exams={filtered} onStatusChange={moveExam} />
       )}
     </div>
+    </PageTransition>
   );
 }
 
@@ -335,35 +329,38 @@ function KanbanCard({
   onStatusChange: (id: string, status: ColumnStatus) => void;
 }) {
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", exam.id);
-        onDragStart();
-      }}
-      onDragEnd={onDragEnd}
-      className={`group surface-card relative cursor-grab rounded-md p-3 transition-all duration-200 ${
-        isDragging
-          ? "translate-y-[-4px] scale-[1.02] opacity-60 shadow-lg ring-2 ring-accent/30"
-          : "hover:shadow-sm"
-      }`}
-    >
-      <div className="flex items-start gap-2">
-        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-ink">
-            {exam.exam_name}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-ink-2">
-            {exam.course_code}
-          </p>
-          <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-3">
-            <Calendar className="h-3 w-3" />
-            {examDateLabel(exam)}
-          </div>
-        </div>
-      </div>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", exam.id);
+              onDragStart();
+            }}
+            onDragEnd={onDragEnd}
+            className={`group surface-card relative cursor-grab rounded-md p-3 transition-all duration-200 ${
+              isDragging
+                ? "translate-y-[-4px] scale-[1.02] opacity-60 shadow-lg ring-2 ring-accent/30"
+                : "hover:shadow-sm"
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">
+                  {exam.exam_name}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-ink-2">
+                  {exam.course_code}
+                </p>
+                <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-3">
+                  <Calendar className="h-3 w-3" />
+                  {examDateLabel(exam)}
+                </div>
+              </div>
+            </div>
 
       {/* Keyboard-accessible alternative to drag */}
       <div className="mt-2 flex items-center gap-1.5">
@@ -390,6 +387,14 @@ function KanbanCard({
         Open
       </Link>
     </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="font-medium">{exam.exam_name}</p>
+            <p className="text-xs text-muted-foreground">{exam.course_code}</p>
+            <p className="text-xs text-muted-foreground">{examDateLabel(exam)}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
   );
 }
 
