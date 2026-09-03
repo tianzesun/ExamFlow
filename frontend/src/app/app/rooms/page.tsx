@@ -149,24 +149,25 @@ export default function RoomsPage() {
 
   return (
     <PageTransition>
-      <div className="space-y-6">
-        {/* Page header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight text-ink">Rooms</h1>
-              {!loading && rooms.length > 0 && (
-                <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
-                  {total}
-                </span>
-              )}
+      <div className="animate-fade-in flex h-full flex-col">
+        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
+          {/* Page header */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-ink">Rooms</h1>
+                {!loading && rooms.length > 0 && (
+                  <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
+                    {total}
+                  </span>
+                )}
+              </div>
+              <p className="tnum mt-1 text-sm text-ink-2">
+                {total} room{total !== 1 ? "s" : ""} in the system
+              </p>
             </div>
-            <p className="tnum mt-1 text-sm text-ink-2">
-              {total} room{total !== 1 ? "s" : ""} in the system
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "table")}>
+            <div className="flex items-center gap-2">
+              <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "table")}>
               <TabsList>
                 <TabsTrigger value="grid">
                   <LayoutGrid className="h-4 w-4" /> Grid
@@ -376,6 +377,7 @@ export default function RoomsPage() {
           )}
         </>
       )}
+      </div>
     </div>
     </PageTransition>
   );

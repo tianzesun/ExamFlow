@@ -38,32 +38,34 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-black dark:text-white flex items-center gap-2">
-        <ShieldCheck className="h-6 w-6 text-zinc-400" />
-        Admin Area
-      </h1>
+    <div className="animate-fade-in flex h-full flex-col">
+      <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
+        <h1 className="text-2xl font-bold text-black dark:text-white flex items-center gap-2">
+          <ShieldCheck className="h-6 w-6 text-zinc-400" />
+          Admin Area
+        </h1>
 
-      <Card>
-        <CardContent>
-          <h2 className="text-lg font-medium text-black dark:text-white">
-            Admin Test Endpoint
-          </h2>
-          {error ? (
-            <div className="mt-2 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </div>
-          ) : adminTest ? (
-            <div className="mt-2 flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-              <CheckCircle className="h-4 w-4" />
-              {adminTest}
-            </div>
-          ) : (
-            <PageLoader />
-          )}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-medium text-black dark:text-white">
+              Admin Test Endpoint
+            </h2>
+            {error ? (
+              <div className="mt-2 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                <AlertCircle className="h-4 w-4" />
+                {error}
+              </div>
+            ) : adminTest ? (
+              <div className="mt-2 flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                <CheckCircle className="h-4 w-4" />
+                {adminTest}
+              </div>
+            ) : (
+              <PageLoader />
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

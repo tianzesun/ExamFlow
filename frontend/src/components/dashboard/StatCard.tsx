@@ -5,14 +5,6 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 
 type Color = "accent" | "success" | "warning" | "danger" | "violet" | "neutral";
-const ICON_TINT: Record<Color, string> = {
-  accent: "text-accent",
-  success: "text-success",
-  warning: "text-warning",
-  danger: "text-danger",
-  violet: "text-violet",
-  neutral: "text-ink-3",
-};
 const COLOR_VAR: Record<Color, string> = {
   accent: "var(--accent)",
   success: "var(--success)",
@@ -21,7 +13,7 @@ const COLOR_VAR: Record<Color, string> = {
   violet: "var(--violet)",
   neutral: "var(--ink-3)",
 };
-/** CSS variable names (without var()) used for tinted glow washes. */
+/** CSS variable names (without var()) used for accent tinting. */
 const COLOR_VAR_BG: Record<Color, string> = {
   accent: "--accent",
   success: "--success",

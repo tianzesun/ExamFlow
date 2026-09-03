@@ -127,26 +127,27 @@ export default function ExamsPage() {
 
   return (
     <PageTransition>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-ink">Exams</h1>
-            <p className="tnum mt-1 text-sm text-ink-2">
-              {total} exam{total !== 1 ? "s" : ""} in the system
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Tabs value={view} onValueChange={(v) => setView(v as "board" | "table")}>
-              <TabsList>
-                <TabsTrigger value="board">
-                  <LayoutGrid className="h-4 w-4" /> Board
-                </TabsTrigger>
-                <TabsTrigger value="table">
-                  <List className="h-4 w-4" /> Table
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+      <div className="animate-fade-in flex h-full flex-col">
+        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
+          {/* Header */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-ink">Exams</h1>
+              <p className="tnum mt-1 text-sm text-ink-2">
+                {total} exam{total !== 1 ? "s" : ""} in the system
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Tabs value={view} onValueChange={(v) => setView(v as "board" | "table")}>
+                <TabsList>
+                  <TabsTrigger value="board">
+                    <LayoutGrid className="h-4 w-4" /> Board
+                  </TabsTrigger>
+                  <TabsTrigger value="table">
+                    <List className="h-4 w-4" /> Table
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
             <Link href="/app/exams/new">
               <Button>
                 <Plus className="h-4 w-4" /> Create Exam
@@ -238,6 +239,7 @@ export default function ExamsPage() {
       ) : (
         <ExamsTable exams={filtered} onStatusChange={moveExam} />
       )}
+      </div>
     </div>
     </PageTransition>
   );
@@ -331,7 +333,7 @@ function KanbanCard({
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger asChild>
+        <TooltipTrigger>
           <div
             draggable
             onDragStart={(e) => {

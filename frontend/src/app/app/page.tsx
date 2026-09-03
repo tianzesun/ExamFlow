@@ -658,8 +658,8 @@ function DashboardWorkspace() {
 
   if (loading) {
     return (
-      <div className="animate-fade-in space-y-6">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="animate-fade-in flex h-full flex-col">
+        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
           <WorkspaceHeader exams={[]} onImported={reload} />
           <DashboardSkeleton />
         </div>
@@ -668,8 +668,8 @@ function DashboardWorkspace() {
   }
   if (error) {
     return (
-      <div className="animate-fade-in space-y-6">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="animate-fade-in flex h-full flex-col">
+        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
           <WorkspaceHeader exams={[]} onImported={reload} />
           <DataError onRetry={reload} />
         </div>
@@ -682,8 +682,8 @@ function DashboardWorkspace() {
 
   if (exams.length === 0) {
     return (
-      <div className="animate-fade-in space-y-6">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="animate-fade-in flex h-full flex-col">
+        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
           <WorkspaceHeader exams={exams} onImported={reload} />
           <EmptyState
             icon={<FileText className="h-8 w-8 text-ink-3" />}
@@ -703,23 +703,21 @@ function DashboardWorkspace() {
   }
 
   return (
-    <div className="animate-fade-in space-y-6">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <div className="animate-fade-in flex h-full flex-col">
+      <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
         <WorkspaceHeader exams={exams} onImported={reload} />
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCards exams={exams} summaries={summaries} />
-        </div>
+        <KpiCards exams={exams} summaries={summaries} />
 
         {/* Charts row */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <ExamsOverTime exams={exams} />
           <StatusFunnel exams={exams} />
         </div>
 
         {/* Upcoming + activity */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <UpcomingExams exams={exams} />
           </div>
@@ -755,8 +753,8 @@ function DashboardSkeleton() {
 
 function DashboardSkeletonPage() {
   return (
-    <div className="animate-fade-in space-y-6">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <div className="animate-fade-in flex h-full flex-col">
+      <div className="flex-1 px-4 py-6 sm:px-6">
         <Skeleton className="mb-4 h-7 w-32 rounded" />
         <DashboardSkeleton />
       </div>
