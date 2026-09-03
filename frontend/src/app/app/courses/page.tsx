@@ -11,9 +11,13 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import { getCourses } from "@/lib/api/courses";
 import { getExams } from "@/lib/api/exams";
+import { syncTTBCourses, getTTBReferenceData } from "@/lib/api/ttb";
 import type { ReactNode } from "react";
 import type { Course, Exam } from "@/lib/types";
 import {
@@ -97,8 +101,10 @@ export default function CoursesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadData = () => {
     Promise.all([getCourses(1, 100), getExams({}, 1, 200)])
       .then(([cs, es]) => {
         setCourses(cs.courses ?? []);
@@ -107,7 +113,25 @@ export default function CoursesPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await syncTTBCourses("20269");
+      setSyncResult(`Synced ${result.synced} courses from TTB`);
+      loadData();
+    } catch (err) {
+      setSyncResult("Sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const perCourse = useMemo(() => {
     const map: Record<string, CourseStats> = {};
@@ -173,30 +197,56 @@ export default function CoursesPage() {
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-ink">
-              Courses
-            </h1>
-            {!loading && courses.length > 0 && (
-              <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
-                {total}
-              </span>
-            )}
+    <div className="animate-fade-in flex h-full flex-col">
+      <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
+        {/* Page header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-ink">
+                Courses
+              </h1>
+              {!loading && courses.length > 0 && (
+                <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
+                  {total}
+                </span>
+              )}
+            </div>
+            <p className="tnum mt-1 text-sm text-ink-2">
+              {total} course{total !== 1 ? "s" : ""} in the system
+            </p>
           </div>
-          <p className="tnum mt-1 text-sm text-ink-2">
-            {total} course{total !== 1 ? "s" : ""} in the system
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/app/courses/new">
+              <Button>
+                <Plus className="h-4 w-4" /> Create Course
+              </Button>
+            </Link>
+            <Button
+              variant="secondary"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing..." : "Sync from TTB"}
+            </Button>
+          </div>
         </div>
-        <Link href="/app/courses/new">
-          <Button>
-            <Plus className="h-4 w-4" /> Create Course
-          </Button>
-        </Link>
-      </div>
+
+        {syncResult && (
+          <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+            syncResult.includes("Synced")
+              ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400"
+              : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"
+          }`}>
+            {syncResult.includes("Synced") ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )}
+            {syncResult}
+          </div>
+        )}
 
       {loading ? (
         <div className="space-y-4">
@@ -408,6 +458,7 @@ export default function CoursesPage() {
           )}
           </>
         )}
-        </div>
-      );
-    }
+      </div>
+    </div>
+  );
+}
