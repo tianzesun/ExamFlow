@@ -18,7 +18,6 @@ import {
 import {
   Spinner,
   CommandPalette,
-  NotificationDropdown,
   Breadcrumbs as BreadcrumbsGlobal,
   type CommandItem,
 } from "@/components";
@@ -124,10 +123,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
               onOpen={setPaletteOpen}
               items={commandItems}
             />
-            {/* Notifications */}
-            <div className="hidden sm:block">
-              <NotificationDropdown />
-            </div>
             {/* Course context switcher */}
             <div className="hidden md:block">
               <CourseSwitcher />
