@@ -19,8 +19,19 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
+    const error = await response
+      .json()
+      .catch(() => ({ detail: "Request failed" }));
+    let message: string = error.detail || `HTTP ${response.status}`;
+    if (Array.isArray(message)) {
+      // FastAPI validation errors: [{ loc, msg, ... }, ...]
+      message = message
+        .map((e: { msg?: string }) => e?.msg ?? String(e))
+        .join("; ");
+    } else if (typeof message !== "string") {
+      message = JSON.stringify(message);
+    }
+    throw new Error(message);
   }
 
   return response.json();

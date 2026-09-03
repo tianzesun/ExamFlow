@@ -3,6 +3,7 @@ Tuition Time Table (TTB) API integration service.
 Fetches courses from UofT's TTB system and syncs to ExamFlow database.
 """
 
+import asyncio
 import logging
 import xml.etree.ElementTree as ET
 
@@ -15,10 +16,35 @@ TTB_BASE_URL = "https://api.easi.utoronto.ca/ttb"
 
 async def fetch_reference_data() -> dict:
     """Fetch available sessions, divisions, campuses from TTB."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(f"{TTB_BASE_URL}/reference-data")
-        resp.raise_for_status()
-        return parse_reference_data(resp.text)
+    resp = await _request_with_retry("GET", f"{TTB_BASE_URL}/reference-data")
+    return parse_reference_data(resp.text)
+
+
+async def _request_with_retry(
+    method: str,
+    url: str,
+    *,
+    retries: int = 2,
+    backoff_seconds: float = 1.5,
+    **kwargs,
+) -> httpx.Response:
+    """POST/GET with retries for transient upstream failures.
+
+    TTB occasionally hiccups (timeouts, 5xx, connection resets). Retry a
+    couple of times with a short backoff before surfacing the error.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.request(method, url, **kwargs)
+                resp.raise_for_status()
+                return resp
+        except (httpx.HTTPError, httpx.StreamError) as exc:
+            last_exc = exc
+            if attempt < retries:
+                await asyncio.sleep(backoff_seconds * (attempt + 1))
+    raise RuntimeError(f"TTB request failed after {retries + 1} attempts: {last_exc}") from last_exc
 
 
 def parse_reference_data(xml_text: str) -> dict:
@@ -54,14 +80,13 @@ async def fetch_courses(
         "divisions": [division_code],
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            f"{TTB_BASE_URL}/getCourses",
-            json=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        resp.raise_for_status()
-        return parse_courses_response(resp.text, subject_prefix)
+    resp = await _request_with_retry(
+        "POST",
+        f"{TTB_BASE_URL}/getCourses",
+        json=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    return parse_courses_response(resp.text, subject_prefix)
 
 
 def parse_courses_response(xml_text: str, subject_prefix: str = "") -> list[dict]:

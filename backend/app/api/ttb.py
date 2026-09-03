@@ -39,12 +39,13 @@ async def get_courses(
         result = await fetch_courses(
             session_code=session,
             division_code=division,
-            subject_code=subject,
-            course_level=level,
-            page=page,
-            limit=limit,
+            subject_prefix=subject,
         )
-        return {"status": "success", "data": result}
+        # Note: course-level filtering ("100/A") is not applied here because the
+        # parsed TTB payload does not include a course-level field. Pagination is
+        # applied client-side since TTB returns the full course list.
+        start = (page - 1) * limit
+        return {"status": "success", "data": result[start : start + limit], "total": len(result)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

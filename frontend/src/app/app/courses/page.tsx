@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { getCourses } from "@/lib/api/courses";
 import { getExams } from "@/lib/api/exams";
-import { syncTTBCourses, getTTBReferenceData } from "@/lib/api/ttb";
+import { syncTTBCourses } from "@/lib/api/ttb";
 import type { ReactNode } from "react";
 import type { Course, Exam } from "@/lib/types";
 import {
@@ -127,7 +127,9 @@ export default function CoursesPage() {
       setSyncResult(`Synced ${result.synced} courses from TTB`);
       loadData();
     } catch (err) {
-      setSyncResult("Sync failed. Please try again.");
+      const reason =
+        err instanceof Error && err.message ? err.message : "Unknown error";
+      setSyncResult(`Sync failed: ${reason}`);
     } finally {
       setSyncing(false);
     }
