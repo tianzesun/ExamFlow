@@ -4,7 +4,7 @@ import os
 import uuid
 from uuid import UUID
 
-import fitz  # PyMuPDF
+import pymupdf
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,7 @@ MARGIN_LEFT = 50
 
 
 def _draw_header(
-    page: fitz.Page,
+    page: pymupdf.Page,
     exam: Exam,
     student: Student,
     room: Room,
@@ -34,26 +34,26 @@ def _draw_header(
 
     # Exam title line
     title = f"{exam.course_code} — {exam.exam_name}"
-    page.insert_text(fitz.Point(MARGIN_LEFT, y), title, fontsize=14, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), title, fontsize=14, color=(0, 0, 0))
     y += 20
 
     # Student name
     name_text = f"Student Name: {student.full_name}"
-    page.insert_text(fitz.Point(MARGIN_LEFT, y), name_text, fontsize=11, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), name_text, fontsize=11, color=(0, 0, 0))
     y += 16
 
     # Student ID
     id_text = f"Student ID: {student.student_number}"
-    page.insert_text(fitz.Point(MARGIN_LEFT, y), id_text, fontsize=11, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), id_text, fontsize=11, color=(0, 0, 0))
     y += 16
 
     # Room and Seat on same line
     room_seat = f"Room: {room.building} {room.room_number}    Seat: {seat.seat_code}"
-    page.insert_text(fitz.Point(MARGIN_LEFT, y), room_seat, fontsize=11, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), room_seat, fontsize=11, color=(0, 0, 0))
 
     # Horizontal separator line
     y += 20
-    page.draw_line(fitz.Point(MARGIN_LEFT, y), fitz.Point(rect.width - MARGIN_LEFT, y), color=(0, 0, 0), width=0.5)
+    page.draw_line(pymupdf.Point(MARGIN_LEFT, y), pymupdf.Point(rect.width - MARGIN_LEFT, y), color=(0, 0, 0), width=0.5)
 
 
 def generate_one_student_pdf(
@@ -63,7 +63,7 @@ def generate_one_student_pdf(
     room: Room,
     seat: Seat,
 ) -> bytes:
-    doc = fitz.open(stream=template_bytes, filetype="pdf")
+    doc = pymupdf.open(stream=template_bytes, filetype="pdf")
 
     if len(doc) == 0:
         doc.close()

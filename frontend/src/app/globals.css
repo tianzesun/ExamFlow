@@ -6,31 +6,31 @@
 
 /*
   ─────────────────────────────────────────────
-  Design tokens — professional enterprise UI
+  Design tokens — "Mint & Cool" analytics UI
   ─────────────────────────────────────────────
   Consolidated system: shadcn/ui base with custom
   ExamFlow tokens for domain-specific styling.
 */
 :root {
-  --canvas: #f6f7f9;
+  --canvas: #eef4f3;
   --surface: #ffffff;
-  --surface-2: #fafbfc;
-  --surface-hover: #f2f4f7;
+  --surface-2: #f4f9f7;
+  --surface-hover: #e7f1ee;
 
-  --line: #e6e8ed;
-  --line-strong: #d3d7de;
+  --line: rgba(22, 60, 54, 0.12);
+  --line-strong: rgba(22, 60, 54, 0.22);
 
-  --ink: #14161a;
-  --ink-2: #5a616d;
-  --ink-3: #979ea9;
+  --ink: #0d1b18;
+  --ink-2: #4c5f5b;
+  --ink-3: #84a09a;
 
-  --accent: #2f6fed;
-  --accent-strong: #1d50c4;
-  --accent-subtle: rgba(47, 111, 237, 0.08);
+  --accent: #0e9f86;
+  --accent-strong: #0b7f6b;
+  --accent-subtle: rgba(14, 159, 134, 0.10);
 
-  --violet: #6d4fd6;
-  --violet-strong: #573caa;
-  --violet-subtle: rgba(109, 79, 214, 0.10);
+  --violet: #6f7cff;
+  --violet-strong: #5562ec;
+  --violet-subtle: rgba(111, 124, 255, 0.10);
 
   --success: #178a4e;
   --warning: #b97712;
@@ -72,28 +72,25 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #0e1013;
-    --surface: #171a1f;
-    --surface-2: #1b1f25;
-    --surface-hover: #20242b;
+    --canvas: #07100e;
+    --surface: #0f1a17;
+    --surface-2: #12201c;
+    --surface-hover: #18302a;
 
-    --line: #262b32;
-    --line-strong: #353b44;
+    --ink: #e6f4f0;
+    --ink-2: #9eb6b0;
+    --ink-3: #53746d;
 
-    --ink: #f2f4f7;
-    --ink-2: #aab1bd;
-    --ink-3: #626a76;
+    --accent: #47e5c5;
+    --accent-strong: #8af2de;
+    --accent-subtle: rgba(71, 229, 197, 0.16);
 
-    --accent: #5b93ff;
-    --accent-strong: #8aa6ff;
-    --accent-subtle: rgba(91, 147, 255, 0.14);
+    --violet: #aab3ff;
+    --violet-strong: #c6ccff;
+    --violet-subtle: rgba(170, 179, 255, 0.16);
 
-    --violet: #a489f0;
-    --violet-strong: #c2adf5;
-    --violet-subtle: rgba(164, 137, 240, 0.16);
-
-    --success: #3fbfcf;
-    --danger: #e5686d;
+    --success: #51e2b4;
+    --danger: #f07074;
   }
 }
 
@@ -146,6 +143,9 @@
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-subtle: var(--accent-subtle);
+
+  --color-mint: var(--accent);
+  --color-mint-strong: var(--accent-strong);
 
   --color-violet: var(--violet);
   --color-violet-strong: var(--violet-strong);
@@ -221,17 +221,41 @@ body {
   color: inherit;
 }
 
-/* App shell canvas */
+/* App shell canvas — cool mint tint, flat & calm */
 .app-canvas {
   min-height: 100%;
   background: var(--canvas);
 }
 
-/* Subdued surface for cards & panels */
+/* Card surface */
 .surface-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 40, 36, 0.04);
+}
+@media (prefers-color-scheme: dark) {
+  .surface-card {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* 'Glass' translucent surface for headers */
+.glass {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Gradient accent text (use sparingly) */
+.text-mint-gradient {
+  background: linear-gradient(120deg, var(--accent-strong), var(--violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 /* Focus */

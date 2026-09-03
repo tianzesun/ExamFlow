@@ -21,6 +21,15 @@ const COLOR_VAR: Record<Color, string> = {
   violet: "var(--violet)",
   neutral: "var(--ink-3)",
 };
+/** CSS variable names (without var()) used for tinted glow washes. */
+const COLOR_VAR_BG: Record<Color, string> = {
+  accent: "--accent",
+  success: "--success",
+  warning: "--warning",
+  danger: "--danger",
+  violet: "--violet",
+  neutral: "--ink-3",
+};
 
 export interface StatCardProps {
   icon: LucideIcon;
@@ -45,22 +54,15 @@ export function StatCard({
   return (
     <div className="group surface-card relative overflow-hidden px-5 py-4 transition-shadow duration-200 hover:shadow-md">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-ink-2">{label}</p>
-        <Icon
-          className={`h-4.5 w-4.5 shrink-0 ${ICON_TINT[color]} transition-transform group-hover:scale-105`}
-        />
-      </div>
-      <div className="mt-2 flex items-baseline justify-between gap-2">
-        {numeric ? (
-          <NumberTicker
-            value={value}
-            className="text-2xl font-semibold tracking-tight text-ink"
-          />
-        ) : (
-          <span className="tnum text-2xl font-semibold tracking-tight text-ink">
-            {value}
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-line bg-surface-2"
+            style={color === "neutral" ? undefined : { color: `var(${COLOR_VAR_BG[color]})` }}
+          >
+            <Icon className="h-3.5 w-3.5" />
           </span>
-        )}
+          <p className="text-xs font-medium text-ink-2">{label}</p>
+        </div>
         {change && (
           <span
             className={`tnum text-xs font-medium ${
@@ -72,6 +74,18 @@ export function StatCard({
             }`}
           >
             {change}
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex items-baseline justify-between gap-2">
+        {numeric ? (
+          <NumberTicker
+            value={value}
+            className="tnum text-2xl font-bold tracking-tight text-ink"
+          />
+        ) : (
+          <span className="tnum text-2xl font-bold tracking-tight text-ink">
+            {value}
           </span>
         )}
       </div>

@@ -4,7 +4,7 @@ import secrets
 import zipfile
 from uuid import UUID
 
-import fitz  # PyMuPDF
+import pymupdf
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -78,7 +78,7 @@ def generate_signature_list_pdf(
         .all()
     )
 
-    doc = fitz.open()
+    doc = pymupdf.open()
     page_width, page_height = 612, 792  # Letter
     margin = 50
     row_height = 28
@@ -93,51 +93,51 @@ def generate_signature_list_pdf(
         y = margin
 
         # Header
-        page.insert_text(fitz.Point(margin, y), f"{exam.course_code} — {exam.exam_name}", fontsize=14, color=(0, 0, 0))
+        page.insert_text(pymupdf.Point(margin, y), f"{exam.course_code} — {exam.exam_name}", fontsize=14, color=(0, 0, 0))
         y += 20
         page.insert_text(
-            fitz.Point(margin, y),
+            pymupdf.Point(margin, y),
             f"Room: {room.building} {room.room_number}",
             fontsize=11, color=(0, 0, 0),
         )
         y += 16
         page.insert_text(
-            fitz.Point(margin, y),
+            pymupdf.Point(margin, y),
             f"Date: {exam.exam_date}    Time: {exam.start_time}",
             fontsize=11, color=(0, 0, 0),
         )
         y += 16
         page_num += 1
         page.insert_text(
-            fitz.Point(margin, y),
+            pymupdf.Point(margin, y),
             f"Signature List — Page {page_num} of {total_pages}",
             fontsize=10, color=(0.5, 0.5, 0.5),
         )
         y += 20
 
         # Table header
-        rect = fitz.Point(margin, y), fitz.Point(page_width - margin, y + row_height)
+        rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + row_height)
         page.draw_rect(rect, color=(0, 0, 0), fill=(0.9, 0.9, 0.9))
         cols = [margin + 5, margin + 60, margin + 200, margin + 310, margin + 430]
         headers = ["Seat", "Student ID", "Name", "Signature", "Time"]
         for col, header in zip(cols, headers):
-            page.insert_text(fitz.Point(col, y + 18), header, fontsize=9, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(col, y + 18), header, fontsize=9, color=(0, 0, 0))
         y += row_height
 
         # Rows
         chunk = assignments[i:i + students_per_page]
         for assignment, student, seat in chunk:
-            rect = fitz.Point(margin, y), fitz.Point(page_width - margin, y + row_height)
+            rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + row_height)
             page.draw_rect(rect, color=(0.8, 0.8, 0.8))
-            page.insert_text(fitz.Point(cols[0], y + 18), seat.seat_code, fontsize=9, color=(0, 0, 0))
-            page.insert_text(fitz.Point(cols[1], y + 18), student.student_number, fontsize=9, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(cols[0], y + 18), seat.seat_code, fontsize=9, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(cols[1], y + 18), student.student_number, fontsize=9, color=(0, 0, 0))
             name = student.full_name[:30]
-            page.insert_text(fitz.Point(cols[2], y + 18), name, fontsize=9, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(cols[2], y + 18), name, fontsize=9, color=(0, 0, 0))
             y += row_height
 
         # Empty rows to fill page
         for _ in range(students_per_page - len(chunk)):
-            rect = fitz.Point(margin, y), fitz.Point(page_width - margin, y + row_height)
+            rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + row_height)
             page.draw_rect(rect, color=(0.8, 0.8, 0.8))
             y += row_height
 
@@ -173,7 +173,7 @@ def generate_seating_map_pdf(
     ):
         assignments[str(a.seat_id)] = s
 
-    doc = fitz.open()
+    doc = pymupdf.open()
     page_width, page_height = 612, 792  # Letter
     margin = 50
 
@@ -182,24 +182,24 @@ def generate_seating_map_pdf(
 
     # Header
     page.insert_text(
-        fitz.Point(margin, y),
+        pymupdf.Point(margin, y),
         f"{exam.course_code} — {exam.exam_name}",
         fontsize=14, color=(0, 0, 0),
     )
     y += 20
     page.insert_text(
-        fitz.Point(margin, y),
+        pymupdf.Point(margin, y),
         f"Seating Map — {room.building} {room.room_number}",
         fontsize=11, color=(0, 0, 0),
     )
     y += 16
-    page.insert_text(fitz.Point(margin, y), f"Date: {exam.exam_date}", fontsize=11, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(margin, y), f"Date: {exam.exam_date}", fontsize=11, color=(0, 0, 0))
     y += 25
 
     # FRONT indicator
-    rect = fitz.Point(margin, y), fitz.Point(page_width - margin, y + 25)
+    rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + 25)
     page.draw_rect(rect, color=(0, 0, 0), fill=(0.85, 0.85, 0.85))
-    page.insert_text(fitz.Point(page_width / 2 - 15, y + 17), "FRONT", fontsize=10, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(page_width / 2 - 15, y + 17), "FRONT", fontsize=10, color=(0, 0, 0))
     y += 40
 
     # Calculate grid
@@ -224,18 +224,18 @@ def generate_seating_map_pdf(
         else:
             color = (1, 1, 1)
 
-        rect = fitz.Point(x, sy), fitz.Point(x + seat_width - 4, sy + seat_height - 4)
+        rect = pymupdf.Point(x, sy), pymupdf.Point(x + seat_width - 4, sy + seat_height - 4)
         page.draw_rect(rect, color=(0, 0, 0), fill=color)
-        page.insert_text(fitz.Point(x + 3, sy + 15), seat.seat_code, fontsize=8, color=(0, 0, 0))
+        page.insert_text(pymupdf.Point(x + 3, sy + 15), seat.seat_code, fontsize=8, color=(0, 0, 0))
 
         if student:
             name_short = student.full_name[:15]
-            page.insert_text(fitz.Point(x + 3, sy + 28), name_short, fontsize=7, color=(0, 0, 0))
-            page.insert_text(fitz.Point(x + 3, sy + 38), student.student_number[:10], fontsize=6, color=(0.4, 0.4, 0.4))
+            page.insert_text(pymupdf.Point(x + 3, sy + 28), name_short, fontsize=7, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(x + 3, sy + 38), student.student_number[:10], fontsize=6, color=(0.4, 0.4, 0.4))
         elif seat.status != "AVAILABLE":
-            page.insert_text(fitz.Point(x + 3, sy + 28), "N/A", fontsize=7, color=(0.6, 0.6, 0.6))
+            page.insert_text(pymupdf.Point(x + 3, sy + 28), "N/A", fontsize=7, color=(0.6, 0.6, 0.6))
         else:
-            page.insert_text(fitz.Point(x + 3, sy + 28), "EMPTY", fontsize=7, color=(0.6, 0.6, 0.6))
+            page.insert_text(pymupdf.Point(x + 3, sy + 28), "EMPTY", fontsize=7, color=(0.6, 0.6, 0.6))
 
     output = io.BytesIO()
     doc.save(output)
@@ -264,11 +264,11 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
     page_width, page_height = 612, 792
     margin = 50
 
-    doc = fitz.open()
+    doc = pymupdf.open()
     page = doc.new_page(width=page_width, height=page_height)
     y = margin
 
-    page.insert_text(fitz.Point(margin, y), "EXAM ADMINISTRATION SUMMARY", fontsize=16, color=(0, 0, 0))
+    page.insert_text(pymupdf.Point(margin, y), "EXAM ADMINISTRATION SUMMARY", fontsize=16, color=(0, 0, 0))
     y += 30
 
     lines = [
@@ -291,8 +291,8 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
 
     for label, value in lines:
         if label:
-            page.insert_text(fitz.Point(margin, y), f"{label}:", fontsize=11, color=(0, 0, 0))
-            page.insert_text(fitz.Point(margin + 180, y), value, fontsize=11, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(margin, y), f"{label}:", fontsize=11, color=(0, 0, 0))
+            page.insert_text(pymupdf.Point(margin + 180, y), value, fontsize=11, color=(0, 0, 0))
         y += 18
 
     output = io.BytesIO()

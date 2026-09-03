@@ -7,6 +7,7 @@ from app.models.exam_room import ExamRoom
 from app.models.exam_student import ExamStudent
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
+from app.models.meeting import Meeting
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
@@ -24,6 +25,7 @@ __all__ = [
     "ExamRoom",
     "ExamTemplate",
     "GeneratedExam",
+    "Meeting",
     "Document",
     "AuditLog",
 ]
