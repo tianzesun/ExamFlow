@@ -12,10 +12,6 @@ logger = logging.getLogger(__name__)
 
 TTB_BASE_URL = "https://api.easi.utoronto.ca/ttb"
 
-# Session codes: 20269=Fall 2026, 20271=Winter 2027, 20269-20271=Fall-Winter
-# Divisions: ARTSC=Arts & Science, APSC=Engineering, etc.
-# Campuses: St. George, University of Toronto at Mississauga, Scarborough
-
 
 async def fetch_reference_data() -> dict:
     """Fetch available sessions, divisions, campuses from TTB."""
@@ -35,7 +31,6 @@ def parse_reference_data(xml_text: str) -> dict:
         sessions.append({
             "label": s.find("label").text or "",
             "value": s.find("value").text or "",
-            "group": s.find("group").text or "",
         })
 
     divisions = []
@@ -45,125 +40,171 @@ def parse_reference_data(xml_text: str) -> dict:
             "value": d.find("value").text or "",
         })
 
-    campuses = []
-    for c in payload.find("campuses").findall("campuses"):
-        campuses.append({
-            "label": c.find("label").text or "",
-            "value": c.find("value").text or "",
-        })
-
-    return {"sessions": sessions, "divisions": divisions, "campuses": campuses}
+    return {"sessions": sessions, "divisions": divisions}
 
 
 async def fetch_courses(
     session_code: str = "20269",
     division_code: str = "ARTSC",
-    subject_code: str = "CSC",
-    course_level: str = "100/A",
-    page: int = 1,
-    limit: int = 50,
-) -> dict:
-    """Fetch courses from TTB API via getPageableCourses endpoint."""
+    subject_prefix: str = "CSC",
+) -> list[dict]:
+    """Fetch courses from TTB API via getCourses endpoint."""
     payload = {
-        "session": session_code,
+        "sessions": [session_code],
         "divisions": [division_code],
-        "subject": subject_code,
-        "courseLevel": course_level,
-        "page": page,
-        "limit": limit,
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
-            f"{TTB_BASE_URL}/getPageableCourses",
+            f"{TTB_BASE_URL}/getCourses",
             json=payload,
             headers={"Content-Type": "application/json"},
         )
         resp.raise_for_status()
-        return parse_courses_response(resp.text)
+        return parse_courses_response(resp.text, subject_prefix)
 
 
-def parse_courses_response(xml_text: str) -> dict:
-    """Parse courses XML response into structured data."""
+def parse_courses_response(xml_text: str, subject_prefix: str = "") -> list[dict]:
+    """Parse courses XML response into structured data.
+
+    Each course is a separate <payload> element under <TTBResponse>.
+    """
     root = ET.fromstring(xml_text)
-    payload = root.find("payload")
 
     courses = []
-    for c in payload.find("courses").findall("courses"):
-        meeting_sections = []
-        for ms in c.find("meetingSections").findall("meetingSections"):
-            meetings = []
-            for m in ms.find("meetings").findall("meetings"):
-                meetings.append({
-                    "sessionCode": m.find("sessionCode").text or "",
-                    "courseCode": m.find("courseCode").text or "",
-                    "sectionCode": m.find("sectionCode").text or "",
-                    "day": m.find("day").text or "",
-                    "startTime": m.find("startTime").text or "",
-                    "endTime": m.find("endTime").text or "",
-                    "building": m.find("building").text or "",
-                    "room": m.find("room").text or "",
-                    "instructors": m.find("instructors").text or "",
+    # Each course is a direct <payload> child of <TTBResponse>
+    for payload in root.findall("payload"):
+        code_el = payload.find("code")
+        if code_el is None:
+            continue
+        code = code_el.text or ""
+
+        # Filter by subject prefix if specified
+        if subject_prefix and not code.startswith(subject_prefix):
+            continue
+
+        sections = []
+        sections_el = payload.find("sections")
+        if sections_el is not None:
+            for sec in sections_el.findall("sections"):
+                meeting_times = []
+                mt_el = sec.find("meetingTimes")
+                if mt_el is not None:
+                    for mt in mt_el.findall("meetingTimes"):
+                        building = mt.find("building")
+                        building_code = ""
+                        room = ""
+                        if building is not None:
+                            bc = building.find("buildingCode")
+                            building_code = bc.text if bc is not None else ""
+                            rn = building.find("buildingRoomNumber")
+                            rs = building.find("buildingRoomSuffix")
+                            room_num = rn.text if rn is not None else ""
+                            room_suffix = rs.text if rs is not None else ""
+                            room = f"{room_num}{room_suffix}".strip()
+
+                        start_el = mt.find("start")
+                        end_el = mt.find("end")
+                        session_el = mt.find("sessionCode")
+
+                        # Extract day from start element
+                        day = ""
+                        if start_el is not None:
+                            day_el = start_el.find("day")
+                            day = day_el.text if day_el is not None else ""
+
+                        # Extract time from millisofday
+                        start_time = ""
+                        if start_el is not None:
+                            millis_el = start_el.find("millisofday")
+                            if millis_el is not None and millis_el.text:
+                                total_secs = int(millis_el.text) // 1000
+                                hours = total_secs // 3600
+                                mins = (total_secs % 3600) // 60
+                                start_time = f"{hours:02d}:{mins:02d}"
+
+                        end_time = ""
+                        if end_el is not None:
+                            millis_el = end_el.find("millisofday")
+                            if millis_el is not None and millis_el.text:
+                                total_secs = int(millis_el.text) // 1000
+                                hours = total_secs // 3600
+                                mins = (total_secs % 3600) // 60
+                                end_time = f"{hours:02d}:{mins:02d}"
+
+                        meeting_times.append({
+                            "sessionCode": session_el.text if session_el is not None else "",
+                            "day": day,
+                            "startTime": start_time,
+                            "endTime": end_time,
+                            "buildingCode": building_code,
+                            "room": room,
+                        })
+
+                instructors = []
+                inst_el = sec.find("instructors")
+                if inst_el is not None:
+                    for inst in inst_el.findall("instructors"):
+                        fn = inst.find("firstName")
+                        ln = inst.find("lastName")
+                        first = fn.text if fn is not None else ""
+                        last = ln.text if ln is not None else ""
+                        instructors.append(f"{first} {last}".strip())
+
+                curr_el = sec.find("currentEnrolment")
+                max_el = sec.find("maxEnrolment")
+                name_el = sec.find("name")
+                type_el = sec.find("type")
+                teach_el = sec.find("teachMethod")
+                secnum_el = sec.find("sectionNumber")
+
+                sections.append({
+                    "name": name_el.text if name_el is not None else "",
+                    "type": type_el.text if type_el is not None else "",
+                    "teachMethod": teach_el.text if teach_el is not None else "",
+                    "sectionNumber": secnum_el.text if secnum_el is not None else "",
+                    "currentEnrolment": int(curr_el.text) if curr_el is not None and curr_el.text else 0,
+                    "maxEnrolment": int(max_el.text) if max_el is not None and max_el.text else 0,
+                    "instructors": instructors,
+                    "meetingTimes": meeting_times,
                 })
-            meeting_sections.append({
-                "code": ms.find("code").text or "",
-                "day": ms.find("day").text or "",
-                "startTime": ms.find("startTime").text or "",
-                "endTime": ms.find("endTime").text or "",
-                "building": ms.find("building").text or "",
-                "room": ms.find("room").text or "",
-                "instructors": ms.find("instructors").text or "",
-                "meetings": meetings,
-            })
+
+        cm_info = payload.find("cmCourseInfo")
+        description = ""
+        prerequisites = ""
+        if cm_info is not None:
+            desc_el = cm_info.find("description")
+            prereq_el = cm_info.find("prerequisitesText")
+            description = desc_el.text if desc_el is not None else ""
+            prerequisites = prereq_el.text if prereq_el is not None else ""
+
+        name_el = payload.find("name")
+        section_el = payload.find("sectionCode")
+        campus_el = payload.find("campus")
 
         courses.append({
-            "code": c.find("code").text or "",
-            "section": c.find("section").text or "",
-            "sessionCode": c.find("sessionCode").text or "",
-            "name": c.find("name").text or "",
-            "description": c.find("description").text or "",
-            "division": c.find("division").text or "",
-            "department": c.find("department").text or "",
-            "prerequisites": c.find("prerequisites").text or "",
-            "exclusions": c.find("exclusions").text or "",
-            "level": c.find("level").text or "",
-            "campus": c.find("campus").text or "",
-            "term": c.find("term").text or "",
-            "weight": c.find("weight").text or "",
-            "deliveryMode": c.find("deliveryMode").text or "",
-            "meetingSections": meeting_sections,
+            "code": code,
+            "name": name_el.text if name_el is not None else "",
+            "sectionCode": section_el.text if section_el is not None else "",
+            "campus": campus_el.text if campus_el is not None else "",
+            "description": description,
+            "prerequisites": prerequisites,
+            "sections": sections,
         })
 
-    total = int(payload.find("total").text or "0")
-    return {"courses": courses, "total": total}
+    return courses
 
 
 async def fetch_all_cs_courses(
     session_code: str = "20269",
     division_code: str = "ARTSC",
-    course_level: str = "100/A",
 ) -> list[dict]:
-    """Fetch all CSC courses across all levels."""
-    all_courses = []
-    levels = ["100/A", "200/B", "300/C", "400/D", "5+"]
-
-    for level in levels:
-        page = 1
-        while True:
-            result = await fetch_courses(
-                session_code=session_code,
-                division_code=division_code,
-                subject_code="CSC",
-                course_level=level,
-                page=page,
-                limit=50,
-            )
-            all_courses.extend(result["courses"])
-            if len(result["courses"]) < 50:
-                break
-            page += 1
-
-    return all_courses
+    """Fetch all CSC courses."""
+    return await fetch_courses(
+        session_code=session_code,
+        division_code=division_code,
+        subject_prefix="CSC",
+    )
 
 
 async def sync_cs_courses_to_db(db_session, semester: str = "20269") -> int:
@@ -182,34 +223,36 @@ async def sync_cs_courses_to_db(db_session, semester: str = "20269") -> int:
             course = Course(
                 course_code=course_code,
                 course_name=c["name"],
-                department=c.get("department", ""),
+                department="Computer Science",
             )
             db_session.add(course)
             db_session.flush()
 
-        # Add meeting sections
-        for ms in c.get("meetingSections", []):
-            meeting = db_session.query(Meeting).filter_by(
-                course_id=course.id,
-                section_code=ms["code"],
-                semester=semester,
-            ).first()
-
-            if not meeting:
-                meeting = Meeting(
+        # Add sections with meeting times
+        for sec in c.get("sections", []):
+            for mt in sec.get("meetingTimes", []):
+                section_code = f"{sec['teachMethod']}{sec['sectionNumber']}"
+                meeting = db_session.query(Meeting).filter_by(
                     course_id=course.id,
-                    section_code=ms["code"],
+                    section_code=section_code,
                     semester=semester,
-                    day=ms.get("day", ""),
-                    start_time=ms.get("startTime", ""),
-                    end_time=ms.get("endTime", ""),
-                    building=ms.get("building", ""),
-                    room=ms.get("room", ""),
-                    instructors=ms.get("instructors", ""),
-                    max_capacity=0,
-                    current_enrolment=0,
-                )
-                db_session.add(meeting)
+                ).first()
+
+                if not meeting:
+                    meeting = Meeting(
+                        course_id=course.id,
+                        section_code=section_code,
+                        semester=semester,
+                        day=mt.get("day", ""),
+                        start_time=mt.get("startTime", ""),
+                        end_time=mt.get("endTime", ""),
+                        building=mt.get("buildingCode", ""),
+                        room=mt.get("room", ""),
+                        instructors=", ".join(sec.get("instructors", [])),
+                        max_capacity=sec.get("maxEnrolment", 0),
+                        current_enrolment=sec.get("currentEnrolment", 0),
+                    )
+                    db_session.add(meeting)
 
         count += 1
 
