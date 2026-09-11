@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { fetchApi, API_BASE } from "./client";
 
 export interface ExamTemplate {
   id: string;
@@ -26,24 +26,14 @@ export async function uploadTemplate(
   if (crowdmarkExamId) formData.append("crowdmark_exam_id", crowdmarkExamId);
   if (crowdmarkUrl) formData.append("crowdmark_url", crowdmarkUrl);
 
-  const response = await fetch(`${API_BASE}/api/exams/${examId}/templates`, {
+  return fetchApi<ExamTemplate>(`/api/exams/${examId}/templates`, {
     method: "POST",
-    credentials: "include",
     body: formData,
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Upload failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
 }
 
 export async function listTemplates(examId: string): Promise<ExamTemplate[]> {
-  const response = await fetch(`${API_BASE}/api/exams/${examId}/templates`, {
-    credentials: "include",
-  });
-  if (!response.ok) throw new Error("Failed to list templates");
-  return response.json();
+  return fetchApi<ExamTemplate[]>(`/api/exams/${examId}/templates`);
 }
 
 export function getTemplateDownloadUrl(examId: string, templateId: string): string {
@@ -51,25 +41,14 @@ export function getTemplateDownloadUrl(examId: string, templateId: string): stri
 }
 
 export async function activateTemplate(examId: string, templateId: string): Promise<ExamTemplate> {
-  const response = await fetch(`${API_BASE}/api/exams/${examId}/templates/${templateId}/activate`, {
+  return fetchApi<ExamTemplate>(`/api/exams/${examId}/templates/${templateId}/activate`, {
     method: "POST",
-    credentials: "include",
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Activation failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
 }
 
 export async function archiveTemplate(examId: string, templateId: string): Promise<ExamTemplate> {
-  const response = await fetch(`${API_BASE}/api/exams/${examId}/templates/${templateId}/archive`, {
+  return fetchApi<ExamTemplate>(`/api/exams/${examId}/templates/${templateId}/archive`, {
     method: "POST",
-    credentials: "include",
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Archive failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
 }
+

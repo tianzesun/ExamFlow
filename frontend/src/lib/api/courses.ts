@@ -1,27 +1,34 @@
-import { Course, CourseListResponse } from "../types";
+import { fetchApi } from "./client";
+export interface CourseOption {
+  value: string;
+  label: string;
+}
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-
-  return response.json();
+export async function getCoursesDropdown(): Promise<CourseOption[]> {
+  const data = await getCourses(1, 200);
+  return data.courses
+    .map((c) => ({ value: String(c.id), label: `${c.code || ""} ${c.name || ""}`.trim() }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export async function getCourses(page = 1, pageSize = 50): Promise<CourseListResponse> {
-  return fetchApi<CourseListResponse>(`/api/courses?page=${page}&page_size=${pageSize}`);
+  // The API caps page_size at 100. Aggregate all pages so callers always
+  // receive the complete course list (requested page/size act as the start).
+  const size = Math.min(pageSize, 100);
+  const first = await fetchApi<CourseListResponse>(
+    `/api/courses?page=${page}&page_size=${size}`
+  );
+  const courses = [...(first.courses ?? [])];
+  let nextPage = page + 1;
+  while (courses.length < first.total) {
+    const res = await fetchApi<CourseListResponse>(
+      `/api/courses?page=${nextPage}&page_size=${size}`
+    );
+    if (!res.courses || res.courses.length === 0) break;
+    courses.push(...res.courses);
+    nextPage += 1;
+  }
+  return { courses, total: first.total };
 }
 
 export async function getCourse(id: string): Promise<Course> {

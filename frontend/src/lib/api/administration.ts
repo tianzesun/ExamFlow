@@ -1,15 +1,9 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { fetchApi, API_BASE } from "./client";
 
 export async function generateQr(examId: string): Promise<{ generated: number }> {
-  const response = await fetch(`${API_BASE}/api/exams/${examId}/qr/generate`, {
+  return fetchApi<{ generated: number }>(`/api/exams/${examId}/qr/generate`, {
     method: "POST",
-    credentials: "include",
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
 }
 
 export function getSignatureListUrl(examId: string, roomId: string): string {
@@ -21,15 +15,9 @@ export function getSeatingMapUrl(examId: string, roomId: string): string {
 }
 
 export async function generatePackage(examId: string): Promise<{ filename: string; size: number }> {
-  const response = await fetch(`${API_BASE}/api/exams/${examId}/package/generate`, {
+  return fetchApi<{ filename: string; size: number }>(`/api/exams/${examId}/package/generate`, {
     method: "POST",
-    credentials: "include",
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
 }
 
 export function getPackageDownloadUrl(examId: string): string {

@@ -105,14 +105,16 @@ export default function CoursesPage() {
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
   const loadData = () => {
-    Promise.all([getCourses(1, 100), getExams({}, 1, 200)])
-      .then(([cs, es]) => {
+    getCourses(1, 100)
+      .then((cs) => {
         setCourses(cs.courses ?? []);
         setTotal(cs.total ?? 0);
-        setExams(es.exams ?? []);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
+    getExams({}, 1, 100)
+      .then((es) => setExams(es.exams ?? []))
+      .catch(() => {});
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -345,8 +347,15 @@ export default function CoursesPage() {
                       aria-expanded={isOpen}
                     >
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                              toggle(dept);
+                            }
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(dept);
@@ -359,7 +368,7 @@ export default function CoursesPage() {
                           ) : (
                             <ChevronRight className="h-3.5 w-3.5" />
                           )}
-                        </button>
+                        </div>
                         <span className="text-sm font-medium text-ink">
                           {dept}
                         </span>

@@ -76,7 +76,7 @@ export default function ExamsPage() {
   useEffect(() => {
     const filters: ExamFilters = {};
     if (courseFilter) filters.course_id = courseFilter;
-    Promise.all([getExams(filters, 1, 200), getCourses(1, 100)])
+    Promise.all([getExams(filters, 1, 100), getCourses(1, 100)])
       .then(([examRes]) => {
         setExams(examRes.exams ?? []);
         setTotal(examRes.total ?? 0);
@@ -378,7 +378,7 @@ function KanbanCard({
             value: s,
             label: COLUMN_META[s].label,
           }))}
-          className="h-7 w-full text-xs"
+          className="h-9 text-xs w-auto"
         />
       </div>
 
@@ -457,7 +457,7 @@ function ExamsTable({
                       value: s,
                       label: COLUMN_META[s].label,
                     }))}
-                    className="h-7 text-xs"
+                    className="h-9 text-xs"
                   />
                 </td>
               </tr>

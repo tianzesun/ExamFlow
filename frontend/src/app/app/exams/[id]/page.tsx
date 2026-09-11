@@ -83,6 +83,20 @@ export default function ExamDetailPage() {
     return cleanup;
   }, [fetchData]);
 
+
+
+  // Inspect boxes: hide after use
+  {
+    const debug = false;
+    if (debug) {
+      const boxes = [
+        { name: "layout main", cls: "min-h-screen bg-ink-950 text-ink-50 p-4 sm:p-6 lg:p-8" },
+        { name: "main inner", cls: "mx-auto max-w-7xl" },
+      ];
+      console.log("LAYOUT BOXES:", JSON.stringify(boxes, null, 2));
+    }
+  }
+
   const handleStatusChange = async (newStatus: string) => {
     if (!exam) return;
     setUpdating(true);
@@ -169,9 +183,9 @@ export default function ExamDetailPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <Card>
-          <CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="w-full">
+          <CardContent className="w-full">
             <h2 className="text-lg font-medium text-black dark:text-white">Exam Details</h2>
             <dl className="mt-4 space-y-3">
               <div><dt className="text-sm text-zinc-500">Course</dt><dd className="text-sm font-medium text-black dark:text-white">{exam.course_code} — {exam.course_name}</dd></div>
@@ -206,10 +220,10 @@ export default function ExamDetailPage() {
       </div>
 
       {/* Exam Template Section */}
-      <Card>
-        <CardContent>
-          <h2 className="text-lg font-medium text-black dark:text-white flex items-center gap-2">
-            <FileText className="h-5 w-5 text-zinc-400" />
+      <Card className="w-full">
+        <CardContent className="w-full">
+          <h2 className="text-lg font-medium text-black dark:text-white flex items-center gap-2 w-full">
+            <FileText className="h-5 w-5 text-zinc-400 shrink-0" />
             Exam Template (Crowdmark)
           </h2>
           {activeTemplate ? (

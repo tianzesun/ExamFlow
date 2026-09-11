@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth/context";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/card";
+import { fetchApi } from "@/lib/api/client";
 import { PageLoader } from "@/components/spinner";
 import { ShieldCheck, AlertCircle, CheckCircle } from "lucide-react";
 
@@ -21,13 +22,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (user?.role === "ADMIN") {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/admin/test`, {
-        credentials: "include",
-      })
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to access admin endpoint");
-          return res.json();
-        })
+      fetchApi<{ message: string }>("/api/admin/test")
         .then((data) => setAdminTest(data.message))
         .catch((err) => setError(err.message));
     }

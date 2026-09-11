@@ -21,7 +21,9 @@ export default function LoginPage() {
   useEffect(() => {
     getDevTokens()
       .then((t) => setTokens(t))
-      .catch(() => setError("Failed to load dev tokens"))
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Failed to load dev tokens")
+      )
       .finally(() => setLoading(false));
   }, []);
 
