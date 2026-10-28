@@ -371,6 +371,36 @@ body {
   transition: transform 0.18s cubic-bezier(0.34, 0.69, 0.5, 1.22);
 }
 
+/* Seat map: hatched tile for seats that are not in use */
+.seat-blocked {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--surface-2) 0 6px,
+    var(--surface-hover) 6px 12px
+  );
+}
+
+/* Seat map: print only the proctor sheet, not the app chrome */
+@media print {
+  body {
+    background: #fff;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+    color: #000;
+  }
+  .print-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0 8mm;
+  }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

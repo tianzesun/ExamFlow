@@ -19,7 +19,7 @@ import { Select } from "@/components/select";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
-import { AlertCircle, CheckCircle, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle, AlertTriangle, LayoutGrid, Plus, Trash2 } from "lucide-react";
 
 type PreviewData = {
   students: number; rooms: number; available_seats: number; assigned: number; unused: number;
@@ -171,9 +171,17 @@ export default function SeatingPage() {
     <div className="space-y-6">
       <Link href={`/app/exams/${examId}`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">← Back to Exam</Link>
 
-      <div>
-        <h1 className="text-2xl font-bold text-black dark:text-white">Seating Assignment</h1>
-        {exam && <p className="text-sm text-zinc-500">{exam.course_code} — {exam.exam_name}</p>}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-black dark:text-white">Seating Assignment</h1>
+          {exam && <p className="text-sm text-zinc-500">{exam.course_code} — {exam.exam_name}</p>}
+        </div>
+        <Link href={`/app/exams/${examId}/seat-map`}>
+          <Button variant="primary">
+            <LayoutGrid className="h-4 w-4" />
+            Open Seat Map
+          </Button>
+        </Link>
       </div>
 
       {error && (

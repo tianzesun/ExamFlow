@@ -6,6 +6,47 @@ from app.models.audit_log import AuditLog
 from app.models.room import Room
 from app.models.seat import Seat
 
+SEATS_PER_ROW = 10
+
+
+def _row_label(row: int) -> str:
+    """1 -> A, 26 -> Z, 27 -> AA (spreadsheet-style)."""
+    label = ""
+    while row > 0:
+        row, rem = divmod(row - 1, 26)
+        label = chr(65 + rem) + label
+    return label
+
+
+def _build_seat(room_id: UUID, index: int) -> Seat:
+    row, col = divmod(index, SEATS_PER_ROW)
+    return Seat(
+        room_id=room_id,
+        seat_code=f"{_row_label(row + 1)}{col + 1:02d}",
+        row_number=row + 1,
+        column_number=col + 1,
+    )
+
+
+def _sync_seats(db: Session, room: Room, capacity: int) -> None:
+    """Grow or shrink the seat grid to match capacity. Refuses to drop seats that are assigned."""
+    from app.models.exam_assignment import ExamAssignment
+
+    seats = get_room_seats(db, room.id)
+    if capacity > len(seats):
+        for index in range(len(seats), capacity):
+            db.add(_build_seat(room.id, index))
+        return
+
+    extra = seats[capacity:]
+    if not extra:
+        return
+    extra_ids = [s.id for s in extra]
+    if db.query(ExamAssignment.id).filter(ExamAssignment.seat_id.in_(extra_ids)).first():
+        raise ValueError("Cannot reduce capacity: seats being removed are assigned to students")
+    for seat in extra:
+        db.delete(seat)
+
 
 def create_room(db: Session, building: str, room_number: str, capacity: int, user_id: UUID) -> Room:
     existing = db.query(Room).filter(Room.building == building, Room.room_number == room_number).first()
@@ -16,12 +57,8 @@ def create_room(db: Session, building: str, room_number: str, capacity: int, use
     db.add(room)
     db.flush()
 
-    for row in range(1, min(capacity // 10 + 2, 20)):
-        for col in range(1, min(11, capacity + 1)):
-            seat_code = f"{chr(64 + row)}{col:02d}"
-            if (row - 1) * 10 + col > capacity:
-                break
-            db.add(Seat(room_id=room.id, seat_code=seat_code, row_number=row, column_number=col))
+    for index in range(capacity):
+        db.add(_build_seat(room.id, index))
 
     db.add(AuditLog(
         user_id=user_id,
@@ -89,6 +126,7 @@ def update_room(
         room.room_number = room_number
     if capacity is not None and capacity != room.capacity:
         old_values["capacity"] = room.capacity
+        _sync_seats(db, room, capacity)
         room.capacity = capacity
     if is_active is not None and is_active != room.is_active:
         old_values["is_active"] = room.is_active

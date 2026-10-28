@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
@@ -15,13 +15,13 @@ router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 class RoomCreate(BaseModel):
     building: str
     room_number: str
-    capacity: int
+    capacity: int = Field(..., gt=0, le=2000)
 
 
 class RoomUpdate(BaseModel):
     building: str | None = None
     room_number: str | None = None
-    capacity: int | None = None
+    capacity: int | None = Field(None, gt=0, le=2000)
     is_active: bool | None = None
 
 
@@ -88,14 +88,17 @@ def update_room(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN")),
 ):
-    room = room_service.update_room(
-        db, room_id,
-        building=data.building,
-        room_number=data.room_number,
-        capacity=data.capacity,
-        is_active=data.is_active,
-        user_id=user.id,
-    )
+    try:
+        room = room_service.update_room(
+            db, room_id,
+            building=data.building,
+            room_number=data.room_number,
+            capacity=data.capacity,
+            is_active=data.is_active,
+            user_id=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     if not room:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
     return room

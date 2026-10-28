@@ -468,8 +468,11 @@ def get_assignments(db: Session, exam_id: UUID) -> list[dict]:
     return results
 
 
-def remove_assignment(db: Session, assignment_id: UUID, user_id: UUID) -> bool:
-    assignment = db.query(ExamAssignment).filter(ExamAssignment.id == assignment_id).first()
+def remove_assignment(db: Session, exam_id: UUID, assignment_id: UUID, user_id: UUID) -> bool:
+    assignment = db.query(ExamAssignment).filter(
+        ExamAssignment.id == assignment_id,
+        ExamAssignment.exam_id == exam_id,
+    ).first()
     if not assignment:
         return False
 
@@ -483,3 +486,157 @@ def remove_assignment(db: Session, assignment_id: UUID, user_id: UUID) -> bool:
     db.delete(assignment)
     db.commit()
     return True
+
+
+# ── Seat Map / Manual Seating ───────────────────────────────
+
+def get_seat_map(db: Session, exam_id: UUID) -> list[dict]:
+    rooms = get_exam_rooms(db, exam_id)
+    if not rooms:
+        return []
+
+    rows = (
+        db.query(Seat, ExamAssignment, Student)
+        .outerjoin(
+            ExamAssignment,
+            (ExamAssignment.seat_id == Seat.id) & (ExamAssignment.exam_id == exam_id),
+        )
+        .outerjoin(ExamStudent, ExamAssignment.exam_student_id == ExamStudent.id)
+        .outerjoin(Student, ExamStudent.student_id == Student.id)
+        .filter(Seat.room_id.in_([r.id for r in rooms]))
+        .order_by(Seat.row_number, Seat.column_number)
+        .all()
+    )
+
+    seats_by_room: dict[UUID, list[dict]] = {r.id: [] for r in rooms}
+    for seat, assignment, student in rows:
+        seats_by_room[seat.room_id].append({
+            "id": str(seat.id),
+            "seat_code": seat.seat_code,
+            "row_number": seat.row_number,
+            "column_number": seat.column_number,
+            "is_usable": seat.is_usable,
+            "occupant": {
+                "assignment_id": str(assignment.id),
+                "student_id": str(student.id),
+                "student_number": student.student_number,
+                "full_name": student.full_name,
+                "method": assignment.assignment_method,
+            } if assignment else None,
+        })
+
+    result = []
+    for room in rooms:
+        seats = seats_by_room[room.id]
+        result.append({
+            "id": str(room.id),
+            "building": room.building,
+            "room_number": room.room_number,
+            "capacity": room.capacity,
+            "rows": max((s["row_number"] or 0 for s in seats), default=0),
+            "columns": max((s["column_number"] or 0 for s in seats), default=0),
+            "usable_seats": sum(1 for s in seats if s["is_usable"]),
+            "occupied_seats": sum(1 for s in seats if s["occupant"]),
+            "seats": seats,
+        })
+    return result
+
+
+def get_unassigned_students(db: Session, exam_id: UUID) -> list[dict]:
+    assigned = db.query(ExamAssignment.exam_student_id).filter(ExamAssignment.exam_id == exam_id)
+    rows = (
+        db.query(Student)
+        .join(ExamStudent, ExamStudent.student_id == Student.id)
+        .filter(ExamStudent.exam_id == exam_id, ~ExamStudent.id.in_(assigned))
+        .order_by(Student.student_number)
+        .all()
+    )
+    return [
+        {"student_id": str(s.id), "student_number": s.student_number, "full_name": s.full_name}
+        for s in rows
+    ]
+
+
+def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, user_id: UUID) -> dict:
+    """Put a student in a seat. Empty seat: assign or move. Occupied seat: swap the two students."""
+    exam_student = db.query(ExamStudent).filter(
+        ExamStudent.exam_id == exam_id,
+        ExamStudent.student_id == student_id,
+    ).first()
+    if not exam_student:
+        raise ValueError("Student not in exam roster")
+
+    seat = db.query(Seat).filter(Seat.id == seat_id, Seat.is_usable).first()
+    if not seat:
+        raise ValueError("Seat not found or not usable")
+    if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == seat.room_id).first():
+        raise ValueError("Seat is not in a room selected for this exam")
+
+    current = db.query(ExamAssignment).filter(
+        ExamAssignment.exam_id == exam_id,
+        ExamAssignment.exam_student_id == exam_student.id,
+    ).first()
+    occupant = db.query(ExamAssignment).filter(
+        ExamAssignment.exam_id == exam_id,
+        ExamAssignment.seat_id == seat_id,
+    ).first()
+
+    if current and occupant and current.id == occupant.id:
+        return {"action": "unchanged"}
+    if occupant and not current:
+        raise ValueError("Seat is occupied. Choose an empty seat or unassign that student first.")
+
+    new_version = (db.query(func.max(ExamAssignment.version)).filter(
+        ExamAssignment.exam_id == exam_id
+    ).scalar() or 0) + 1
+
+    old_values: dict = {}
+    new_values: dict = {"seat_id": str(seat_id)}
+    if occupant:
+        # Unique constraints are checked per row, so free the target seat before moving into it.
+        other_exam_student_id = occupant.exam_student_id
+        vacated_seat_id = current.seat_id
+        db.delete(occupant)
+        db.flush()
+        current.seat_id = seat_id
+        current.assignment_method = "MANUAL"
+        current.version = new_version
+        db.flush()
+        db.add(ExamAssignment(
+            exam_id=exam_id,
+            exam_student_id=other_exam_student_id,
+            seat_id=vacated_seat_id,
+            assignment_method="MANUAL",
+            version=new_version,
+        ))
+        action = "swapped"
+        old_values["seat_id"] = str(vacated_seat_id)
+        new_values["swapped_with_seat_id"] = str(vacated_seat_id)
+    elif current:
+        old_values["seat_id"] = str(current.seat_id)
+        current.seat_id = seat_id
+        current.assignment_method = "MANUAL"
+        current.version = new_version
+        action = "moved"
+    else:
+        current = ExamAssignment(
+            exam_id=exam_id,
+            exam_student_id=exam_student.id,
+            seat_id=seat_id,
+            assignment_method="MANUAL",
+            version=new_version,
+        )
+        db.add(current)
+        db.flush()
+        action = "assigned"
+
+    db.add(AuditLog(
+        user_id=user_id,
+        action={"assigned": "SEAT_ASSIGNED", "moved": "SEAT_MOVED", "swapped": "SEATS_SWAPPED"}[action],
+        entity_type="exam_assignment",
+        entity_id=current.id,
+        old_values=old_values or None,
+        new_values=new_values,
+    ))
+    db.commit()
+    return {"action": action}

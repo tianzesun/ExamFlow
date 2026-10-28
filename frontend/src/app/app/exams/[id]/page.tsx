@@ -175,6 +175,9 @@ export default function ExamDetailPage() {
         <Link href={`/app/exams/${exam.id}/seating`}>
           <Button variant="secondary">Seating</Button>
         </Link>
+        <Link href={`/app/exams/${exam.id}/seat-map`}>
+          <Button variant="secondary">Seat Map</Button>
+        </Link>
         <Link href={`/app/exams/${exam.id}/documents`}>
           <Button variant="secondary">Documents</Button>
         </Link>
@@ -321,9 +324,16 @@ export default function ExamDetailPage() {
         <CardContent>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-black dark:text-white">Seating Assignment</h2>
-            <Link href={`/app/exams/${exam.id}/seating`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">
-              {summary && summary.assigned_students > 0 ? "View Details →" : "Configure →"}
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link href={`/app/exams/${exam.id}/seating`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">
+                {summary && summary.assigned_students > 0 ? "View Details →" : "Configure →"}
+              </Link>
+              {summary && summary.assigned_students > 0 && (
+                <Link href={`/app/exams/${exam.id}/seat-map`} className="text-sm font-medium text-accent hover:text-accent-strong">
+                  Open Seat Map →
+                </Link>
+              )}
+            </div>
           </div>
           {summary ? (
             <div className="mt-3 grid grid-cols-4 gap-4 text-sm">

@@ -96,3 +96,58 @@ export async function assignSeat(examId: string, studentId: string, seatId: stri
 export async function removeAssignment(examId: string, assignmentId: string): Promise<void> {
   await fetchApi(`/api/exams/${examId}/assignments/${assignmentId}`, { method: "DELETE" });
 }
+
+export interface SeatOccupant {
+  assignment_id: string;
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  method: string;
+}
+
+export interface SeatMapSeat {
+  id: string;
+  seat_code: string;
+  row_number: number | null;
+  column_number: number | null;
+  is_usable: boolean;
+  occupant: SeatOccupant | null;
+}
+
+export interface SeatMapRoom {
+  id: string;
+  building: string;
+  room_number: string;
+  capacity: number;
+  rows: number;
+  columns: number;
+  usable_seats: number;
+  occupied_seats: number;
+  seats: SeatMapSeat[];
+}
+
+export interface UnassignedStudent {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+}
+
+export async function getSeatMap(examId: string): Promise<{ rooms: SeatMapRoom[] }> {
+  return fetchApi(`/api/exams/${examId}/assignments/seat-map`);
+}
+
+export async function getUnassignedStudents(examId: string): Promise<{ students: UnassignedStudent[] }> {
+  return fetchApi(`/api/exams/${examId}/assignments/unassigned`);
+}
+
+/** Seat a student. Empty seat: assign or move. Occupied seat: swap the two students. */
+export async function moveStudent(
+  examId: string,
+  studentId: string,
+  seatId: string,
+): Promise<{ action: "assigned" | "moved" | "swapped" | "unchanged" }> {
+  return fetchApi(`/api/exams/${examId}/assignments/move`, {
+    method: "POST",
+    body: JSON.stringify({ student_id: studentId, seat_id: seatId }),
+  });
+}

@@ -21,6 +21,7 @@ const LABEL: Record<string, string> = {
   admin: "Admin",
   roster: "Roster",
   seating: "Seating",
+  "seat-map": "Seat Map",
   documents: "Documents",
   administration: "Administration",
 };

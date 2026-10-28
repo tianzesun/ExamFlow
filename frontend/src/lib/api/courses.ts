@@ -1,4 +1,5 @@
 import { fetchApi } from "./client";
+import type { Course, CourseListResponse } from "../types";
 export interface CourseOption {
   value: string;
   label: string;
@@ -7,7 +8,7 @@ export interface CourseOption {
 export async function getCoursesDropdown(): Promise<CourseOption[]> {
   const data = await getCourses(1, 200);
   return data.courses
-    .map((c) => ({ value: String(c.id), label: `${c.code || ""} ${c.name || ""}`.trim() }))
+    .map((c) => ({ value: String(c.id), label: `${c.course_code} ${c.course_name}`.trim() }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 

@@ -147,6 +147,39 @@ def regenerate_assignment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+# ── Seat Map / Manual Seating ───────────────────────────────
+
+@router.get("/seat-map")
+def get_seat_map(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return {"rooms": assignment_service.get_seat_map(db, exam_id)}
+
+
+@router.get("/unassigned")
+def list_unassigned(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return {"students": assignment_service.get_unassigned_students(db, exam_id)}
+
+
+@router.post("/move")
+def move_student(
+    exam_id: UUID,
+    data: AssignRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    try:
+        return assignment_service.move_student(db, exam_id, data.student_id, data.seat_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 # ── List / Search ───────────────────────────────────────────
 
 @router.get("", response_model=AssignmentListResponse)
@@ -193,5 +226,5 @@ def remove_assignment(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
-    if not assignment_service.remove_assignment(db, assignment_id, user.id):
+    if not assignment_service.remove_assignment(db, exam_id, assignment_id, user.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
