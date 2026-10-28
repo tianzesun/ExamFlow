@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AlertCircle } from "lucide-react";
 import { createCourse } from "@/lib/api/courses";
-import { Card, CardContent, Input, Button } from "@/components";
+import { Input, Button, PageHeader, PageContainer } from "@/components";
 
 export default function NewCoursePage() {
   const router = useRouter();
@@ -19,59 +20,73 @@ export default function NewCoursePage() {
     try {
       await createCourse(form);
       router.push("/app/courses");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create course");
+    } catch {
+      setError("We couldn't create this course. Check that the course code isn't already in use and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-lg space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-black dark:text-white">Create Course</h1>
-        <p className="text-sm text-zinc-500">Add a new course to the system</p>
-      </div>
+    <PageContainer className="space-y-6">
+      <div className="mx-auto w-full max-w-2xl space-y-6">
+        <PageHeader title="Create course" description="Add a course that isn't available from the Timetable Builder sync." />
 
-      <Card>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="surface-card">
+          <section className="space-y-4 px-5 py-5 sm:px-6">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Course details</h2>
+              <p className="text-xs text-ink-3">Use the official code as it appears in the academic calendar.</p>
+            </div>
             <Input
-              label="Course Code"
-              placeholder="e.g. CSC108"
+              label="Course code"
+              placeholder="e.g. CSC108H5"
               value={form.course_code}
               onChange={(e) => setForm({ ...form, course_code: e.target.value })}
+              className="font-mono"
+              autoComplete="off"
               required
             />
             <Input
-              label="Course Name"
-              placeholder="e.g. Introduction to Computer Science"
+              label="Course name"
+              placeholder="e.g. Introduction to Computer Programming"
               value={form.course_name}
               onChange={(e) => setForm({ ...form, course_name: e.target.value })}
               required
             />
+          </section>
+
+          <section className="space-y-4 border-t border-line px-5 py-5 sm:px-6">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Organization</h2>
+              <p className="text-xs text-ink-3">Courses are grouped by department on the course list.</p>
+            </div>
             <Input
               label="Department"
               placeholder="e.g. Computer Science"
+              hint="Optional"
               value={form.department}
               onChange={(e) => setForm({ ...form, department: e.target.value })}
             />
+          </section>
 
-            {error && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          {error && (
+            <div className="px-5 pb-5 sm:px-6">
+              <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 {error}
               </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" loading={loading}>Create Course</Button>
-              <Link href="/app/courses">
-                <Button variant="secondary" type="button">Cancel</Button>
-              </Link>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          )}
+
+          <div className="flex justify-end gap-2 border-t border-line bg-surface-2 px-5 py-3 sm:px-6 rounded-b-[inherit]">
+            <Link href="/app/courses">
+              <Button variant="secondary" type="button">Cancel</Button>
+            </Link>
+            <Button type="submit" loading={loading}>Create course</Button>
+          </div>
+        </form>
+      </div>
+    </PageContainer>
   );
 }

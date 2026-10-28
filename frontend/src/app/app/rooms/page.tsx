@@ -9,14 +9,12 @@ import {
   Building2,
   Users,
   CheckCircle2,
-  XCircle,
   LayoutGrid,
   List,
-  MapPin,
+  Armchair,
 } from "lucide-react";
 import { getRooms, getRoomSeats, type Room, type Seat } from "@/lib/api/rooms";
 import {
-  Card,
   Badge,
   Button,
   Table,
@@ -27,46 +25,18 @@ import {
   EmptyState,
   StatCard,
   Skeleton,
-  SkeletonRow,
-  SeatMapThumb,
-  Tabs,
-  TabsList,
-  TabsTrigger,
+  PageContainer,
+  PageHeader,
 } from "@/components";
 import { PageTransition } from "@/components/page-transition";
 import { useAuth } from "@/lib/auth/context";
+import { formatNumber, plural } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
-const buildingInitials = (name: string) =>
-  name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+type Occupancy = { assigned: number; total: number; pct: number };
+type View = "grid" | "table";
 
-const roomLabel = (room: Room) => `${room.building} ${room.room_number}`.trim();
-
-/* Capacity tier used by the capacity bar + heatmap. */
-function capacityTier(cap: number): "low" | "mid" | "high" {
-  if (cap >= 120) return "high";
-  if (cap >= 60) return "mid";
-  return "low";
-}
-
-const TIER_BAR: Record<"low" | "mid" | "high", string> = {
-  low: "bg-warning",
-  mid: "bg-accent",
-  high: "bg-violet",
-};
-
-function occupancyTier(pct: number): { bg: string; label: string } {
-  if (pct >= 100) return { bg: "var(--danger)", label: "Full" };
-  if (pct >= 66) return { bg: "var(--violet)", label: "High" };
-  if (pct >= 33) return { bg: "var(--accent)", label: "Medium" };
-  if (pct > 0) return { bg: "var(--success)", label: "Low" };
-  return { bg: "var(--ink-3)", label: "Empty" };
-}
+const ALL_BUILDINGS = "__all__";
 
 export default function RoomsPage() {
   const { user } = useAuth();
@@ -75,14 +45,12 @@ export default function RoomsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [building, setBuilding] = useState(ALL_BUILDINGS);
   const [showInactive, setShowInactive] = useState(false);
-  const [view, setView] = useState<"grid" | "table">("grid");
+  const [view, setView] = useState<View>("grid");
 
   useEffect(() => {
-    Promise.all([
-      getRooms(1, 100),
-      fetchSeats(),
-    ])
+    Promise.all([getRooms(1, 100), fetchSeats()])
       .then(([roomsRes, seats]) => {
         setRooms(roomsRes.rooms ?? []);
         setTotal(roomsRes.total ?? 0);
@@ -107,36 +75,9 @@ export default function RoomsPage() {
 
   const canCreate = user?.role === "ADMIN";
 
-  const stats = useMemo(() => {
-    const active = rooms.filter((r) => r.is_active);
-    const totalCapacity = active.reduce(
-      (acc, r) => acc + (r.capacity || 0),
-      0
-    );
-    return {
-      activeCount: active.length,
-      inactiveCount: rooms.length - active.length,
-      totalCapacity,
-      maxCapacity: Math.max(1, ...rooms.map((r) => r.capacity || 0)),
-    };
-  }, [rooms]);
-
-  const filteredRooms = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return rooms.filter((room) => {
-      const matchesSearch =
-        q.length === 0 ||
-        room.building.toLowerCase().includes(q) ||
-        String(room.room_number).toLowerCase().includes(q);
-      const matchesStatus = showInactive || room.is_active;
-      return matchesSearch && matchesStatus;
-    });
-  }, [rooms, searchQuery, showInactive]);
-
   // Occupancy derived from fetched seat assignments.
   const occupancy = useMemo(() => {
-    const map: Record<string, { assigned: number; total: number; pct: number }> =
-      {};
+    const map: Record<string, Occupancy> = {};
     for (const r of rooms) {
       const seats = seatMap[r.id] ?? [];
       const assigned = seats.filter((s) => s.status === "ASSIGNED").length;
@@ -147,388 +88,364 @@ export default function RoomsPage() {
     return map;
   }, [rooms, seatMap]);
 
+  const stats = useMemo(() => {
+    const active = rooms.filter((r) => r.is_active);
+    const totalCapacity = active.reduce((acc, r) => acc + (r.capacity || 0), 0);
+    const buildings = new Set(rooms.map((r) => r.building)).size;
+    let assigned = 0;
+    let seats = 0;
+    for (const r of active) {
+      assigned += occupancy[r.id]?.assigned ?? 0;
+      seats += occupancy[r.id]?.total ?? 0;
+    }
+    return {
+      activeCount: active.length,
+      inactiveCount: rooms.length - active.length,
+      totalCapacity,
+      buildings,
+      assigned,
+      seats,
+    };
+  }, [rooms, occupancy]);
+
+  // Building options, most rooms first, then alphabetical.
+  const buildingOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of rooms) counts.set(r.building, (counts.get(r.building) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [rooms]);
+
+  const filteredRooms = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rooms
+      .filter((room) => {
+        const matchesSearch =
+          q.length === 0 ||
+          room.building.toLowerCase().includes(q) ||
+          String(room.room_number).toLowerCase().includes(q) ||
+          `${room.building} ${room.room_number}`.toLowerCase().includes(q);
+        const matchesBuilding = building === ALL_BUILDINGS || room.building === building;
+        const matchesStatus = showInactive || room.is_active;
+        return matchesSearch && matchesBuilding && matchesStatus;
+      })
+      .sort(
+        (a, b) =>
+          a.building.localeCompare(b.building) ||
+          String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true })
+      );
+  }, [rooms, searchQuery, building, showInactive]);
+
+  const hasFilters = searchQuery.trim() !== "" || building !== ALL_BUILDINGS;
+
+  const createButton = canCreate ? (
+    <Link href="/app/rooms/new">
+      <Button>
+        <Plus /> New room
+      </Button>
+    </Link>
+  ) : undefined;
+
   return (
     <PageTransition>
-      <div className="animate-fade-in flex h-full flex-col">
-        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-          {/* Page header */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold tracking-tight text-ink">Rooms</h1>
-                {!loading && rooms.length > 0 && (
-                  <span className="tnum rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
-                    {total}
-                  </span>
-                )}
-              </div>
-              <p className="tnum mt-1 text-sm text-ink-2">
-                {total} room{total !== 1 ? "s" : ""} in the system
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "table")}>
-              <TabsList>
-                <TabsTrigger value="grid">
-                  <LayoutGrid className="h-4 w-4" /> Grid
-                </TabsTrigger>
-                <TabsTrigger value="table">
-                  <List className="h-4 w-4" /> Table
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {canCreate && (
-              <Link href="/app/rooms/new">
-                <Button>
-                  <Plus className="h-4 w-4" /> Create Room
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
+      <PageContainer className="space-y-6">
+        <PageHeader
+          title="Rooms"
+          meta={
+            !loading && rooms.length > 0 ? (
+              <span className="tnum rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-ink-2">
+                {formatNumber(total)}
+              </span>
+            ) : undefined
+          }
+          description="Examination rooms, their capacity and current seat assignments."
+          actions={createButton}
+        />
 
-      {loading ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-22 w-full" />
-            ))}
-          </div>
-          <Skeleton className="h-10 w-full" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonRow key={i} lines={3} />
-            ))}
-          </div>
-        </div>
-      ) : rooms.length === 0 ? (
-        <Card className="p-10">
-          <EmptyState
-            icon={<DoorOpen className="h-6 w-6 text-ink-3" />}
-            title="No rooms yet"
-            description="Create your first room to get started"
-            action={
-              canCreate ? (
-                <Link href="/app/rooms/new">
-                  <Button>
-                    <Plus className="h-4 w-4" /> Create Room
-                  </Button>
-                </Link>
-              ) : undefined
-            }
-          />
-        </Card>
-      ) : (
-        <>
-          {/* KPI cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard
-              icon={DoorOpen}
-              label="Total Rooms"
-              value={rooms.length}
-              color="accent"
-            />
-            <StatCard
-              icon={CheckCircle2}
-              label="Active"
-              value={stats.activeCount}
-              color="success"
-            />
-            <StatCard
-              icon={XCircle}
-              label="Inactive"
-              value={stats.inactiveCount}
-              color={stats.inactiveCount > 0 ? "warning" : "neutral"}
-            />
-            <StatCard
-              icon={Users}
-              label="Total Capacity"
-              value={stats.totalCapacity}
-            />
-          </div>
-
-          {/* Occupancy heatmap */}
-          <OccupancyHeatmap rooms={filteredRooms} occupancy={occupancy} />
-
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 sm:max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-              <input
-                type="text"
-                placeholder="Search rooms..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md border border-line bg-surface px-3 py-1.5 pl-8 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
-              />
-            </div>
-            <button
-              onClick={() => setShowInactive((v) => !v)}
-              className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                showInactive
-                  ? "border-line bg-surface-2 text-ink"
-                  : "border-line bg-surface text-ink-3"
-              }`}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Inactive
-            </button>
-            <span className="tnum ml-auto text-xs text-ink-3">
-              {filteredRooms.length} of {rooms.length}
-            </span>
-          </div>
-
-          {filteredRooms.length === 0 ? (
-            <Card className="p-10">
-              <EmptyState
-                icon={<Search className="h-5 w-5 text-ink-3" />}
-                title="No rooms match your search"
-              />
-            </Card>
-          ) : view === "grid" ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredRooms.map((room) => (
-                <RoomGridCard
-                  key={room.id}
-                  room={room}
-                  seats={seatMap[room.id] ?? []}
-                  occ={occupancy[room.id]}
-                  maxCapacity={stats.maxCapacity}
-                />
+        {loading ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-[104px] w-full rounded-xl" />
               ))}
             </div>
-          ) : (
-            <Card>
-              <Table>
-                <TableHead>
-                  <Th>Room</Th>
-                  <Th>Building</Th>
-                  <Th>Capacity</Th>
-                  <Th>Occupancy</Th>
-                  <Th>Status</Th>
-                </TableHead>
-                <TableBody>
-                  {filteredRooms.map((room) => {
-                    const occ = occupancy[room.id];
-                    const tier = capacityTier(room.capacity);
-                    return (
-                      <tr
-                        key={room.id}
-                        className="group transition-colors hover:bg-surface-hover"
+            <Skeleton className="h-9 w-full rounded-lg" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-[120px] w-full rounded-xl" />
+              ))}
+            </div>
+          </div>
+        ) : rooms.length === 0 ? (
+          <div className="surface-card">
+            <EmptyState
+              icon={<DoorOpen className="h-5 w-5 text-ink-3" />}
+              title="No rooms yet"
+              description="Add an examination room to start planning seating."
+              action={createButton}
+            />
+          </div>
+        ) : (
+          <>
+            {/* KPI tiles */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <StatCard
+                icon={DoorOpen}
+                label="Rooms"
+                value={rooms.length}
+                color="accent"
+                hint={plural(stats.inactiveCount, "inactive room")}
+              />
+              <StatCard
+                icon={CheckCircle2}
+                label="Active"
+                value={stats.activeCount}
+                color="success"
+                hint={`${Math.round((stats.activeCount / Math.max(1, rooms.length)) * 100)}% of all rooms`}
+                progress={stats.activeCount / Math.max(1, rooms.length)}
+              />
+              <StatCard
+                icon={Building2}
+                label="Buildings"
+                value={stats.buildings}
+                color="violet"
+                hint="With at least one room"
+              />
+              <StatCard
+                icon={Users}
+                label="Active capacity"
+                value={formatNumber(stats.totalCapacity)}
+                hint={
+                  stats.seats > 0
+                    ? `${formatNumber(stats.assigned)} of ${plural(stats.seats, "seat")} assigned`
+                    : "No seats assigned yet"
+                }
+              />
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-full sm:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+                <input
+                  type="search"
+                  aria-label="Search rooms"
+                  placeholder="Search building or room…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-line-strong bg-surface pl-8 pr-3 text-sm text-ink shadow-[var(--shadow-sm)] placeholder:text-ink-3 hover:border-ink-3/50 focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
+                />
+              </div>
+              <select
+                aria-label="Filter by building"
+                value={building}
+                onChange={(e) => setBuilding(e.target.value)}
+                className="h-9 max-w-[14rem] rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink shadow-[var(--shadow-sm)] hover:border-ink-3/50 focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 [&>option]:bg-surface"
+              >
+                <option value={ALL_BUILDINGS}>All buildings</option>
+                {buildingOptions.map(([name, count]) => (
+                  <option key={name} value={name}>
+                    {name} ({count})
+                  </option>
+                ))}
+              </select>
+              <label className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink-2 shadow-[var(--shadow-sm)] hover:bg-surface-hover">
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--accent)]"
+                />
+                Show inactive
+                {stats.inactiveCount > 0 && (
+                  <span className="tnum text-xs text-ink-3">{stats.inactiveCount}</span>
+                )}
+              </label>
+
+              <div className="ml-auto flex items-center gap-3">
+                <span className="tnum hidden text-xs text-ink-3 sm:inline">
+                  {formatNumber(filteredRooms.length)} of {formatNumber(rooms.length)}
+                </span>
+                <SegmentedView value={view} onChange={setView} />
+              </div>
+            </div>
+
+            {filteredRooms.length === 0 ? (
+              <div className="surface-card">
+                <EmptyState
+                  icon={<Search className="h-5 w-5 text-ink-3" />}
+                  title="No rooms match these filters"
+                  description="Try a different search term or building."
+                  action={
+                    hasFilters ? (
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setSearchQuery("");
+                          setBuilding(ALL_BUILDINGS);
+                        }}
                       >
-                        <Td>
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface-2 text-[10px] font-bold uppercase tracking-wide text-accent">
-                              {buildingInitials(room.building)}
+                        Clear filters
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </div>
+            ) : view === "grid" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {filteredRooms.map((room) => (
+                  <RoomGridCard key={room.id} room={room} occ={occupancy[room.id]} />
+                ))}
+              </div>
+            ) : (
+              <div className="surface-card overflow-hidden">
+                <Table>
+                  <TableHead>
+                    <Th>Room</Th>
+                    <Th>Building</Th>
+                    <Th>Capacity</Th>
+                    <Th>Seats assigned</Th>
+                    <Th>Status</Th>
+                  </TableHead>
+                  <TableBody>
+                    {filteredRooms.map((room) => {
+                      const occ = occupancy[room.id];
+                      return (
+                        <tr key={room.id}>
+                          <Td>
+                            <span className="font-mono text-xs font-medium text-ink">
+                              {room.room_number}
                             </span>
-                            <div>
-                              <p className="font-medium text-ink">
-                                {room.room_number}
-                              </p>
-                              <p className="text-xs text-ink-2">
-                                {room.building}
-                              </p>
+                          </Td>
+                          <Td>
+                            <span className="text-ink-2">{room.building}</span>
+                          </Td>
+                          <Td>
+                            <span className="tnum text-ink">{formatNumber(room.capacity)}</span>
+                          </Td>
+                          <Td>
+                            <div className="flex items-center gap-2.5">
+                              <UtilisationBar occ={occ} className="w-24" />
+                              <span className="tnum text-xs text-ink-2">
+                                {occ && occ.total > 0
+                                  ? `${formatNumber(occ.assigned)}/${formatNumber(occ.total)}`
+                                  : "—"}
+                              </span>
                             </div>
-                          </div>
-                        </Td>
-                        <Td>
-                          <span className="inline-flex items-center gap-1.5 text-ink-2">
-                            <Building2 className="h-3.5 w-3.5 text-ink-3" />
-                            {room.building}
-                          </span>
-                        </Td>
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-hover">
-                              <div
-                                className={`h-full rounded-full ${TIER_BAR[tier]}`}
-                                style={{
-                                  width: `${Math.round(
-                                    (room.capacity / stats.maxCapacity) * 100
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="tnum text-ink-2">
-                              {room.capacity}
-                            </span>
-                          </div>
-                        </Td>
-                        <Td>
-                          {occ && occ.total > 0 ? (
-                            <span className="tnum text-ink-2">
-                              {occ.assigned}/{occ.total} ({occ.pct}%)
-                            </span>
-                          ) : (
-                            <span className="text-xs text-ink-3">No seats</span>
-                          )}
-                        </Td>
-                        <Td>
-                          <Badge variant={room.is_active ? "success" : "default"}>
-                            {room.is_active ? "Active" : "Inactive"}
-                          </Badge>
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </Card>
-          )}
-        </>
-      )}
-      </div>
-    </div>
+                          </Td>
+                          <Td>
+                            <Badge variant={room.is_active ? "success" : "default"}>
+                              {room.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </>
+        )}
+      </PageContainer>
     </PageTransition>
   );
 }
 
-/* ── Occupancy heatmap: each room is a colored cell by utilization ── */
-function OccupancyHeatmap({
-  rooms,
-  occupancy,
-}: {
-  rooms: Room[];
-  occupancy: Record<string, { assigned: number; total: number; pct: number }>;
-}) {
-  if (rooms.length === 0) return null;
+/* ── Grid / Table segmented control ── */
+function SegmentedView({ value, onChange }: { value: View; onChange: (v: View) => void }) {
+  const options: { value: View; label: string; icon: typeof List }[] = [
+    { value: "grid", label: "Grid", icon: LayoutGrid },
+    { value: "table", label: "Table", icon: List },
+  ];
   return (
-    <Card>
-      <div className="border-b border-line px-6 py-4">
-        <h3 className="text-sm font-semibold text-ink">Occupancy heatmap</h3>
-        <p className="mt-0.5 text-xs text-ink-3">
-          Room utilization based on assigned seats
-        </p>
-      </div>
-      <div className="px-6 py-5">
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
-          {rooms.map((room) => {
-            const occ = occupancy[room.id];
-            const pct = occ?.pct ?? 0;
-            const tier = occupancyTier(pct);
-            return (
-             <div
-                 key={room.id}
-                 title={`${roomLabel(room)} · ${pct}%`}
-                 className="flex aspect-square flex-col items-center justify-center rounded-md text-center transition-transform hover:scale-[1.03]"
-                 style={{ background: tier.bg }}
-               >
-               <span
-                 className={`tnum text-xs font-semibold ${
-                   pct >= 66 ? "text-white" : "text-ink"
-                 }`}
-               >
-                 {pct}%
-               </span>
-               <span
-                 className={`max-w-full truncate px-1 text-[10px] ${
-                   pct >= 66 ? "text-white/80" : "text-ink-2"
-                 }`}
-               >
-                 {room.room_number}
-               </span>
-             </div>
-            );
-          })}
-        </div>
-        {/* Legend */}
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-ink-3">
-          {[
-            { bg: "var(--success)", label: "Low" },
-            { bg: "var(--accent)", label: "Medium" },
-            { bg: "var(--violet)", label: "High" },
-            { bg: "var(--danger)", label: "Full" },
-          ].map((l) => (
-            <span key={l.label} className="inline-flex items-center gap-1.5">
-              <span
-                className="h-3 w-3 rounded"
-                style={{ background: l.bg }}
-              />
-              {l.label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </Card>
+    <div
+      role="radiogroup"
+      aria-label="View"
+      className="inline-flex h-9 items-center rounded-lg border border-line-strong bg-surface-2 p-0.5"
+    >
+      {options.map((o) => {
+        const active = value === o.value;
+        const Icon = o.icon;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "inline-flex h-full items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+              active
+                ? "bg-surface text-ink shadow-[var(--shadow-sm)] ring-1 ring-line"
+                : "text-ink-3 hover:text-ink"
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-/* ── Room grid card with capacity bar + seat thumbnail ── */
-function RoomGridCard({
-  room,
-  seats,
-  occ,
-  maxCapacity,
-}: {
-  room: Room;
-  seats: Seat[];
-  occ?: { assigned: number; total: number; pct: number };
-  maxCapacity: number;
-}) {
-  const tier = capacityTier(room.capacity);
+/* ── Slim utilisation bar; neutral track when nothing is assigned ── */
+function UtilisationBar({ occ, className }: { occ?: Occupancy; className?: string }) {
+  const pct = occ && occ.total > 0 ? occ.pct : 0;
+  const colour = pct >= 100 ? "bg-danger" : pct >= 80 ? "bg-warning" : "bg-accent";
   return (
-    <Card className="p-5 transition-shadow duration-200 hover:shadow-md">
+    <div
+      className={cn("h-1.5 overflow-hidden rounded-full bg-surface-hover", className)}
+      role="meter"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct}
+      aria-label="Seat utilisation"
+    >
+      {pct > 0 && (
+        <div
+          className={cn("h-full rounded-full transition-[width] duration-500", colour)}
+          style={{ width: `${Math.max(4, Math.min(100, pct))}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Compact room card ── */
+function RoomGridCard({ room, occ }: { room: Room; occ?: Occupancy }) {
+  const hasSeats = !!occ && occ.total > 0;
+  return (
+    <div className={cn("surface-card flex flex-col p-4", !room.is_active && "opacity-70")}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface-2 text-[11px] font-bold uppercase tracking-wide text-accent">
-            {buildingInitials(room.building)}
+        <div className="min-w-0">
+          <p className="truncate font-mono text-sm font-semibold text-ink">{room.room_number}</p>
+          <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-ink-2">
+            <Building2 className="h-3 w-3 shrink-0 text-ink-3" />
+            <span className="truncate">{room.building}</span>
+          </p>
+        </div>
+        {room.is_active ? (
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            Active
           </span>
-          <div className="min-w-0">
-            <p className="font-medium text-ink">{room.room_number}</p>
-            <p className="truncate text-xs text-ink-2">{room.building}</p>
-          </div>
-        </div>
-        <Badge variant={room.is_active ? "success" : "default"}>
-          {room.is_active ? "Active" : "Inactive"}
-        </Badge>
+        ) : (
+          <Badge>Inactive</Badge>
+        )}
       </div>
 
-      {/* Capacity bar */}
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-xs text-ink-3">
-          <span>Capacity</span>
-          <span className="tnum text-ink-2">{room.capacity} seats</span>
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div className="flex items-center gap-1.5 text-xs text-ink-3">
+          <Armchair className="h-3.5 w-3.5" />
+          <span className="tnum font-medium text-ink">{formatNumber(room.capacity)}</span>
+          {room.capacity === 1 ? "seat" : "seats"}
         </div>
-        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
-          <div
-            className={`h-full rounded-full transition-[width] duration-500 ${TIER_BAR[tier]}`}
-            style={{
-              width: `${Math.round((room.capacity / maxCapacity) * 100)}%`,
-            }}
-          />
-        </div>
+        <span className="tnum text-[11px] text-ink-3">
+          {hasSeats && occ.assigned > 0 ? `${occ.pct}% assigned` : "Unassigned"}
+        </span>
       </div>
-
-      {/* Occupancy + seat thumbnail */}
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs text-ink-3">Occupancy</p>
-          {occ && occ.total > 0 ? (
-            <p className="tnum text-sm font-medium text-ink">
-              {occ.assigned}/{occ.total}{" "}
-              <span className="text-xs font-normal text-ink-3">
-                ({occ.pct}%)
-              </span>
-            </p>
-          ) : (
-            <p className="text-sm text-ink-3">No seats</p>
-          )}
-        </div>
-        <div className="rounded-md border border-line bg-surface-2 p-2">
-          {seats.length > 0 ? (
-            <SeatMapThumb seats={seats} maxCols={8} cell={8} gap={1.5} />
-          ) : (
-            <span className="text-[10px] text-ink-3">—</span>
-          )}
-        </div>
-      </div>
-
-      <Link
-        href={`/app/rooms/${room.id}`}
-        className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-strong"
-      >
-        View details <MapPin className="h-3.5 w-3.5" />
-      </Link>
-    </Card>
+      <UtilisationBar occ={occ} className="mt-2 w-full" />
+    </div>
   );
 }

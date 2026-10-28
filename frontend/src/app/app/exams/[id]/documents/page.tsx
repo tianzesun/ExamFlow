@@ -12,13 +12,17 @@ import {
 } from "@/lib/api/generated";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
-import { Card, CardContent } from "@/components/card";
+import { Badge } from "@/components/badge";
+import { formatDate, formatNumber, plural } from "@/lib/format";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
-import { FileText, Download, AlertCircle, CheckCircle, AlertTriangle } from "lucide-react";
+import {
+  FileText, Download, AlertCircle, CheckCircle, AlertTriangle, FileCheck2,
+  ChevronLeft, ChevronRight, Search,
+} from "lucide-react";
 
 export default function DocumentsPage() {
   const params = useParams();
@@ -114,166 +118,193 @@ export default function DocumentsPage() {
 
   if (loading && !exam) return <PageLoader />;
 
+  const assigned = summary?.assigned_students ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalGenerated / 50));
+  const readiness = [
+    { label: "Active template", ok: !!activeTemplate, detail: activeTemplate ? `${activeTemplate.original_filename} · v${activeTemplate.version}` : "Upload one on Overview" },
+    { label: "Roster", ok: (summary?.registered_students ?? 0) > 0, detail: plural(summary?.registered_students ?? 0, "student") },
+    { label: "Seating", ok: assigned > 0, detail: `${formatNumber(assigned)} of ${formatNumber(summary?.registered_students ?? 0)} seated` },
+  ];
+
   return (
     <div className="space-y-6">
-      <Link href={`/app/exams/${examId}`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">← Back to Exam</Link>
-
-      <div>
-        <h1 className="text-2xl font-bold text-black dark:text-white flex items-center gap-2">
-          <FileText className="h-6 w-6 text-zinc-400" />
-          Generated Documents
-        </h1>
-        {exam && <p className="text-sm text-zinc-500">{exam.course_code} — {exam.exam_name}</p>}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Documents</h2>
+          <p className="text-sm text-ink-2">Personalized exam papers generated from the active template.</p>
+        </div>
+        {canEdit && (
+          <Button onClick={handleValidate} disabled={generating || !activeTemplate} loading={generating}>
+            <FileCheck2 className="h-4 w-4" /> Validate &amp; generate
+          </Button>
+        )}
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
-          <AlertCircle className="h-4 w-4" />
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {/* Generation Panel */}
-      {canEdit && (
-        <Card>
-          <CardContent>
-            <h2 className="text-lg font-medium text-black dark:text-white">Generate Personalized Exams</h2>
-            <div className="mt-3 grid grid-cols-4 gap-4 text-sm">
-              <div><span className="text-zinc-500">Template:</span> <span className="font-medium">{activeTemplate ? `v${activeTemplate.version}` : "None"}</span></div>
-              <div><span className="text-zinc-500">Students:</span> <span className="font-medium">{summary?.registered_students ?? 0}</span></div>
-              <div><span className="text-zinc-500">Assigned:</span> <span className="font-medium">{summary?.assigned_students ?? 0}</span></div>
-              <div><span className="text-zinc-500">Generated:</span> <span className="font-medium">{totalGenerated}</span></div>
-            </div>
-
-            {!activeTemplate && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="h-4 w-4" />
-                Upload a Crowdmark template first.
-              </div>
-            )}
-
-            {validation && !validation.valid && (
-              <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm dark:bg-amber-900/20">
-                <p className="font-medium text-amber-800 dark:text-amber-300">Validation issues:</p>
-                <ul className="mt-1 list-inside list-disc text-amber-700 dark:text-amber-400">
-                  {validation.errors.map((e, i) => <li key={i}>{e}</li>)}
-                </ul>
-              </div>
-            )}
-
-            {genResult && (
-              <div className="flex items-center gap-2 mt-3 rounded-md bg-green-50 p-3 text-sm dark:bg-green-900/20">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <p className="text-green-800 dark:text-green-300">
-                  Generated: {genResult.generated} · Failed: {genResult.failed}
-                </p>
-              </div>
-            )}
-
-            <div className="mt-4 flex gap-3">
-              <Button variant="secondary" onClick={handleValidate} disabled={generating || !activeTemplate} loading={generating}>
-                Validate & Preview
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {genResult && (
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          Generated {plural(genResult.generated, "document")}
+          {genResult.failed > 0 && <span className="text-danger">· {formatNumber(genResult.failed)} failed</span>}
+        </div>
       )}
 
-      {/* Confirmation Dialog */}
+      {/* Confirmation */}
       {showConfirm && (
-        <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
-          <CardContent>
-            <h2 className="text-lg font-medium text-blue-900 dark:text-blue-100">Confirm Generation</h2>
-            <p className="mt-2 text-sm text-blue-800 dark:text-blue-300">
-              This will generate {summary?.assigned_students ?? 0} personalized examination documents
-              using template {activeTemplate?.original_filename} v{activeTemplate?.version}.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <Button variant="primary" onClick={handleGenerate} disabled={generating} loading={generating}>
-                <CheckCircle className="h-4 w-4" />
-                Generate
-              </Button>
-              <Button variant="secondary" onClick={() => setShowConfirm(false)}>
-                Cancel
-              </Button>
+        <div role="alertdialog" className="surface-card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <FileText className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Generate {plural(assigned, "document")}?</h3>
+              <p className="mt-0.5 text-sm text-ink-2">
+                Uses template {activeTemplate?.original_filename} v{activeTemplate?.version}. Validation passed.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex shrink-0 justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowConfirm(false)}>Cancel</Button>
+            <Button onClick={handleGenerate} disabled={generating} loading={generating}>
+              <CheckCircle className="h-4 w-4" /> Generate
+            </Button>
+          </div>
+        </div>
       )}
 
-      {/* Documents Table */}
-      <Card>
-        <CardContent>
-          <h2 className="text-lg font-medium text-black dark:text-white">Documents ({totalGenerated})</h2>
-          <div className="mt-3 flex items-center gap-3">
-            <Input type="text" placeholder="Search student # or name..." value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && fetchData()}
-              className="flex-1" />
-            <Button variant="primary" size="sm" onClick={() => fetchData()}>Search</Button>
+      {validation && !validation.valid && (
+        <div role="alert" className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
+          <p className="flex items-center gap-2 font-medium text-warning">
+            <AlertTriangle className="h-4 w-4" /> Resolve these issues before generating
+          </p>
+          <ul className="mt-1.5 list-inside list-disc space-y-0.5 pl-6 text-ink-2">
+            {validation.errors.map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* Readiness */}
+      {canEdit && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {readiness.map((r) => (
+            <div key={r.label} className="surface-card flex h-full items-start gap-3 px-4 py-3.5">
+              <span className={r.ok ? "mt-0.5 text-success" : "mt-0.5 text-warning"}>
+                {r.ok ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{r.label}</p>
+                <p className="truncate text-xs text-ink-3">{r.detail}</p>
+              </div>
+            </div>
+          ))}
+          <div className="surface-card flex h-full items-start gap-3 px-4 py-3.5">
+            <span className="mt-0.5 text-accent"><FileText className="h-4 w-4" /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">Generated</p>
+              <p className="tnum text-xs text-ink-3">{formatNumber(totalGenerated)} of {formatNumber(assigned)} seated students</p>
+            </div>
           </div>
-          {generated.length === 0 ? (
-            <EmptyState
-              icon={<FileText className="h-6 w-6 text-zinc-400" />}
-              title="No generated documents yet"
-              description="Generate personalized exams to see them here."
-            />
-          ) : (
-            <>
-              <Table className="mt-4">
-                <TableHead>
-                  <Th>Student #</Th>
-                  <Th>Name</Th>
-                  <Th>File</Th>
-                  <Th>Size</Th>
-                  <Th>Template</Th>
-                  <Th>Status</Th>
-                  <Th>Date</Th>
-                  <Th className="text-right">Actions</Th>
-                </TableHead>
-                <TableBody>
-                  {generated.map((g) => (
-                    <tr key={g.id}>
-                      <Td>{g.student_number}</Td>
-                      <Td>{g.full_name}</Td>
-                      <Td className="text-xs text-zinc-500">{g.file_name}</Td>
-                      <Td className="text-xs text-zinc-500">{(g.file_size / 1024).toFixed(0)} KB</Td>
-                      <Td className="text-xs text-zinc-500">v{g.template_version}</Td>
-                      <Td>
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${g.status === "GENERATED" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
-                          {g.status}
-                        </span>
-                      </Td>
-                      <Td className="text-xs text-zinc-500">{g.created_at ? new Date(g.created_at).toLocaleDateString() : ""}</Td>
-                      <Td className="text-right">
-                        <a href={getGeneratedExamDownloadUrl(examId, g.id)} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-3.5 w-3.5" />
-                            Download
-                          </Button>
-                        </a>
-                      </Td>
-                    </tr>
-                  ))}
-                </TableBody>
-              </Table>
+        </div>
+      )}
+
+      {/* Documents table */}
+      <div className="surface-card overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Generated documents</h3>
+            <p className="tnum text-xs text-ink-3">{plural(totalGenerated, "document")}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+              <Input type="text" placeholder="Search student # or name…" value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && fetchData()}
+                aria-label="Search documents"
+                className="pl-8 md:w-72" />
+            </div>
+            <Button variant="secondary" onClick={() => fetchData()}>Search</Button>
+          </div>
+        </div>
+        {generated.length === 0 ? (
+          <EmptyState
+            icon={<FileText className="h-5 w-5 text-ink-3" />}
+            title={searchQuery ? "No matching documents" : "No documents generated yet"}
+            description={searchQuery ? "Try a different student number or name." : "Validate and generate personalized exams once the template and seating are in place."}
+            action={
+              canEdit && !searchQuery ? (
+                activeTemplate ? (
+                  <Button onClick={handleValidate} disabled={generating} loading={generating}>
+                    <FileCheck2 className="h-4 w-4" /> Validate &amp; generate
+                  </Button>
+                ) : (
+                  <Link href={`/app/exams/${examId}`}>
+                    <Button>Upload template</Button>
+                  </Link>
+                )
+              ) : undefined
+            }
+          />
+        ) : (
+          <>
+            <Table>
+              <TableHead>
+                <Th>Student #</Th>
+                <Th>Name</Th>
+                <Th>File</Th>
+                <Th className="text-right">Size</Th>
+                <Th>Template</Th>
+                <Th>Status</Th>
+                <Th>Created</Th>
+                <Th className="text-right">Actions</Th>
+              </TableHead>
+              <TableBody>
+                {generated.map((g) => (
+                  <tr key={g.id}>
+                    <Td className="font-mono text-xs text-ink-2">{g.student_number}</Td>
+                    <Td className="font-medium">{g.full_name}</Td>
+                    <Td className="max-w-[240px] truncate font-mono text-xs text-ink-2">{g.file_name}</Td>
+                    <Td className="tnum text-right text-xs text-ink-2">{formatNumber(Math.round(g.file_size / 1024))} KB</Td>
+                    <Td className="font-mono text-xs text-ink-2">v{g.template_version}</Td>
+                    <Td>
+                      <Badge variant={g.status === "GENERATED" ? "success" : "danger"}>
+                        {g.status.charAt(0) + g.status.slice(1).toLowerCase()}
+                      </Badge>
+                    </Td>
+                    <Td className="text-xs text-ink-2">{formatDate(g.created_at, "")}</Td>
+                    <Td className="py-1.5 text-right">
+                      <a href={getGeneratedExamDownloadUrl(examId, g.id)} target="_blank" rel="noopener noreferrer">
+                        <Button variant="ghost" size="sm">
+                          <Download className="h-3.5 w-3.5" /> Download
+                        </Button>
+                      </a>
+                    </Td>
+                  </tr>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-between border-t border-line bg-surface-2 px-4 py-2.5 text-xs text-ink-3">
+              <span className="tnum">Page {page} of {pageCount}</span>
               {totalGenerated > 50 && (
-                <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Page {page} of {Math.ceil(totalGenerated / 50)}</span>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-                      Prev
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 50 >= totalGenerated}>
-                      Next
-                    </Button>
-                  </div>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+                    <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 50 >= totalGenerated}>
+                    Next <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

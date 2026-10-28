@@ -1,33 +1,46 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   Calendar,
+  Clock,
   Search,
   LayoutGrid,
   List,
   GripVertical,
+  ArrowRightLeft,
+  Check,
+  FileText,
+  ChevronRight,
+  X,
 } from "lucide-react";
 import { getExams, updateExam, type ExamFilters } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
 import type { Exam, Course } from "@/lib/types";
+import { formatDate, formatDateShort, formatTime, formatNumber, plural } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
-  Card,
   Badge,
   Button,
-  Select,
   SkeletonRow,
   STATUS_BADGES,
   EmptyState,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  Tabs,
-  TabsList,
-  TabsTrigger,
+  PageHeader,
+  PageContainer,
+  Table,
+  TableHead,
+  TableBody,
+  Th,
+  Td,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuGroup,
 } from "@/components";
 import { PageTransition } from "@/components/page-transition";
 
@@ -40,28 +53,71 @@ const BOARD_COLUMNS = [
 ] as const;
 type ColumnStatus = (typeof BOARD_COLUMNS)[number];
 
-const COLUMN_META: Record<ColumnStatus, { label: string; accent: string }> = {
-  DRAFT: { label: "Draft", accent: "var(--ink-3)" },
-  CONFIGURED: { label: "Configured", accent: "var(--accent)" },
-  READY: { label: "Ready", accent: "var(--warning)" },
-  GENERATED: { label: "Generated", accent: "var(--violet)" },
-  COMPLETED: { label: "Completed", accent: "var(--success)" },
+const COLUMN_META: Record<ColumnStatus, { label: string; dot: string }> = {
+  DRAFT: { label: "Draft", dot: "bg-ink-3" },
+  CONFIGURED: { label: "Configured", dot: "bg-accent" },
+  READY: { label: "Ready", dot: "bg-warning" },
+  GENERATED: { label: "Generated", dot: "bg-violet" },
+  COMPLETED: { label: "Completed", dot: "bg-success" },
 };
 
-function examDateLabel(exam: Exam): string {
-  return new Date(`${exam.exam_date}T${exam.start_time || "00:00"}`).toLocaleDateString(
-    undefined,
-    { month: "short", day: "numeric", year: "numeric" }
-  );
+function statusLabel(status: string): string {
+  return COLUMN_META[status as ColumnStatus]?.label ?? status;
+}
+
+/** Exam names are often seeded as "CODE — Course name"; drop the redundant code prefix. */
+function examTitle(exam: Exam): string {
+  const prefix = `${exam.course_code} — `;
+  return exam.exam_name.startsWith(prefix) ? exam.exam_name.slice(prefix.length) : exam.exam_name;
+}
+
+function durationLabel(mins: number): string {
+  if (!mins) return "";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+function isColumnStatus(v: string | null): v is ColumnStatus {
+  return v !== null && (BOARD_COLUMNS as readonly string[]).includes(v);
 }
 
 export default function ExamsPage() {
+  // useSearchParams needs a Suspense boundary so the route can still prerender.
+  return (
+    <Suspense
+      fallback={
+        <PageContainer className="space-y-6">
+          <PageHeader title="Exams" description="Loading exams…" />
+        </PageContainer>
+      }
+    >
+      <ExamsPageContent />
+    </Suspense>
+  );
+}
+
+function ExamsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const statusFilter: ColumnStatus | "" = isColumnStatus(statusParam) ? statusParam : "";
+  const setStatusFilter = (next: ColumnStatus | "") => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set("status", next);
+    else params.delete("status");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
   const [exams, setExams] = useState<Exam[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [courseFilter, setCourseFilter] = useState("");
+  const [courseFilter, setCourseFilter] = useState(() => searchParams.get("course_id") ?? "");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"board" | "table">("board");
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -80,10 +136,9 @@ export default function ExamsPage() {
       .then(([examRes]) => {
         setExams(examRes.exams ?? []);
         setTotal(examRes.total ?? 0);
+        setError(null);
       })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load exams")
-      )
+      .catch(() => setError("We couldn't load exams right now. Please try again."))
       .finally(() => setLoading(false));
   }, [courseFilter]);
 
@@ -91,11 +146,15 @@ export default function ExamsPage() {
     const q = search.trim().toLowerCase();
     return exams.filter(
       (e) =>
-        q.length === 0 ||
+        (!statusFilter || e.status === statusFilter) &&
+        (q.length === 0 ||
         e.exam_name.toLowerCase().includes(q) ||
-        e.course_code.toLowerCase().includes(q)
+        e.course_code.toLowerCase().includes(q) ||
+        (e.course_name ?? "").toLowerCase().includes(q))
     );
-  }, [exams, search]);
+  }, [exams, search, statusFilter]);
+
+  const visibleColumns = statusFilter ? [statusFilter] : BOARD_COLUMNS;
 
   const grouped = useMemo(() => {
     const map: Record<ColumnStatus, Exam[]> = {
@@ -108,15 +167,17 @@ export default function ExamsPage() {
     for (const e of filtered) {
       if (e.status in map) map[e.status as ColumnStatus].push(e);
     }
+    for (const k of BOARD_COLUMNS) {
+      map[k].sort((a, b) => `${a.exam_date}${a.start_time}`.localeCompare(`${b.exam_date}${b.start_time}`));
+    }
     return map;
   }, [filtered]);
 
   const moveExam = async (id: string, status: ColumnStatus) => {
     // Optimistic update; revert on failure.
     const prev = exams;
-    setExams((cur) =>
-      cur.map((e) => (e.id === id ? { ...e, status } : e))
-    );
+    if (prev.find((e) => e.id === id)?.status === status) return;
+    setExams((cur) => cur.map((e) => (e.id === id ? { ...e, status } : e)));
     setDraggingId(null);
     try {
       await updateExam(id, { status });
@@ -125,123 +186,221 @@ export default function ExamsPage() {
     }
   };
 
+  const createAction = (
+    <Link href="/app/exams/new">
+      <Button>
+        <Plus /> Create exam
+      </Button>
+    </Link>
+  );
+
   return (
     <PageTransition>
-      <div className="animate-fade-in flex h-full flex-col">
-        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-ink">Exams</h1>
-              <p className="tnum mt-1 text-sm text-ink-2">
-                {total} exam{total !== 1 ? "s" : ""} in the system
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Tabs value={view} onValueChange={(v) => setView(v as "board" | "table")}>
-                <TabsList>
-                  <TabsTrigger value="board">
-                    <LayoutGrid className="h-4 w-4" /> Board
-                  </TabsTrigger>
-                  <TabsTrigger value="table">
-                    <List className="h-4 w-4" /> Table
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            <Link href="/app/exams/new">
-              <Button>
-                <Plus className="h-4 w-4" /> Create Exam
-              </Button>
-            </Link>
+      <PageContainer className="space-y-6">
+        <PageHeader
+          title="Exams"
+          description={loading ? "Loading exams…" : `${plural(total, "exam")} across all courses`}
+          actions={createAction}
+        />
+
+        {/* Toolbar */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+            <input
+              type="search"
+              aria-label="Search exams"
+              placeholder="Search by name or course code"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 w-full rounded-lg border border-line-strong bg-surface pl-8 pr-3 text-sm text-ink shadow-[var(--shadow-sm)] placeholder:text-ink-3 focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+          <select
+            aria-label="Filter by course"
+            value={courseFilter}
+            onChange={(e) => setCourseFilter(e.target.value)}
+            className="h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink shadow-[var(--shadow-sm)] focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 min-w-0 sm:w-56 [&>option]:bg-surface"
+          >
+            <option value="">All courses</option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.course_code} — {c.course_name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as ColumnStatus | "")}
+            className="h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink shadow-[var(--shadow-sm)] focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 min-w-0 sm:w-40 [&>option]:bg-surface"
+          >
+            <option value="">All statuses</option>
+            {BOARD_COLUMNS.map((s) => (
+              <option key={s} value={s}>
+                {COLUMN_META[s].label}
+              </option>
+            ))}
+          </select>
+          </div>
+          {(search || courseFilter || statusFilter) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start sm:self-auto"
+              onClick={() => {
+                setSearch("");
+                setCourseFilter("");
+                setStatusFilter("");
+              }}
+            >
+              <X /> Clear
+            </Button>
+          )}
+          <div className="flex items-center gap-3 sm:ml-auto">
+            {!loading && (search || courseFilter || statusFilter) && (
+              <span className="tnum text-xs text-ink-3">
+                {formatNumber(filtered.length)} of {formatNumber(exams.length)}
+              </span>
+            )}
+            <ViewToggle view={view} onChange={setView} />
           </div>
         </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-          <input
-            type="text"
-            placeholder="Search exams..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-line bg-surface px-3 py-1.5 pl-8 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
-          />
-        </div>
-        <Select
-          options={courses.map((c) => ({
-            value: c.id,
-            label: `${c.course_code} — ${c.course_name}`,
-          }))}
-          placeholder="All courses"
-          value={courseFilter}
-          onChange={(e) => setCourseFilter(e.target.value)}
-          className="w-48"
-        />
-      </div>
-
-      {/* Body */}
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonRow key={i} lines={3} />
-          ))}
-        </div>
-      ) : error ? (
-        <Card className="p-10">
-          <EmptyState
-            title="Couldn't load exams"
-            description={error}
-          />
-        </Card>
-      ) : exams.length === 0 ? (
-        <Card className="p-10">
-          <EmptyState
-            title="No exams yet"
-            description="Create your first exam to get started"
-            action={
-              <Link href="/app/exams/new">
-                <Button>
-                  <Plus className="h-4 w-4" /> Create Exam
-                </Button>
-              </Link>
-            }
-          />
-        </Card>
-      ) : view === "board" ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {BOARD_COLUMNS.map((status) => (
-             <KanbanColumn
-               key={status}
-               status={status}
-               exams={grouped[status]}
-               draggingId={draggingId}
-               isOver={dragOver === status}
-              onDragEnterColumn={() => setDragOver(status)}
-              onDropColumn={() => {
-                if (draggingId) moveExam(draggingId, status);
-                setDraggingId(null);
-                setDragOver(null);
-              }}
-              onDragEndColumn={() => {
-                setDraggingId(null);
-                setDragOver(null);
-              }}
-              onCardDragStart={(id) => setDraggingId(id)}
-              onCardDragEnd={() => {
-                setDraggingId(null);
-                setDragOver(null);
-              }}
-              onStatusChange={moveExam}
+        {/* Body */}
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonRow key={i} lines={3} />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="surface-card">
+            <EmptyState
+              icon={<FileText className="h-5 w-5 text-ink-3" />}
+              title="Couldn't load exams"
+              description={error}
             />
-          ))}
-        </div>
-      ) : (
-        <ExamsTable exams={filtered} onStatusChange={moveExam} />
-      )}
-      </div>
-    </div>
+          </div>
+        ) : exams.length === 0 ? (
+          <div className="surface-card">
+            <EmptyState
+              icon={<FileText className="h-5 w-5 text-ink-3" />}
+              title="No exams yet"
+              description="Create your first exam to start configuring rooms and seating."
+              action={createAction}
+            />
+          </div>
+        ) : view === "board" ? (
+          <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div
+              className={cn(
+                "grid grid-flow-col items-start gap-3",
+                statusFilter ? "auto-cols-[minmax(260px,360px)]" : "auto-cols-[minmax(200px,1fr)]"
+              )}
+            >
+              {visibleColumns.map((status) => (
+                <KanbanColumn
+                  key={status}
+                  status={status}
+                  exams={grouped[status]}
+                  draggingId={draggingId}
+                  isOver={dragOver === status}
+                  onDragEnterColumn={() => setDragOver(status)}
+                  onDropColumn={() => {
+                    if (draggingId) moveExam(draggingId, status);
+                    setDraggingId(null);
+                    setDragOver(null);
+                  }}
+                  onDragLeaveColumn={() => setDragOver((cur) => (cur === status ? null : cur))}
+                  onCardDragStart={(id) => setDraggingId(id)}
+                  onCardDragEnd={() => {
+                    setDraggingId(null);
+                    setDragOver(null);
+                  }}
+                  onStatusChange={moveExam}
+                />
+              ))}
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="surface-card">
+            <EmptyState
+              icon={<Search className="h-5 w-5 text-ink-3" />}
+              title="No exams match your search"
+              description="Try a different name or course code."
+            />
+          </div>
+        ) : (
+          <ExamsTable exams={filtered} onStatusChange={moveExam} />
+        )}
+      </PageContainer>
     </PageTransition>
+  );
+}
+
+/* ── Board / Table segmented toggle ── */
+function ViewToggle({ view, onChange }: { view: "board" | "table"; onChange: (v: "board" | "table") => void }) {
+  const opts = [
+    { value: "board" as const, label: "Board", Icon: LayoutGrid },
+    { value: "table" as const, label: "Table", Icon: List },
+  ];
+  return (
+    <div role="group" aria-label="View" className="inline-flex h-9 items-center rounded-lg border border-line bg-surface-2 p-0.5">
+      {opts.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={view === value}
+          onClick={() => onChange(value)}
+          className={cn(
+            "inline-flex h-full items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+            view === value
+              ? "bg-surface text-ink shadow-[var(--shadow-sm)] ring-1 ring-line"
+              : "text-ink-3 hover:text-ink"
+          )}
+        >
+          <Icon className="h-3.5 w-3.5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── "Move to…" status menu (keyboard-accessible alternative to drag) ── */
+function MoveToMenu({
+  exam,
+  onStatusChange,
+  align = "end",
+}: {
+  exam: Exam;
+  onStatusChange: (id: string, status: ColumnStatus) => void;
+  align?: "start" | "end";
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Change status of ${exam.exam_name}`}
+        className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 data-[popup-open]:bg-surface-hover data-[popup-open]:text-ink"
+      >
+        <ArrowRightLeft className="h-3 w-3" />
+        Move
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align} className="w-40">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Move to</DropdownMenuLabel>
+          {BOARD_COLUMNS.map((s) => (
+            <DropdownMenuItem key={s} onClick={() => onStatusChange(exam.id, s)}>
+              <span className={cn("h-1.5 w-1.5 rounded-full", COLUMN_META[s].dot)} />
+              <span className="flex-1">{COLUMN_META[s].label}</span>
+              {exam.status === s && <Check className="h-3.5 w-3.5 text-ink-3" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -253,7 +412,7 @@ function KanbanColumn({
   isOver,
   onDragEnterColumn,
   onDropColumn,
-  onDragEndColumn,
+  onDragLeaveColumn,
   onCardDragStart,
   onCardDragEnd,
   onStatusChange,
@@ -264,41 +423,47 @@ function KanbanColumn({
   isOver: boolean;
   onDragEnterColumn: () => void;
   onDropColumn: () => void;
-  onDragEndColumn: () => void;
+  onDragLeaveColumn: () => void;
   onCardDragStart: (id: string) => void;
   onCardDragEnd: () => void;
   onStatusChange: (id: string, status: ColumnStatus) => void;
 }) {
   const meta = COLUMN_META[status];
   return (
-    <div
+    <section
+      aria-label={`${meta.label} exams`}
       onDragOver={(e) => {
         e.preventDefault();
         onDragEnterColumn();
       }}
       onDrop={onDropColumn}
-      onDragLeave={onDragEndColumn}
-      className={`flex flex-col rounded-lg border bg-surface-2 transition-colors ${
-        isOver ? "border-accent" : "border-line"
-      }`}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onDragLeaveColumn();
+      }}
+      className={cn(
+        "flex min-w-0 flex-col rounded-xl border bg-surface-2 transition-colors",
+        isOver ? "border-accent bg-accent/5" : "border-line"
+      )}
     >
-      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+      <header className="flex items-center justify-between px-3 pb-2 pt-3">
         <div className="flex items-center gap-2">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ background: meta.accent }}
-          />
-          <span className="text-sm font-medium text-ink">{meta.label}</span>
+          <span className={cn("h-2 w-2 rounded-full", meta.dot)} />
+          <h2 className="text-[13px] font-semibold text-ink">{meta.label}</h2>
         </div>
-        <span className="tnum rounded-full bg-surface px-1.5 py-0.5 text-xs font-medium text-ink-3">
+        <span className="tnum min-w-5 rounded-md bg-surface px-1.5 py-0.5 text-center text-[11px] font-medium text-ink-2 ring-1 ring-inset ring-line">
           {exams.length}
         </span>
-      </div>
-      <div className="flex min-h-24 flex-col gap-2 p-2">
+      </header>
+      <div className="flex max-h-[calc(100dvh-15rem)] min-h-28 flex-col gap-2 overflow-y-auto p-2 pt-1">
         {exams.length === 0 ? (
-          <p className="px-2 py-4 text-center text-xs text-ink-3">
+          <div
+            className={cn(
+              "flex items-center justify-center rounded-lg border border-dashed px-2 py-6 text-xs text-ink-3",
+              isOver ? "border-accent text-accent" : "border-line-strong"
+            )}
+          >
             Drop exams here
-          </p>
+          </div>
         ) : (
           exams.map((exam) => (
             <KanbanCard
@@ -312,11 +477,11 @@ function KanbanColumn({
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
-/* ── Kanban card (draggable + keyboard-accessible status change) ── */
+/* ── Kanban card (draggable + menu-based status change) ── */
 function KanbanCard({
   exam,
   isDragging,
@@ -330,73 +495,54 @@ function KanbanCard({
   onDragEnd: () => void;
   onStatusChange: (id: string, status: ColumnStatus) => void;
 }) {
+  const time = formatTime(exam.start_time);
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger>
-          <div
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData("text/plain", exam.id);
-              onDragStart();
-            }}
-            onDragEnd={onDragEnd}
-            className={`group surface-card relative cursor-grab rounded-md p-3 transition-all duration-200 ${
-              isDragging
-                ? "translate-y-[-4px] scale-[1.02] opacity-60 shadow-lg ring-2 ring-accent/30"
-                : "hover:shadow-sm"
-            }`}
-          >
-            <div className="flex items-start gap-2">
-              <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-ink">
-                  {exam.exam_name}
-                </p>
-                <p className="mt-0.5 truncate text-xs text-ink-2">
-                  {exam.course_code}
-                </p>
-                <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-3">
-                  <Calendar className="h-3 w-3" />
-                  {examDateLabel(exam)}
-                </div>
-              </div>
-            </div>
-
-      {/* Keyboard-accessible alternative to drag */}
-      <div className="mt-2 flex items-center gap-1.5">
-        <Badge variant={STATUS_BADGES[exam.status]}>{exam.status}</Badge>
-        <label className="sr-only" htmlFor={`status-${exam.id}`}>
-          Change status of {exam.exam_name}
-        </label>
-        <Select
-          id={`status-${exam.id}`}
-          value={exam.status}
-          onChange={(e) => onStatusChange(exam.id, e.target.value as ColumnStatus)}
-          options={BOARD_COLUMNS.map((s) => ({
-            value: s,
-            label: COLUMN_META[s].label,
-          }))}
-          className="h-9 text-xs w-auto"
+    <article
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", exam.id);
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+      className={cn(
+        "group relative cursor-grab rounded-lg border border-line bg-surface p-3 text-left shadow-[var(--shadow-sm)] transition-all duration-150 active:cursor-grabbing",
+        isDragging ? "opacity-50 ring-2 ring-accent/30" : "hover:border-line-strong hover:shadow-[var(--shadow-md)]"
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="truncate font-mono text-[11px] font-medium text-ink-3">{exam.course_code}</p>
+        <GripVertical
+          aria-hidden
+          className="-mr-1 h-3.5 w-3.5 shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100"
         />
       </div>
-
       <Link
         href={`/app/exams/${exam.id}`}
-        className="mt-1 inline-flex items-center text-xs font-medium text-accent hover:text-accent-strong"
+        className="mt-1 line-clamp-2 block text-sm font-medium leading-snug text-ink hover:text-accent focus-visible:outline-none focus-visible:underline"
       >
-        Open
+        {examTitle(exam)}
       </Link>
-    </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="font-medium">{exam.exam_name}</p>
-            <p className="text-xs text-muted-foreground">{exam.course_code}</p>
-            <p className="text-xs text-muted-foreground">{examDateLabel(exam)}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div className="tnum mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2">
+        <span className="inline-flex items-center gap-1">
+          <Calendar className="h-3 w-3 text-ink-3" />
+          {formatDateShort(exam.exam_date)}
+        </span>
+        {time && (
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-3 w-3 text-ink-3" />
+            {time}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-line pt-2">
+        <span className="tnum truncate text-[11px] text-ink-3">
+          {exam.term} {exam.academic_year}
+          {exam.duration_minutes ? ` · ${durationLabel(exam.duration_minutes)}` : ""}
+        </span>
+        <MoveToMenu exam={exam} onStatusChange={onStatusChange} />
+      </div>
+    </article>
   );
 }
 
@@ -409,62 +555,58 @@ function ExamsTable({
   onStatusChange: (id: string, status: ColumnStatus) => void;
 }) {
   return (
-    <Card>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-line">
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
-                Course
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
-                Exam
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
-                Term
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
-                Date
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {exams.map((exam) => (
-              <tr key={exam.id} className="transition-colors hover:bg-surface-hover">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/app/exams/${exam.id}`}
-                    className="font-medium text-ink hover:text-accent"
-                  >
-                    {exam.course_code}
+    <div className="surface-card overflow-hidden">
+      <Table>
+        <TableHead>
+          <Th>Course</Th>
+          <Th>Exam</Th>
+          <Th>Term</Th>
+          <Th>Date</Th>
+          <Th>Status</Th>
+          <Th className="w-0">
+            <span className="sr-only">Actions</span>
+          </Th>
+        </TableHead>
+        <TableBody>
+          {exams.map((exam) => {
+            const time = formatTime(exam.start_time);
+            return (
+              <tr key={exam.id} className="group">
+                <Td className="whitespace-nowrap">
+                  <span className="font-mono text-xs text-ink-2">{exam.course_code}</span>
+                </Td>
+                <Td>
+                  <Link href={`/app/exams/${exam.id}`} className="font-medium text-ink hover:text-accent">
+                    {examTitle(exam)}
                   </Link>
-                </td>
-                <td className="px-4 py-3 text-ink-2">{exam.exam_name}</td>
-                <td className="px-4 py-3 text-ink-2">
+                </Td>
+                <Td className="whitespace-nowrap text-ink-2">
                   {exam.term} {exam.academic_year}
-                </td>
-                <td className="px-4 py-3 text-ink-2">{examDateLabel(exam)}</td>
-                <td className="px-4 py-3">
-                  <Select
-                    value={exam.status}
-                    onChange={(e) =>
-                      onStatusChange(exam.id, e.target.value as ColumnStatus)
-                    }
-                    options={BOARD_COLUMNS.map((s) => ({
-                      value: s,
-                      label: COLUMN_META[s].label,
-                    }))}
-                    className="h-9 text-xs"
-                  />
-                </td>
+                </Td>
+                <Td className="tnum whitespace-nowrap text-ink-2">
+                  {formatDate(exam.exam_date)}
+                  {time && <span className="text-ink-3"> · {time}</span>}
+                </Td>
+                <Td>
+                  <Badge variant={STATUS_BADGES[exam.status] ?? "default"}>{statusLabel(exam.status)}</Badge>
+                </Td>
+                <Td className="whitespace-nowrap text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <MoveToMenu exam={exam} onStatusChange={onStatusChange} />
+                    <Link
+                      href={`/app/exams/${exam.id}`}
+                      aria-label={`Open ${exam.exam_name}`}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-surface-hover hover:text-ink"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  </div>
+                </Td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

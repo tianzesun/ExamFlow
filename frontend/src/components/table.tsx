@@ -15,14 +15,14 @@ export function Table({ children, className = "" }: TableProps) {
 
 export function TableHead({ children }: { children: ReactNode }) {
   return (
-    <thead>
+    <thead className="bg-surface-2">
       <tr>{children}</tr>
     </thead>
   );
 }
 
 export function TableBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-line">{children}</tbody>;
+  return <tbody className="divide-y divide-line [&>tr]:transition-colors [&>tr:hover]:bg-surface-2">{children}</tbody>;
 }
 
 export function Th({
@@ -40,7 +40,7 @@ export function Th({
     <th
       colSpan={colSpan}
       rowSpan={rowSpan}
-      className={`border-b border-line px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-3 ${className}`}
+      className={`border-b border-line px-4 py-2 text-left first:pl-5 last:pr-5 text-[11px] font-semibold uppercase tracking-wider text-ink-3 ${className}`}
     >
       {children}
     </th>
@@ -62,7 +62,7 @@ export function Td({
     <td
       colSpan={colSpan}
       rowSpan={rowSpan}
-      className={`px-4 py-3 text-sm text-ink ${className}`}
+      className={`px-4 py-3 text-sm text-ink first:pl-5 last:pr-5 ${className}`}
     >
       {children}
     </td>

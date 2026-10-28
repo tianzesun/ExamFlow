@@ -1,19 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getCourse, updateCourse } from "@/lib/api/courses";
-import { Card, CardContent, Button, Input } from "@/components";
+import { getExams } from "@/lib/api/exams";
+import {
+  Button,
+  Input,
+  Badge,
+  EmptyState,
+  PageHeader,
+  PageContainer,
+  STATUS_BADGES,
+} from "@/components";
 import { PageLoader } from "@/components/spinner";
-import { ChevronLeft, Edit2, Check, X } from "lucide-react";
-import type { Course } from "@/lib/types";
+import { Pencil, Plus, BookOpen, FileText, ChevronRight, AlertCircle } from "lucide-react";
+import type { Course, Exam } from "@/lib/types";
+import { formatDate, formatDateTime, formatTime, plural } from "@/lib/format";
+
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Draft",
+  CONFIGURED: "Configured",
+  READY: "Ready",
+  GENERATED: "Generated",
+  COMPLETED: "Completed",
+};
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium text-ink-3">{label}</dt>
+      <dd className="mt-1 truncate text-sm text-ink">{children}</dd>
+    </div>
+  );
+}
 
 export default function CourseDetailPage() {
   const params = useParams();
   const courseId = params.id as string;
 
   const [course, setCourse] = useState<Course | null>(null);
+  const [exams, setExams] = useState<Exam[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -25,18 +53,27 @@ export default function CourseDetailPage() {
     let cancelled = false;
     getCourse(courseId)
       .then((c) => { if (!cancelled) setCourse(c); })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); })
+      .catch(() => { if (!cancelled) setError("This course could not be found or you don't have access to it."); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    getExams({ course_id: courseId }, 1, 100)
+      .then((r) => { if (!cancelled) setExams(r.exams ?? []); })
+      .catch(() => { if (!cancelled) setExams([]); });
     return () => { cancelled = true; };
   }, [courseId]);
 
-  useEffect(() => {
-    if (course) {
-      setForm({ course_code: course.course_code, course_name: course.course_name, department: course.department ?? "" });
-    }
-  }, [course]);
+  const startEdit = () => {
+    if (course) setForm({ course_code: course.course_code, course_name: course.course_name, department: course.department ?? "" });
+    setSaveError(null);
+    setEditing(true);
+  };
 
-  const handleSave = async () => {
+  const cancelEdit = () => {
+    setSaveError(null);
+    setEditing(false);
+  };
+
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!course) return;
     setSaving(true);
     setSaveError(null);
@@ -48,129 +85,192 @@ export default function CourseDetailPage() {
       });
       setCourse(updated);
       setEditing(false);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to update course");
+    } catch {
+      setSaveError("We couldn't save your changes. Check the fields and try again.");
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) return <PageLoader />;
-  if (error && !course) return (
-    <div className="mx-auto max-w-lg space-y-4">
-      <h1 className="text-2xl font-bold text-black dark:text-white">Course Not Found</h1>
-      <p className="text-sm text-zinc-500">{error}</p>
-      <Link href="/app/courses" className="text-sm text-blue-600 hover:underline">Back to Courses</Link>
-    </div>
-  );
+  if (error && !course)
+    return (
+      <PageContainer>
+        <div className="surface-card">
+          <EmptyState
+            icon={<BookOpen className="h-5 w-5 text-ink-3" />}
+            title="Course not found"
+            description={error}
+            action={
+              <Link href="/app/courses">
+                <Button variant="secondary">Back to courses</Button>
+              </Link>
+            }
+          />
+        </div>
+      </PageContainer>
+    );
+  if (!course) return null;
+
+  const newExamHref = `/app/exams/new?course_id=${encodeURIComponent(course.id)}`;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/app/courses" className="text-zinc-500 hover:text-black dark:hover:text-white">
-            <ChevronLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-black dark:text-white">
-              {course?.course_code ?? "Course"}
-            </h1>
-            <p className="text-sm text-zinc-500">{course?.course_name}</p>
+    <PageContainer className="space-y-6">
+      <PageHeader
+        eyebrow={<span className="font-mono normal-case tracking-normal">{course.course_code}</span>}
+        title={course.course_name}
+        meta={course.department ? <Badge>{course.department}</Badge> : <Badge variant="warning">No department</Badge>}
+        actions={
+          <>
+            {!editing && (
+              <Button variant="secondary" onClick={startEdit}>
+                <Pencil /> Edit
+              </Button>
+            )}
+            <Link href={newExamHref}>
+              <Button>
+                <Plus /> Create exam
+              </Button>
+            </Link>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        {/* Details / edit */}
+        <section className="surface-card lg:col-span-1">
+          <div className="border-b border-line px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-ink">{editing ? "Edit course" : "Details"}</h2>
+            <p className="text-xs text-ink-3">
+              {editing ? "Changes apply to all exams for this course." : "Course record and history."}
+            </p>
           </div>
-        </div>
-        {course && (
-          editing ? (
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
-                <X className="mr-1 h-4 w-4" />Cancel
-              </Button>
-              <Button size="sm" onClick={handleSave} loading={saving}>
-                <Check className="mr-1 h-4 w-4" />Save
-              </Button>
-            </div>
+
+          {editing ? (
+            <form onSubmit={handleSave}>
+              <div className="space-y-4 px-5 py-4">
+                <Input
+                  label="Course code"
+                  value={form.course_code}
+                  onChange={(e) => setForm({ ...form, course_code: e.target.value })}
+                  className="font-mono"
+                  required
+                />
+                <Input
+                  label="Course name"
+                  value={form.course_name}
+                  onChange={(e) => setForm({ ...form, course_name: e.target.value })}
+                  required
+                />
+                <Input
+                  label="Department"
+                  value={form.department}
+                  placeholder="e.g. Computer Science"
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                />
+                {saveError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {saveError}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
+                <Button type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" loading={saving}>
+                  Save changes
+                </Button>
+              </div>
+            </form>
           ) : (
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Edit2 className="mr-1 h-4 w-4" />Edit
-            </Button>
-          )
-        )}
-      </div>
-
-      {saveError && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-          {saveError}
-        </div>
-      )}
-
-      {/* Detail Card */}
-      <Card>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-zinc-500">ID</span>
-              <p className="font-mono text-xs mt-1 truncate max-w-xs">{course?.id}</p>
-            </div>
-            <div>
-              <span className="text-zinc-500">Department</span>
-              <p className="font-medium mt-1">{course?.department ?? "—"}</p>
-            </div>
-            <div>
-              <span className="text-zinc-500">Course Code</span>
-              <p className="font-medium mt-1 font-mono">{course?.course_code}</p>
-            </div>
-            <div>
-              <span className="text-zinc-500">Course Name</span>
-              <p className="font-medium mt-1">{course?.course_name}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-zinc-500">Created</span>
-              <p className="mt-1 text-zinc-600 text-xs">{course?.created_at ? new Date(course.created_at).toLocaleString() : "—"}</p>
-            </div>
-            <div>
-              <span className="text-zinc-500">Last Updated</span>
-              <p className="mt-1 text-zinc-600 text-xs">{course?.updated_at ? new Date(course.updated_at).toLocaleString() : "—"}</p>
-            </div>
-          </div>
-
-          {/* Edit form */}
-          {editing && course && (
-            <div className="space-y-4 pt-2 border-t border-zinc-200 dark:border-zinc-700">
-              <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Edit Course</h3>
-              <Input
-                label="Course Code"
-                value={form.course_code}
-                onChange={(e) => setForm({ ...form, course_code: e.target.value })}
-                required
-              />
-              <Input
-                label="Course Name"
-                value={form.course_name}
-                onChange={(e) => setForm({ ...form, course_name: e.target.value })}
-                required
-              />
-              <Input
-                label="Department"
-                value={form.department}
-                onChange={(e) => setForm({ ...form, department: e.target.value })}
-              />
-            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-4 px-5 py-4 lg:grid-cols-1">
+              <Field label="Course code">
+                <span className="font-mono text-xs">{course.course_code}</span>
+              </Field>
+              <Field label="Department">{course.department ?? <span className="text-ink-3">Not set</span>}</Field>
+              <Field label="Created">
+                <span className="tnum">{formatDateTime(course.created_at)}</span>
+              </Field>
+              <Field label="Last updated">
+                <span className="tnum">{formatDateTime(course.updated_at)}</span>
+              </Field>
+              <Field label="Course ID">
+                <span className="font-mono text-xs text-ink-2" title={course.id}>
+                  {course.id}
+                </span>
+              </Field>
+            </dl>
           )}
-        </CardContent>
-      </Card>
+        </section>
 
-      {/* Actions */}
-      <div className="flex gap-3">
-        <Link href={`/app/exams/new?course_id=${encodeURIComponent(course?.id ?? "")}`} style={{ textDecoration: "none" }}>
-          <Button>Create Exam for {course?.course_code}</Button>
-        </Link>
-        <Link href="/app/courses" style={{ textDecoration: "none" }}>
-          <Button variant="secondary">Back to Courses</Button>
-        </Link>
+        {/* Exams for this course */}
+        <section className="surface-card overflow-hidden lg:col-span-2">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Exams</h2>
+              <p className="text-xs text-ink-3">
+                {exams === null ? "Loading…" : exams.length ? plural(exams.length, "exam") : "Nothing scheduled yet"}
+              </p>
+            </div>
+            {exams && exams.length > 0 && (
+              <Link
+                href={`/app/exams?course_id=${course.id}`}
+                className="text-xs font-medium text-accent hover:text-accent-strong"
+              >
+                View on board
+              </Link>
+            )}
+          </div>
+          {exams === null ? (
+            <div className="space-y-2 p-5">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-10 animate-pulse rounded-md bg-surface-2" />
+              ))}
+            </div>
+          ) : exams.length === 0 ? (
+            <EmptyState
+              icon={<FileText className="h-5 w-5 text-ink-3" />}
+              title="No exams for this course"
+              description="Create an exam to start assigning rooms and seats."
+              action={
+                <Link href={newExamHref}>
+                  <Button>
+                    <Plus /> Create exam
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-line">
+              {exams.map((exam) => {
+                const time = formatTime(exam.start_time);
+                return (
+                  <li key={exam.id}>
+                    <Link
+                      href={`/app/exams/${exam.id}`}
+                      className="group flex items-center gap-4 px-5 py-3 transition-colors hover:bg-surface-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink group-hover:text-accent">{exam.exam_name}</p>
+                        <p className="tnum mt-0.5 text-xs text-ink-3">
+                          {formatDate(exam.exam_date)}
+                          {time && ` · ${time}`} · {exam.term} {exam.academic_year}
+                        </p>
+                      </div>
+                      <Badge variant={STATUS_BADGES[exam.status] ?? "default"}>
+                        {STATUS_LABEL[exam.status] ?? exam.status}
+                      </Badge>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-ink-3 group-hover:text-ink" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
-    </div>
+    </PageContainer>
   );
 }

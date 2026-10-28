@@ -6,19 +6,19 @@ type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-accent text-white hover:bg-accent-strong focus-visible:outline-accent dark:text-white",
+    "bg-accent text-white shadow-[var(--shadow-sm)] hover:bg-accent-strong dark:text-[#0a0c10]",
   secondary:
-    "border border-line bg-surface text-ink-2 hover:bg-surface-hover hover:text-ink dark:border-line dark:bg-surface dark:text-ink-2 dark:hover:bg-surface-hover dark:hover:text-ink",
+    "border border-line-strong bg-surface text-ink shadow-[var(--shadow-sm)] hover:bg-surface-hover",
   danger:
-    "bg-danger text-white hover:opacity-90 dark:bg-danger dark:text-white",
+    "bg-danger text-white shadow-[var(--shadow-sm)] hover:opacity-90 dark:text-[#0a0c10]",
   ghost:
-    "text-ink-2 hover:bg-surface-hover hover:text-ink dark:text-ink-2 dark:hover:bg-surface-hover dark:hover:text-ink",
+    "text-ink-2 hover:bg-surface-hover hover:text-ink",
 };
 
 const sizeClasses: Record<Size, string> = {
-  sm: "px-3 py-1.5 text-xs",
-  md: "px-4 py-2 text-sm",
-  lg: "px-6 py-2.5 text-base",
+  sm: "h-8 px-3 text-xs",
+  md: "h-9 px-3.5 text-sm",
+  lg: "h-10 px-5 text-sm",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -34,7 +34,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={cn(
-          "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none",
+          "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium [&_svg]:h-4 [&_svg]:w-4 transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none",
           variantClasses[variant],
           sizeClasses[size],
           className

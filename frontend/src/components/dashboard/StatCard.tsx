@@ -31,6 +31,10 @@ export interface StatCardProps {
   sparkline?: number[];
   /** Subtle icon tint; default is neutral */
   color?: Color;
+  /** Secondary line under the value, e.g. "of 53 exams" */
+  hint?: string;
+  /** 0–1 completion shown as a slim bar along the bottom */
+  progress?: number;
 }
 
 export function StatCard({
@@ -40,21 +44,34 @@ export function StatCard({
   change,
   sparkline,
   color = "neutral",
+  hint,
+  progress,
 }: StatCardProps) {
   const numeric =
     typeof value === "number" && Number.isFinite(value);
+  const tint = color === "neutral" ? undefined : `var(${COLOR_VAR_BG[color]})`;
   return (
-    <div className="group surface-card relative overflow-hidden px-5 py-4 transition-shadow duration-200 hover:shadow-md">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span
-            className="flex h-6 w-6 items-center justify-center rounded-md border border-line bg-surface-2"
-            style={color === "neutral" ? undefined : { color: `var(${COLOR_VAR_BG[color]})` }}
-          >
-            <Icon className="h-3.5 w-3.5" />
+    <div className="surface-card flex h-full flex-col px-4 pb-4 pt-4 sm:px-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[13px] font-medium leading-snug text-ink-2">{label}</p>
+        <span
+          className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-hover text-ink-3"
+          style={tint ? { color: tint, background: `color-mix(in srgb, ${tint} 12%, transparent)` } : undefined}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-baseline gap-2">
+        {numeric ? (
+          <NumberTicker
+            value={value}
+            className="tnum text-[28px] font-semibold leading-none tracking-tight text-ink"
+          />
+        ) : (
+          <span className="tnum text-[28px] font-semibold leading-none tracking-tight text-ink">
+            {value}
           </span>
-          <p className="text-xs font-medium text-ink-2">{label}</p>
-        </div>
+        )}
         {change && (
           <span
             className={`tnum text-xs font-medium ${
@@ -62,30 +79,28 @@ export function StatCard({
                 ? "text-success"
                 : change.startsWith("-")
                   ? "text-danger"
-                  : "text-ink-2"
+                  : "text-ink-3"
             }`}
           >
             {change}
           </span>
         )}
       </div>
-      <div className="mt-2 flex items-baseline justify-between gap-2">
-        {numeric ? (
-          <NumberTicker
-            value={value}
-            className="tnum text-2xl font-bold tracking-tight text-ink"
-          />
-        ) : (
-          <span className="tnum text-2xl font-bold tracking-tight text-ink">
-            {value}
-          </span>
-        )}
+      {hint && <p className="mt-1.5 text-xs text-ink-3">{hint}</p>}
+      <div className="mt-auto pt-3">
+        {progress !== undefined ? (
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
+            <div
+              className="h-full rounded-full transition-[width] duration-500"
+              style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`, background: COLOR_VAR[color] }}
+            />
+          </div>
+        ) : sparkline && sparkline.length >= 2 ? (
+          <div className="h-6">
+            <Sparkline data={sparkline} color={COLOR_VAR[color]} width={96} height={24} />
+          </div>
+        ) : null}
       </div>
-      {sparkline && sparkline.length >= 2 && (
-        <div className="mt-2.5 h-6">
-          <Sparkline data={sparkline} color={COLOR_VAR[color]} width={96} height={24} />
-        </div>
-      )}
     </div>
   );
 }

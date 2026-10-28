@@ -14,12 +14,12 @@ export function Card({ children, className = "" }: CardProps) {
 
 export function CardHeader({ children, className = "" }: CardProps) {
   return (
-    <div className={cn("border-b border-line px-6 py-4", className)}>
+    <div className={cn("border-b border-line px-5 py-3.5", className)}>
       {children}
     </div>
   );
 }
 
 export function CardContent({ children, className = "" }: CardProps) {
-  return <div className={cn("px-6 py-4", className)}>{children}</div>;
+  return <div className={cn("px-5 py-4", className)}>{children}</div>;
 }

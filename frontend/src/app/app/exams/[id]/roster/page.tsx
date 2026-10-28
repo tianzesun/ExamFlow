@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { getExam } from "@/lib/api/exams";
 import {
   getRoster,
@@ -12,12 +11,16 @@ import {
 } from "@/lib/api/roster";
 import { Exam, ExamStudent } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
-import { Card, CardContent } from "@/components/card";
+import { Card, CardContent, CardHeader } from "@/components/card";
 import { Button } from "@/components/button";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
-import { Users, Upload, AlertCircle, CheckCircle, XCircle } from "lucide-react";
+import { formatNumber, plural } from "@/lib/format";
+import {
+  Users, Upload, AlertCircle, CheckCircle, XCircle, UserMinus,
+  ChevronLeft, ChevronRight, FileSpreadsheet,
+} from "lucide-react";
 
 export default function RosterPage() {
   const params = useParams();
@@ -118,162 +121,192 @@ export default function RosterPage() {
     }
   };
 
+  const pageCount = Math.max(1, Math.ceil(total / 50));
+  const firstRow = total === 0 ? 0 : (page - 1) * 50 + 1;
+  const lastRow = (page - 1) * 50 + students.length;
+  const resetImport = () => {
+    setPreview(null);
+    setImportFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href={`/app/exams/${examId}`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">
-          ← Back to Exam
-        </Link>
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold text-black dark:text-white flex items-center gap-2">
-          <Users className="h-6 w-6 text-zinc-400" />
-          Roster
-        </h1>
-        {exam && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-500">
-            {exam.course_code} — {exam.exam_name} ({total} students)
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Roster</h2>
+          <p className="text-sm text-ink-2">
+            {loading ? "Loading students…" : `${plural(total, "student")} registered${exam ? ` for ${exam.course_code}` : ""}`}
           </p>
+        </div>
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(e) => {
+                setImportFile(e.target.files?.[0] || null);
+                setPreview(null);
+                setImportResult(null);
+              }}
+            />
+            {(loading || students.length > 0) && (
+              <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4" /> Import CSV
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
-          <AlertCircle className="h-4 w-4" />
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
       {importResult && (
-        <div className="flex items-center gap-2 rounded-md bg-green-50 p-4 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-400">
-          <CheckCircle className="h-4 w-4" />
-          Imported {importResult.imported} students, skipped {importResult.skipped}.
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          Imported {plural(importResult.imported, "student")}, skipped {formatNumber(importResult.skipped)}.
         </div>
       )}
 
-      {/* CSV Import */}
-      {canEdit && (
+      {/* CSV import */}
+      {canEdit && importFile && (
         <Card>
-          <CardContent>
-            <h2 className="text-lg font-medium text-black dark:text-white flex items-center gap-2">
-              <Upload className="h-5 w-5 text-zinc-400" />
-              Import Roster (CSV)
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
-              Format: student_number,first_name,last_name (or student_number,name)
-            </p>
-            <div className="mt-4 flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  setImportFile(e.target.files?.[0] || null);
-                  setPreview(null);
-                  setImportResult(null);
-                }}
-                className="text-sm text-zinc-600 dark:text-zinc-400"
-              />
-              {importFile && !preview && (
-                <Button variant="secondary" size="sm" onClick={handlePreview}>
-                  Preview
-                </Button>
-              )}
+          <CardHeader className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-ink">Import roster</h3>
+              <p className="truncate text-xs text-ink-3">
+                <FileSpreadsheet className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+                {importFile.name}
+              </p>
             </div>
-
-            {preview && (
-              <div className="mt-4 space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>Total rows: {preview.total_rows}</div>
-                  <div>New students: {preview.new_students}</div>
-                  <div>Already in roster: {preview.already_in_roster}</div>
-                  <div>Duplicates in file: {preview.duplicate_in_file}</div>
-                </div>
-
-                {preview.errors.length > 0 && (
-                  <div className="flex items-start gap-2 rounded bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>
-                      {preview.errors.map((e, i) => <div key={i}>{e}</div>)}
-                    </div>
-                  </div>
-                )}
-
-                {preview.preview.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Preview (first 10):</p>
-                    <Table className="mt-2">
-                      <TableHead>
-                        <Th>Student #</Th>
-                        <Th>Name</Th>
-                      </TableHead>
-                      <TableBody>
-                        {preview.preview.map((s) => (
-                          <tr key={s.student_number}>
-                            <Td>{s.student_number}</Td>
-                            <Td>{s.full_name}</Td>
-                          </tr>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Button
-                    variant="primary"
-                    onClick={handleConfirmImport}
-                    disabled={importing || preview.new_students === 0}
-                    loading={importing}
-                  >
-                    Import {preview.new_students} Students
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => { setPreview(null); setImportFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
+            {!preview && (
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" size="sm" onClick={resetImport}>Cancel</Button>
+                <Button size="sm" onClick={handlePreview}>Preview import</Button>
               </div>
             )}
-          </CardContent>
+          </CardHeader>
+
+          {!preview && (
+            <CardContent className="text-sm text-ink-2">
+              Expected columns: <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">student_number,first_name,last_name</code>{" "}
+              or <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">student_number,name</code>
+            </CardContent>
+          )}
+
+          {preview && (
+            <>
+              <div className="grid grid-cols-2 divide-line border-b border-line sm:grid-cols-4 sm:divide-x">
+                {[
+                  { label: "Rows in file", value: preview.total_rows },
+                  { label: "New students", value: preview.new_students, tone: "text-success" },
+                  { label: "Already on roster", value: preview.already_in_roster },
+                  { label: "Duplicates in file", value: preview.duplicate_in_file, tone: preview.duplicate_in_file > 0 ? "text-warning" : undefined },
+                ].map((m) => (
+                  <div key={m.label} className="px-5 py-3">
+                    <p className="text-xs text-ink-3">{m.label}</p>
+                    <p className={`tnum mt-0.5 text-xl font-semibold ${m.tone ?? "text-ink"}`}>{formatNumber(m.value)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {preview.errors.length > 0 && (
+                <div className="mx-5 mt-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger">
+                  <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <ul className="space-y-0.5">
+                    {preview.errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {preview.preview.length > 0 && (
+                <div className="mx-5 mt-4 overflow-hidden rounded-lg border border-line">
+                  <p className="border-b border-line bg-surface-2 px-4 py-2 text-xs font-medium text-ink-2">
+                    Preview · first {plural(preview.preview.length, "row")}
+                  </p>
+                  <Table>
+                    <TableHead>
+                      <Th>Student #</Th>
+                      <Th>Name</Th>
+                    </TableHead>
+                    <TableBody>
+                      {preview.preview.map((s) => (
+                        <tr key={s.student_number}>
+                          <Td className="font-mono text-xs">{s.student_number}</Td>
+                          <Td>{s.full_name}</Td>
+                        </tr>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2 border-t border-line px-5 py-3">
+                <Button variant="secondary" onClick={resetImport}>Cancel</Button>
+                <Button
+                  onClick={handleConfirmImport}
+                  disabled={importing || preview.new_students === 0}
+                  loading={importing}
+                >
+                  Import {plural(preview.new_students, "student")}
+                </Button>
+              </div>
+            </>
+          )}
         </Card>
       )}
 
-      {/* Roster Table */}
+      {/* Roster table */}
       {loading ? (
         <PageLoader />
       ) : students.length === 0 ? (
         <Card>
           <EmptyState
-            icon={<Users className="h-6 w-6 text-zinc-400" />}
-            title="No students in roster"
+            icon={<Users className="h-5 w-5 text-ink-3" />}
+            title="No students on this roster"
             description="Import a CSV file to add students to this exam."
+            action={
+              canEdit ? (
+                <Button onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4" /> Import CSV
+                </Button>
+              ) : undefined
+            }
           />
         </Card>
       ) : (
-        <Card>
+        <div className="surface-card overflow-hidden">
           <Table>
             <TableHead>
-              <Th>Student #</Th>
+              <Th className="w-48">Student #</Th>
               <Th>Name</Th>
-              {canEdit && <Th className="text-right">Action</Th>}
+              {canEdit && <Th className="text-right">Actions</Th>}
             </TableHead>
             <TableBody>
               {students.map((s) => (
                 <tr key={s.id}>
-                  <Td className="font-medium text-black dark:text-white">{s.student_number}</Td>
-                  <Td>{s.full_name}</Td>
+                  <Td className="font-mono text-xs text-ink-2">{s.student_number}</Td>
+                  <Td className="font-medium">{s.full_name}</Td>
                   {canEdit && (
-                    <Td className="text-right">
-                      <button
+                    <Td className="py-1.5 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-ink-3 hover:text-danger"
                         onClick={() => handleRemove(s.student_id)}
-                        className="text-xs text-red-600 hover:text-red-800 dark:text-red-400"
+                        aria-label={`Remove ${s.full_name}`}
                       >
-                        Remove
-                      </button>
+                        <UserMinus className="h-3.5 w-3.5" /> Remove
+                      </Button>
                     </Td>
                   )}
                 </tr>
@@ -281,18 +314,23 @@ export default function RosterPage() {
             </TableBody>
           </Table>
 
-          {Math.ceil(total / 50) > 1 && (
-            <div className="flex items-center justify-center gap-2 border-t border-zinc-200 py-3 dark:border-zinc-800">
-              <Button variant="ghost" size="sm" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>
-                Previous
-              </Button>
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">Page {page}</span>
-              <Button variant="ghost" size="sm" onClick={() => setPage(page + 1)} disabled={students.length < 50}>
-                Next
-              </Button>
-            </div>
-          )}
-        </Card>
+          <div className="flex items-center justify-between border-t border-line bg-surface-2 px-4 py-2.5 text-xs text-ink-3">
+            <span className="tnum">
+              Showing {formatNumber(firstRow)}–{formatNumber(lastRow)} of {formatNumber(total)}
+            </span>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>
+                  <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                </Button>
+                <span className="tnum px-2">Page {page} of {pageCount}</span>
+                <Button variant="ghost" size="sm" onClick={() => setPage(page + 1)} disabled={students.length < 50}>
+                  Next <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -12,14 +12,19 @@ import {
 } from "@/lib/api/assignments";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
-import { Card, CardContent } from "@/components/card";
+import { Badge } from "@/components/badge";
+import { StatCard } from "@/components/dashboard/StatCard";
+import { formatNumber, plural } from "@/lib/format";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import { Select } from "@/components/select";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
-import { AlertCircle, CheckCircle, AlertTriangle, LayoutGrid, Plus, Trash2 } from "lucide-react";
+import {
+  AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, LayoutGrid, Plus, Trash2, Armchair,
+  ChevronLeft, ChevronRight, DoorOpen, RefreshCw, Search, Sparkles, Users, UserX,
+} from "lucide-react";
 
 type PreviewData = {
   students: number; rooms: number; available_seats: number; assigned: number; unused: number;
@@ -64,7 +69,7 @@ export default function SeatingPage() {
         if (cancelled) return null;
         const [e, r, er, s, a] = await Promise.all([
           getExam(examId),
-          getRooms(1, 200),
+          getRooms(1, 100),
           getExamRooms(examId),
           getAssignmentSummary(examId),
           getAssignments(examId, { page, page_size: 50, query: searchQuery || undefined, room_id: filterRoom || undefined }),
@@ -167,223 +172,231 @@ export default function SeatingPage() {
 
   if (loading && !exam) return <PageLoader />;
 
+  const detailsById = new Map((summary?.room_details ?? []).map((rd) => [rd.room_id, rd]));
+  const totalCapacity = examRooms.reduce((n, r) => n + r.capacity, 0);
+  const pageCount = Math.max(1, Math.ceil(totalAssignments / 50));
+  const seatedPct = summary && summary.registered_students > 0 ? summary.assigned_students / summary.registered_students : 0;
+
   return (
     <div className="space-y-6">
-      <Link href={`/app/exams/${examId}`} className="text-sm text-zinc-500 hover:text-black dark:text-zinc-500 dark:hover:text-white">← Back to Exam</Link>
-
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-black dark:text-white">Seating Assignment</h1>
-          {exam && <p className="text-sm text-zinc-500">{exam.course_code} — {exam.exam_name}</p>}
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Seating</h2>
+          <p className="text-sm text-ink-2">
+            {hasAssignments
+              ? "Seating has been generated. Fine-tune individual seats on the seat map."
+              : "Choose rooms, preview the assignment, then confirm it."}
+          </p>
         </div>
-        <Link href={`/app/exams/${examId}/seat-map`}>
-          <Button variant="primary">
-            <LayoutGrid className="h-4 w-4" />
-            Open Seat Map
-          </Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/app/exams/${examId}/seat-map`}>
+            <Button variant="secondary">
+              <LayoutGrid className="h-4 w-4" /> Open seat map
+            </Button>
+          </Link>
+          {canEdit && (hasAssignments ? (
+            <Button variant="secondary" className="text-danger" onClick={() => setShowRegenConfirm(true)} disabled={regenerating} loading={regenerating}>
+              <RefreshCw className="h-4 w-4" /> Regenerate
+            </Button>
+          ) : (
+            <Button onClick={handlePreview} disabled={previewing || examRooms.length === 0} loading={previewing}>
+              <Sparkles className="h-4 w-4" /> Preview assignment
+            </Button>
+          ))}
+        </div>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
-          <AlertCircle className="h-4 w-4" />
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {/* Regeneration confirmation */}
+      {showRegenConfirm && (
+        <div role="alertdialog" className="surface-card flex flex-col gap-4 border-danger/30 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-danger/10 text-danger">
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Replace the current seating?</h3>
+              <p className="mt-0.5 text-sm text-ink-2">
+                All {plural(summary?.assigned_students ?? 0, "assignment")} for this examination will be discarded and regenerated.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowRegenConfirm(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleRegenerate} disabled={regenerating} loading={regenerating}>
+              Regenerate seating
+            </Button>
+          </div>
         </div>
       )}
 
       {/* Summary */}
       {summary && (
-        <div className="grid grid-cols-4 gap-4">
-          {[
-            { label: "Registered", value: summary.registered_students },
-            { label: "Assigned", value: summary.assigned_students },
-            { label: "Available Seats", value: summary.available_seats },
-            { label: "Unused", value: summary.unused_seats },
-          ].map(({ label, value }) => (
-            <Card key={label}>
-              <CardContent className="text-center">
-                <div className="text-2xl font-bold text-black dark:text-white">{value}</div>
-                <div className="text-xs text-zinc-500">{label}</div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard icon={Users} label="Registered" value={summary.registered_students} color="accent" hint="students on roster" />
+          <StatCard icon={CheckCircle2} label="Assigned" value={summary.assigned_students} color="success"
+            hint={`${Math.round(seatedPct * 100)}% of roster`} progress={seatedPct} />
+          <StatCard icon={Armchair} label="Available seats" value={summary.available_seats} color="violet"
+            hint={`across ${plural(examRooms.length, "room")}`} />
+          <StatCard icon={UserX} label="Unused seats" value={summary.unused_seats} color="neutral"
+            hint={summary.unassigned_students > 0 ? `${plural(summary.unassigned_students, "student")} unassigned` : "everyone has a seat"} />
         </div>
-      )}
-
-      {/* Room Selection */}
-      <Card>
-        <CardContent>
-          <h2 className="text-lg font-medium text-black dark:text-white">Selected Rooms ({examRooms.length})</h2>
-          {examRooms.length === 0 ? (
-            <p className="mt-2 text-sm text-zinc-500">No rooms selected. Add rooms below.</p>
-          ) : (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {examRooms.map((r) => (
-                <span key={r.id} className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-                  {r.building} {r.room_number}
-                  {canEdit && (
-                    <button onClick={() => handleRemoveRoom(r.id)} className="text-zinc-400 hover:text-red-500">
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
-          {canEdit && (
-            <div className="mt-3 flex items-center gap-2">
-              <Select
-                value={selectedAddRoom}
-                onChange={(e) => setSelectedAddRoom(e.target.value)}
-                options={[
-                  { value: "", label: "Add a room..." },
-                  ...availableRooms.map((r) => ({ value: r.id, label: `${r.building} ${r.room_number} (${r.capacity} seats)` })),
-                ]}
-                placeholder="Add a room..."
-                className="w-auto"
-              />
-              <Button variant="primary" size="sm" onClick={handleAddRoom} disabled={!selectedAddRoom}>
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Generate / Regenerate Actions */}
-      {canEdit && (
-        <Card>
-          <CardContent>
-            <h2 className="text-lg font-medium text-black dark:text-white">
-              {hasAssignments ? "Seating Generated" : "Generate Seating"}
-            </h2>
-            {!hasAssignments ? (
-              <div className="mt-4 flex items-center gap-3">
-                <Button variant="secondary" onClick={handlePreview} disabled={previewing || examRooms.length === 0} loading={previewing}>
-                  Preview Assignment
-                </Button>
-                {examRooms.length === 0 && <span className="text-sm text-zinc-500">Add rooms first</span>}
-              </div>
-            ) : (
-              <div className="mt-4 flex items-center gap-3">
-                <Button variant="danger" onClick={() => setShowRegenConfirm(true)} disabled={regenerating} loading={regenerating}>
-                  Regenerate Seating
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       )}
 
       {/* Preview */}
       {preview && (
-        <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
-          <CardContent>
-            <h2 className="text-lg font-medium text-blue-900 dark:text-blue-100">Seating Preview</h2>
-            <div className="mt-3 grid grid-cols-5 gap-4 text-sm">
-              <div><span className="text-blue-600 dark:text-blue-400">Students:</span> <span className="font-medium">{preview.students}</span></div>
-              <div><span className="text-blue-600 dark:text-blue-400">Rooms:</span> <span className="font-medium">{preview.rooms}</span></div>
-              <div><span className="text-blue-600 dark:text-blue-400">Seats:</span> <span className="font-medium">{preview.available_seats}</span></div>
-              <div><span className="text-blue-600 dark:text-blue-400">Assigned:</span> <span className="font-medium">{preview.assigned}</span></div>
-              <div><span className="text-blue-600 dark:text-blue-400">Unused:</span> <span className="font-medium">{preview.unused}</span></div>
+        <div className="surface-card overflow-hidden border-accent/30">
+          <div className="flex flex-col gap-1 border-b border-line bg-accent-subtle px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Seating preview</h3>
+              <p className="text-xs text-ink-3">Nothing is saved until you confirm.</p>
             </div>
-            {preview.items.length > 0 && (
-              <Table className="mt-4">
-                <TableHead>
-                  <Th className="text-blue-600 dark:text-blue-400">#</Th>
-                  <Th className="text-blue-600 dark:text-blue-400">Student</Th>
-                  <Th className="text-blue-600 dark:text-blue-400">Room</Th>
-                  <Th className="text-blue-600 dark:text-blue-400">Seat</Th>
-                </TableHead>
-                <TableBody>
-                  {preview.items.map((p) => (
-                    <tr key={p.assignment_order}>
-                      <Td>{p.assignment_order}</Td>
-                      <Td>{p.student_number} — {p.full_name}</Td>
-                      <Td>{p.building} {p.room_number}</Td>
-                      <Td className="font-medium">{p.seat_code}</Td>
-                    </tr>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            {preview.has_more && <p className="mt-2 text-xs text-blue-600">Showing first 20 of {preview.students} assignments</p>}
-            <div className="mt-4 flex gap-3">
-              <Button variant="primary" onClick={handleConfirm} disabled={confirming} loading={confirming}>
-                <CheckCircle className="h-4 w-4" />
-                Confirm Assignment
-              </Button>
-              <Button variant="secondary" onClick={() => setPreview(null)}>
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Regeneration Confirmation */}
-      {showRegenConfirm && (
-        <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
-          <CardContent>
-            <h2 className="text-lg font-medium text-red-900 dark:text-red-100 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Warning
-            </h2>
-            <p className="mt-2 text-sm text-red-800 dark:text-red-300">
-              This will replace the current seating assignment for this examination.
-              Current assignments: {summary?.assigned_students}.
+            <p className="tnum text-xs text-ink-2">
+              {plural(preview.students, "student")} · {plural(preview.rooms, "room")} · {plural(preview.available_seats, "seat")} ·{" "}
+              <span className="font-medium text-ink">{formatNumber(preview.assigned)} assigned</span> · {formatNumber(preview.unused)} unused
             </p>
-            <div className="mt-4 flex gap-3">
-              <Button variant="danger" onClick={handleRegenerate} disabled={regenerating} loading={regenerating}>
-                Regenerate
-              </Button>
-              <Button variant="secondary" onClick={() => setShowRegenConfirm(false)}>
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Room Summary */}
-      {summary && summary.room_details.length > 0 && (
-        <Card>
-          <CardContent>
-            <h2 className="text-lg font-medium text-black dark:text-white">Room Summary</h2>
-            <Table className="mt-3">
+          </div>
+          {preview.items.length > 0 && (
+            <Table>
               <TableHead>
+                <Th className="w-14">#</Th>
+                <Th>Student</Th>
                 <Th>Room</Th>
-                <Th>Used</Th>
-                <Th>Available</Th>
-                <Th>Total</Th>
+                <Th>Seat</Th>
               </TableHead>
               <TableBody>
-                {summary.room_details.map((rd) => (
-                  <tr key={rd.room_id}>
-                    <Td className="font-medium">{rd.building} {rd.room_number}</Td>
-                    <Td>{rd.used_seats}</Td>
-                    <Td>{rd.available_seats}</Td>
-                    <Td>{rd.total_seats}</Td>
+                {preview.items.map((p) => (
+                  <tr key={p.assignment_order}>
+                    <Td className="tnum text-ink-3">{p.assignment_order}</Td>
+                    <Td>
+                      <span className="font-medium">{p.full_name}</span>{" "}
+                      <span className="font-mono text-xs text-ink-3">{p.student_number}</span>
+                    </Td>
+                    <Td>{p.building} <span className="font-mono text-xs text-ink-2">{p.room_number}</span></Td>
+                    <Td className="font-mono text-xs font-medium">{p.seat_code}</Td>
                   </tr>
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          )}
+          <div className="flex flex-col gap-3 border-t border-line bg-surface-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-ink-3">
+              {preview.has_more ? `Showing first 20 of ${formatNumber(preview.students)} assignments` : `${plural(preview.items.length, "assignment")}`}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setPreview(null)}>Cancel</Button>
+              <Button onClick={handleConfirm} disabled={confirming} loading={confirming}>
+                <CheckCircle className="h-4 w-4" /> Confirm assignment
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Assignments Table */}
-      <Card>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-black dark:text-white">Assignments ({totalAssignments})</h2>
+      {/* Rooms */}
+      <div className="surface-card overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Rooms</h3>
+            <p className="tnum text-xs text-ink-3">
+              {plural(examRooms.length, "room")} selected · {plural(totalCapacity, "seat")} capacity
+            </p>
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <Input type="text" placeholder="Search student #, name, or seat..." value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="flex-1" />
+          {canEdit && (
+            <div className="flex items-center gap-2">
+              <Select
+                value={selectedAddRoom}
+                onChange={(e) => setSelectedAddRoom(e.target.value)}
+                options={availableRooms.map((r) => ({ value: r.id, label: `${r.building} ${r.room_number} (${r.capacity} seats)` }))}
+                placeholder="Add a room…"
+                aria-label="Add a room"
+                className="w-64"
+              />
+              <Button variant="secondary" onClick={handleAddRoom} disabled={!selectedAddRoom}>
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            </div>
+          )}
+        </div>
+        {examRooms.length === 0 ? (
+          <EmptyState
+            icon={<DoorOpen className="h-5 w-5 text-ink-3" />}
+            title="No rooms selected"
+            description={canEdit ? "Add at least one room above before generating seating." : "No rooms have been selected for this exam yet."}
+          />
+        ) : (
+          <Table>
+            <TableHead>
+              <Th>Room</Th>
+              <Th className="text-right">Capacity</Th>
+              <Th className="text-right">Used</Th>
+              <Th className="text-right">Free</Th>
+              <Th className="w-[28%]">Utilization</Th>
+              {canEdit && <Th className="w-12"><span className="sr-only">Actions</span></Th>}
+            </TableHead>
+            <TableBody>
+              {examRooms.map((r) => {
+                const rd = detailsById.get(r.id);
+                const total = rd?.total_seats ?? r.capacity;
+                const used = rd?.used_seats ?? 0;
+                const pct = total > 0 ? used / total : 0;
+                return (
+                  <tr key={r.id}>
+                    <Td className="font-medium">
+                      {r.building} <span className="font-mono text-xs text-ink-2">{r.room_number}</span>
+                    </Td>
+                    <Td className="tnum text-right text-ink-2">{formatNumber(total)}</Td>
+                    <Td className="tnum text-right">{formatNumber(used)}</Td>
+                    <Td className="tnum text-right text-ink-2">{formatNumber(rd?.available_seats ?? total - used)}</Td>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-hover">
+                          <div
+                            className={pct >= 0.95 ? "h-full rounded-full bg-warning" : "h-full rounded-full bg-accent"}
+                            style={{ width: `${Math.round(pct * 100)}%` }}
+                          />
+                        </div>
+                        <span className="tnum w-9 text-right text-xs text-ink-3">{Math.round(pct * 100)}%</span>
+                      </div>
+                    </Td>
+                    {canEdit && (
+                      <Td className="py-1.5 text-right">
+                        <Button variant="ghost" size="sm" className="px-2 text-ink-3 hover:text-danger"
+                          onClick={() => handleRemoveRoom(r.id)} aria-label={`Remove ${r.building} ${r.room_number}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </Td>
+                    )}
+                  </tr>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      {/* Assignments */}
+      <div className="surface-card overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Assignments</h3>
+            <p className="tnum text-xs text-ink-3">{plural(totalAssignments, "student")} seated</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+              <Input type="text" placeholder="Search student #, name or seat…" value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                aria-label="Search assignments"
+                className="pl-8 sm:w-72" />
+            </div>
             <Select
               value={filterRoom}
               onChange={(e) => { setFilterRoom(e.target.value); setPage(1); }}
@@ -391,58 +404,65 @@ export default function SeatingPage() {
                 { value: "", label: "All rooms" },
                 ...examRooms.map((r) => ({ value: r.id, label: `${r.building} ${r.room_number}` })),
               ]}
-              className="w-auto"
+              aria-label="Filter by room"
+              className="sm:w-48"
             />
-            <Button variant="primary" size="sm" onClick={handleSearch}>Search</Button>
+            <Button variant="secondary" onClick={handleSearch}>Search</Button>
           </div>
-          {assignments.length === 0 ? (
-            <EmptyState
-              title="No assignments found"
-              description="Generate seating assignments to see them here."
-            />
-          ) : (
-            <>
-              <Table className="mt-4">
-                <TableHead>
-                  <Th>#</Th>
-                  <Th>Student #</Th>
-                  <Th>Name</Th>
-                  <Th>Building</Th>
-                  <Th>Room</Th>
-                  <Th>Seat</Th>
-                  <Th>Method</Th>
-                </TableHead>
-                <TableBody>
-                  {assignments.map((a) => (
-                    <tr key={a.id}>
-                      <Td className="text-zinc-500">{a.assignment_order}</Td>
-                      <Td>{a.student_number}</Td>
-                      <Td>{a.full_name}</Td>
-                      <Td>{a.building}</Td>
-                      <Td>{a.room_number}</Td>
-                      <Td className="font-medium">{a.seat_code}</Td>
-                      <Td className="text-xs text-zinc-500">{a.method}</Td>
-                    </tr>
-                  ))}
-                </TableBody>
-              </Table>
+        </div>
+        {assignments.length === 0 ? (
+          <EmptyState
+            icon={<Armchair className="h-5 w-5 text-ink-3" />}
+            title={searchQuery || filterRoom ? "No matching assignments" : "No assignments yet"}
+            description={searchQuery || filterRoom ? "Try a different search or room filter." : "Preview and confirm a seating assignment to see it here."}
+            action={
+              canEdit && !hasAssignments && examRooms.length > 0 && !(searchQuery || filterRoom) ? (
+                <Button onClick={handlePreview} loading={previewing}>
+                  <Sparkles className="h-4 w-4" /> Preview assignment
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <>
+            <Table>
+              <TableHead>
+                <Th className="w-14">#</Th>
+                <Th>Student #</Th>
+                <Th>Name</Th>
+                <Th>Room</Th>
+                <Th>Seat</Th>
+                <Th>Method</Th>
+              </TableHead>
+              <TableBody>
+                {assignments.map((a) => (
+                  <tr key={a.id}>
+                    <Td className="tnum text-ink-3">{a.assignment_order}</Td>
+                    <Td className="font-mono text-xs text-ink-2">{a.student_number}</Td>
+                    <Td className="font-medium">{a.full_name}</Td>
+                    <Td>{a.building} <span className="font-mono text-xs text-ink-2">{a.room_number}</span></Td>
+                    <Td className="font-mono text-xs font-medium">{a.seat_code}</Td>
+                    <Td><Badge variant={a.method === "MANUAL" ? "violet" : "default"}>{a.method.charAt(0) + a.method.slice(1).toLowerCase()}</Badge></Td>
+                  </tr>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-between border-t border-line bg-surface-2 px-4 py-2.5 text-xs text-ink-3">
+              <span className="tnum">Page {page} of {pageCount}</span>
               {totalAssignments > 50 && (
-                <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Page {page} of {Math.ceil(totalAssignments / 50)}</span>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-                      Prev
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 50 >= totalAssignments}>
-                      Next
-                    </Button>
-                  </div>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+                    <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 50 >= totalAssignments}>
+                    Next <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -5,12 +5,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
   ArrowLeftRight,
   Armchair,
-  Calendar,
   CheckCircle2,
-  Clock,
   DoorOpen,
   GripVertical,
   MousePointerClick,
@@ -38,6 +35,7 @@ import { useAuth } from "@/lib/auth/context";
 import { Badge, Button, Card, EmptyState, Skeleton, StatCard } from "@/components";
 import { PageTransition } from "@/components/page-transition";
 import { cn } from "@/lib/utils";
+import { formatDateLong, formatTime, plural } from "@/lib/format";
 
 const DRAG_TYPE = "application/x-examflow-student";
 
@@ -269,7 +267,7 @@ export default function SeatMapPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 px-4 py-6 sm:px-6">
+      <div className="space-y-6">
         <Skeleton className="h-10 w-72" />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -283,35 +281,22 @@ export default function SeatMapPage() {
 
   if (error) {
     return (
-      <div className="m-6 rounded-md border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{error}</div>
+      <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</div>
     );
   }
 
   return (
     <PageTransition>
-      <div className="animate-fade-in space-y-6 px-4 py-6 sm:px-6 print:hidden">
-        {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="animate-fade-in space-y-6 print:hidden">
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <Link
-              href={`/app/exams/${examId}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-ink"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" /> Back to exam
-            </Link>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-ink">Seat Map</h1>
-            {exam && (
-              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
-                <span className="font-medium text-ink">{exam.course_code}</span>
-                <span>{exam.exam_name}</span>
-                <span className="inline-flex items-center gap-1 text-ink-3">
-                  <Calendar className="h-3.5 w-3.5" /> {exam.exam_date}
-                </span>
-                <span className="inline-flex items-center gap-1 text-ink-3">
-                  <Clock className="h-3.5 w-3.5" /> {exam.start_time.slice(0, 5)} · {exam.duration_minutes} min
-                </span>
-              </p>
-            )}
+            <h2 className="text-lg font-semibold tracking-tight text-ink">Seat map</h2>
+            <p className="text-sm text-ink-2">
+              {canEdit
+                ? "Drag students between seats, or click a seat to inspect and move it."
+                : "Room layouts with each student's assigned seat."}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -368,7 +353,7 @@ export default function SeatMapPage() {
             />
           </Card>
         ) : (
-          <div className="grid grid-cols-1 gap-6 items-start xl:grid-cols-[220px_minmax(0,1fr)_300px]">
+          <div className="grid grid-cols-1 gap-6 items-start xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[220px_minmax(0,1fr)_300px]">
             <RoomRail rooms={rooms} activeRoomId={activeRoomId} onSelect={(id) => { setActiveRoomId(id); setSelectedSeatId(null); }} />
 
             {activeRoom && (
@@ -528,11 +513,11 @@ function RoomRail({
   onSelect: (id: string) => void;
 }) {
   return (
-    <Card className="h-fit p-2">
+    <Card className="h-fit p-2 xl:col-span-2 2xl:col-span-1">
       <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
         Rooms · {rooms.length}
       </p>
-      <div className="flex gap-2 overflow-x-auto xl:flex-col xl:overflow-visible">
+      <div className="flex gap-2 overflow-x-auto 2xl:flex-col 2xl:overflow-visible">
         {rooms.map((room) => {
           const pct = room.usable_seats ? Math.round((room.occupied_seats / room.usable_seats) * 100) : 0;
           const active = room.id === activeRoomId;
@@ -542,7 +527,7 @@ function RoomRail({
               onClick={() => onSelect(room.id)}
               aria-current={active}
               className={cn(
-                "min-w-[200px] rounded-lg border px-3 py-2.5 text-left transition-colors xl:min-w-0",
+                "min-w-[220px] rounded-lg border px-3 py-2.5 text-left transition-colors 2xl:min-w-0",
                 active ? "border-accent/40 bg-accent-subtle" : "border-transparent hover:bg-surface-hover",
               )}
             >
@@ -1065,7 +1050,7 @@ function PrintSheet({ exam, room }: { exam: Exam; room: SeatMapRoom }) {
         {exam.course_code} — {exam.exam_name}
       </h1>
       <p className="text-sm">
-        {roomLabel(room)} · {exam.exam_date} · {exam.start_time.slice(0, 5)} · {occupied.length} students
+        {roomLabel(room)} · {formatDateLong(exam.exam_date)} · {formatTime(exam.start_time)} · {plural(occupied.length, "student")}
       </p>
       <table className="mt-4 w-full border-collapse text-sm">
         <thead>

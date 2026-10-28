@@ -22,6 +22,19 @@ function buildHeaders(init?: RequestInit): Record<string, string> {
   return headers;
 }
 
+/** Error thrown for non-2xx responses; `requestId` is the backend correlation ID. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly requestId: string | null) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Correlation reference for generic user-facing error messages, if available. */
+export function errorReference(err: unknown): string {
+  return err instanceof ApiError && err.requestId ? ` (Ref: ${err.requestId.slice(0, 8)})` : "";
+}
+
 /** Authenticated JSON fetch shared by all API modules. */
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const hasBody = options?.body !== undefined && options?.body !== null;
@@ -44,7 +57,7 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
     } else if (typeof message !== "string") {
       message = JSON.stringify(message);
     }
-    throw new Error(message);
+    throw new ApiError(message, response.status, response.headers.get("X-Request-Id"));
   }
 
   if (response.status === 204) return null as T;

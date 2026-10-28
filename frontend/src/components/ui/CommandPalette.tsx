@@ -46,21 +46,16 @@ export function CommandPalette({ open, onOpen, items }: CommandPaletteProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[calc(4rem+3.5rem)]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 px-4 pt-[14vh] backdrop-blur-[2px] animate-fade-in"
       onClick={() => onOpen(false)}
       aria-modal="true"
       role="dialog"
+      aria-label="Command palette"
     >
       <div
-        className="surface-card w-full max-w-xl overflow-hidden rounded-lg border border-line shadow-lg"
+        className="w-full max-w-xl overflow-hidden rounded-xl border border-line-strong bg-surface shadow-[var(--shadow-lg)] animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-line px-3 py-2.5">
-          <div className="flex items-center gap-2 text-xs text-ink-3">
-            <span>⌘K</span>
-            <span>· Type to navigate</span>
-          </div>
-        </div>
         <PaletteInput
           items={items}
           router={router}
@@ -81,6 +76,7 @@ function PaletteInput({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
 
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -98,53 +94,74 @@ function PaletteInput({
     inputRef.current?.focus();
   }, []);
 
+  const run = (item: CommandItem) => {
+    onClose();
+    item.action?.();
+    if (item.href) router.push(item.href);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") onClose();
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((a) => Math.min(a + 1, visible.length - 1));
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((a) => Math.max(a - 1, 0));
+    }
+    if (e.key === "Enter" && visible[active]) {
+      e.preventDefault();
+      run(visible[active]);
+    }
   };
 
   return (
     <>
-      <div className="relative border-b border-line px-3 py-2">
-        <Search
-          size={16}
-          className="absolute left-5 top-1/2 -translate-y-1/2 text-ink-3"
-        />
+      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+        <Search size={16} className="shrink-0 text-ink-3" />
         <input
           ref={inputRef}
           type="search"
-          placeholder="Search actions..."
+          placeholder="Search pages and actions…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActive(0);
+          }}
           onKeyDown={onKeyDown}
-          className="w-full border-none bg-transparent text-sm text-ink placeholder-ink-3 focus:outline-none"
+          className="w-full border-none bg-transparent text-sm text-ink placeholder:text-ink-3 focus:outline-none focus-visible:outline-none"
         />
+        <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[10px] text-ink-3">Esc</kbd>
       </div>
-      <nav className="max-h-80 overflow-y-auto py-1">
+      <nav className="max-h-80 overflow-y-auto p-1.5">
         {visible.length === 0 ? (
-          <p className="px-3 py-4 text-center text-xs text-ink-3">
-            No actions found
+          <p className="px-3 py-6 text-center text-sm text-ink-3">
+            No results for &ldquo;{query}&rdquo;
           </p>
         ) : (
-          visible.map((item) => (
+          visible.map((item, i) => (
             <button
               key={item.id}
+              onMouseEnter={() => setActive(i)}
               onClick={(e) => {
                 e.preventDefault();
-                onClose();
-                item.action?.();
-                if (item.href) router.push(item.href);
+                run(item);
               }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none ${
+                i === active ? "bg-accent-subtle text-accent" : "text-ink"
+              }`}
             >
-              {item.icon}
+              <span className={i === active ? "text-accent" : "text-ink-3"}>{item.icon}</span>
               <span>{item.label}</span>
-              {item.keywords && (
-                <span className="ml-auto text-xs text-ink-3">{item.keywords}</span>
-              )}
             </button>
           ))
         )}
       </nav>
+      <div className="flex items-center gap-3 border-t border-line bg-surface-2 px-4 py-2 text-[11px] text-ink-3">
+        <span>↑↓ to navigate</span>
+        <span>↵ to open</span>
+      </div>
     </>
   );
 }

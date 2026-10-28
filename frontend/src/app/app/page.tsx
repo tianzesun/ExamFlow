@@ -5,14 +5,19 @@ import Link from "next/link";
 import {
   Plus,
   FileText,
-  Calendar,
   Clock,
-  CheckCircle,
+  CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Users,
   DoorOpen,
+  ArrowRight,
+  Upload,
+  CalendarDays,
+  Sparkles,
 } from "lucide-react";
 import { useCourseContext } from "@/lib/course-context";
+import { useAuth } from "@/lib/auth/context";
 import { getExams } from "@/lib/api/exams";
 import { getExamSummary } from "@/lib/api/readiness";
 import { getCourses } from "@/lib/api/courses";
@@ -20,24 +25,28 @@ import type { ExamSummary } from "@/lib/api/readiness";
 import type { Exam } from "@/lib/types";
 import { useNow } from "@/hooks/useNow";
 import {
+  formatDateLong,
+  formatDateShort,
+  formatMonthDay,
+  formatMonthName,
+  formatRelative,
+  formatTime,
+  plural,
+} from "@/lib/format";
+import {
   Badge,
   Button,
   Card,
   EmptyState,
   STATUS_BADGES,
   Skeleton,
-  AreaChart,
-  Funnel,
   StatCard,
   type StatCardProps,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+  PageContainer,
+  PageHeader,
 } from "@/components";
 import { PageTransition } from "@/components/page-transition";
 import { RosterUploadDialog } from "@/components/dashboard/RosterUploadDialog";
-import { CourseSwitcher } from "@/components/dashboard/CourseSwitcher";
 import {
   MOCK_EXAMS_FULL,
   MOCK_COURSES,
@@ -60,14 +69,16 @@ const STATUS_LABEL: Record<string, string> = {
   ARCHIVED: "Archived",
 };
 
-const STATUS_DOT: Record<string, string> = {
-  DRAFT: "bg-ink-3",
-  CONFIGURED: "bg-accent",
-  READY: "bg-warning",
-  GENERATED: "bg-violet",
-  COMPLETED: "bg-success",
-  ARCHIVED: "bg-ink-3",
+const STATUS_COLOR: Record<string, string> = {
+  DRAFT: "var(--ink-3)",
+  CONFIGURED: "var(--accent)",
+  READY: "var(--warning)",
+  GENERATED: "var(--violet)",
+  COMPLETED: "var(--success)",
+  ARCHIVED: "var(--line-strong)",
 };
+
+const DAY = 86400000;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -75,73 +86,41 @@ function examDateTime(exam: Exam): Date {
   return new Date(`${exam.exam_date}T${exam.start_time || "00:00"}`);
 }
 
-function fmtDate(iso?: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+/** Exams packages are printed once an exam is GENERATED; earlier means work remains. */
+function isPrepared(exam: Exam): boolean {
+  return exam.status === "GENERATED" || exam.status === "COMPLETED" || exam.status === "ARCHIVED";
+}
+
+function greeting(now: number): string {
+  const h = new Date(now).getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+/** Exam counts for each of the next `weeks` weeks, starting at the current Monday. */
+function weeklyLoad(exams: Exam[], now: number, weeks = 8) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  // Step with setDate (not ms arithmetic) so DST changes don't shift week boundaries.
+  const buckets = Array.from({ length: weeks }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i * 7);
+    return { start: d, count: 0 };
   });
-}
-
-function fmtTime(t?: string): string {
-  if (!t) return "";
-  return new Date(`1970-01-01T${t}`).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-/** Humanized relative time between a target and `now` (pure when given now). */
-function timeUntil(target: Date, now: number): string {
-  const ms = target.getTime() - now;
-  if (ms < 0) return "Past";
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor(ms / 60000) % 60;
-  const s = Math.floor(ms / 1000) % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-/** Exams grouped into trailing-7-day buckets for the trend/sparklines. */
-function weeklyBuckets(exams: Exam[]): number[] {
-  const buckets = new Array(7).fill(0);
-  const dayAgo = new Date();
-  dayAgo.setDate(dayAgo.getDate() - 6);
-  dayAgo.setHours(0, 0, 0, 0);
   for (const e of exams) {
-    const d = examDateTime(e);
-    const idx = Math.floor(
-      (d.getTime() - dayAgo.getTime()) / 86400000
-    );
-    if (idx >= 0 && idx < 7) buckets[idx] += 1;
+    const t = examDateTime(e).getTime();
+    for (let i = weeks - 1; i >= 0; i--) {
+      if (t >= buckets[i].start.getTime()) {
+        const end = new Date(buckets[i].start);
+        end.setDate(end.getDate() + 7);
+        if (t < end.getTime()) buckets[i].count += 1;
+        break;
+      }
+    }
   }
   return buckets;
-}
-
-/** Exams grouped by month label for the area chart. */
-function monthlySeries(exams: Exam[]) {
-  const map = new Map<string, number>();
-  for (const e of exams) {
-    const d = new Date(e.exam_date);
-    if (Number.isNaN(d.getTime())) continue;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    map.set(key, (map.get(key) ?? 0) + 1);
-  }
-  return Array.from(map.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => {
-      const [y, m] = key.split("-");
-      const label = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(
-        undefined,
-        { month: "short", year: "2-digit" }
-      );
-      return { label, value };
-    });
 }
 
 // ── Page-level data loading ────────────────────────────────────────────────
@@ -281,41 +260,41 @@ function WorkspaceHeader({
   exams?: Exam[];
   onImported?: () => void;
 }) {
-  const { selectedCourseId } = useCourseContext();
+  const { selectedCourseId, courses } = useCourseContext();
+  const { user } = useAuth();
+  const now = useNow(60_000);
   const [rosterOpen, setRosterOpen] = useState(false);
+  const course = courses.find((c) => c.id === selectedCourseId);
+  const firstName = (user?.display_name ?? "").split(/\s+/)[0];
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-ink">Dashboard</h1>
-            {exams.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-[11px] font-medium text-success">
-                <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                Live
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-sm text-ink-2">
-            {selectedCourseId ? "Course workspace overview" : "All courses overview"}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="hidden sm:block">
-            <CourseSwitcher />
-          </div>
-          <Button variant="secondary" size="sm" onClick={() => setRosterOpen(true)} disabled={!selectedCourseId}>
-            Import roster
-          </Button>
-          <Link href="/app/exams/new">
-            <Button size="sm">
-              <Plus className="h-4 w-4" /> Create exam
+      <PageHeader
+        eyebrow={formatDateLong(new Date(now))}
+        title={course ? course.course_code : `${greeting(now)}${firstName ? `, ${firstName}` : ""}`}
+        description={
+          course
+            ? course.course_name
+            : "Here's where every exam stands across your courses."
+        }
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setRosterOpen(true)}
+              disabled={!selectedCourseId}
+              title={selectedCourseId ? undefined : "Choose a course in the sidebar first"}
+            >
+              <Upload /> Import roster
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/app/exams/new">
+              <Button>
+                <Plus /> Create exam
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       <RosterUploadDialog
         open={rosterOpen}
@@ -331,132 +310,260 @@ function WorkspaceHeader({
 // ── KPIs ───────────────────────────────────────────────────────────────────
 
 function KpiCards({ exams, summaries }: { exams: Exam[]; summaries: Record<string, ExamSummary> }) {
-  const scheduled = exams.length;
-  const withRoster = examCount((e) => (summaries[e.id]?.roster_count ?? 0) > 0);
-  const ready = examCount((e) => e.status === "GENERATED" || e.status === "COMPLETED");
-  const unassigned = exams.reduce(
-    (acc, e) => acc + (summaries[e.id]?.unassigned_count ?? 0),
-    0
-  );
-  const spark = useMemo(() => weeklyBuckets(exams), [exams]);
-
-  function examCount(pred: (e: Exam) => boolean) {
-    return exams.filter(pred).length;
-  }
+  const now = useNow(60_000);
+  const total = exams.length;
+  const upcoming = exams.filter((e) => examDateTime(e).getTime() >= now);
+  const nextTwoWeeks = upcoming.filter((e) => examDateTime(e).getTime() - now < 14 * DAY).length;
+  const withRoster = exams.filter((e) => (summaries[e.id]?.roster_count ?? 0) > 0).length;
+  const prepared = exams.filter(isPrepared).length;
+  const unassigned = exams.reduce((acc, e) => acc + (summaries[e.id]?.unassigned_count ?? 0), 0);
+  const assigned = exams.reduce((acc, e) => acc + (summaries[e.id]?.assigned_count ?? 0), 0);
 
   const cards: StatCardProps[] = [
     {
-      icon: FileText,
-      label: "Scheduled exams",
-      value: scheduled,
-      change: "+this cycle",
-      sparkline: spark,
-      color: "accent" as const,
-    },
-    {
-      icon: CheckCircle,
-      label: "Roster imported",
-      value: withRoster,
-      change: `${Math.round((withRoster / Math.max(1, scheduled)) * 100)}%`,
-      color: "success" as const,
+      icon: CalendarDays,
+      label: "Upcoming exams",
+      value: upcoming.length,
+      hint: nextTwoWeeks > 0 ? `${nextTwoWeeks} in the next 14 days` : "None in the next 14 days",
+      color: "accent",
     },
     {
       icon: Users,
-      label: "Exams ready",
-      value: ready,
-      color: "violet" as const,
+      label: "Rosters imported",
+      value: withRoster,
+      hint: `of ${plural(total, "exam")}`,
+      progress: withRoster / Math.max(1, total),
+      color: "accent",
+    },
+    {
+      icon: CheckCircle2,
+      label: "Packages generated",
+      value: prepared,
+      hint: `of ${plural(total, "exam")}`,
+      progress: prepared / Math.max(1, total),
+      color: "success",
     },
     {
       icon: DoorOpen,
-      label: "Unassigned seats",
+      label: "Students without a seat",
       value: unassigned,
-      change: unassigned > 0 ? "needs action" : "all assigned",
+      hint: unassigned > 0 ? "Run seating to place them" : "Everyone rostered has a seat",
+      progress: assigned + unassigned > 0 ? assigned / (assigned + unassigned) : undefined,
       color: unassigned > 0 ? "warning" : "success",
     },
   ];
 
   return (
-    <TooltipProvider>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((c) => (
-          <Tooltip key={c.label}>
-            <TooltipTrigger className="cursor-default">
-              <StatCard {...c} />
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{c.label}: {c.value}</p>
-              {c.change && <p className="text-xs text-muted-foreground">{c.change}</p>}
-            </TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
-    </TooltipProvider>
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      {cards.map((c) => (
+        <StatCard key={c.label} {...c} />
+      ))}
+    </div>
   );
 }
 
-// ── Exams Over Time ────────────────────────────────────────────────────────
+// ── Needs attention ────────────────────────────────────────────────────────
 
-function ExamsOverTime({ exams }: { exams: Exam[] }) {
-  const series = useMemo(() => monthlySeries(exams), [exams]);
+interface AttentionItem {
+  exam: Exam;
+  reason: string;
+  action: string;
+  href: string;
+  severity: "danger" | "warning";
+}
+
+function buildAttention(exams: Exam[], summaries: Record<string, ExamSummary>, now: number): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  for (const e of exams) {
+    const t = examDateTime(e).getTime();
+    if (t < now || isPrepared(e)) continue;
+    const s = summaries[e.id];
+    const soon = t - now < 14 * DAY;
+    if (!s || s.roster_count === 0) {
+      items.push({ exam: e, reason: "No roster imported", action: "Import roster", href: `/app/exams/${e.id}/roster`, severity: soon ? "danger" : "warning" });
+    } else if (s.room_count === 0) {
+      items.push({ exam: e, reason: "No rooms assigned", action: "Add rooms", href: `/app/exams/${e.id}/seating`, severity: soon ? "danger" : "warning" });
+    } else if (s.unassigned_count > 0) {
+      items.push({ exam: e, reason: `${plural(s.unassigned_count, "student")} without a seat`, action: "Run seating", href: `/app/exams/${e.id}/seating`, severity: soon ? "danger" : "warning" });
+    } else if (!s.has_template) {
+      items.push({ exam: e, reason: "No exam template uploaded", action: "Upload template", href: `/app/exams/${e.id}/documents`, severity: soon ? "danger" : "warning" });
+    } else if (soon) {
+      items.push({ exam: e, reason: "Ready to generate packages", action: "Generate", href: `/app/exams/${e.id}/documents`, severity: "warning" });
+    }
+  }
+  return items.sort(
+    (a, b) =>
+      (a.severity === b.severity ? 0 : a.severity === "danger" ? -1 : 1) ||
+      examDateTime(a.exam).getTime() - examDateTime(b.exam).getTime(),
+  );
+}
+
+function NeedsAttention({ exams, summaries }: { exams: Exam[]; summaries: Record<string, ExamSummary> }) {
+  const now = useNow(60_000);
+  const items = useMemo(() => buildAttention(exams, summaries, now), [exams, summaries, now]);
+  const shown = items.slice(0, 6);
+
   return (
-    <Card>
-      <div className="border-b border-line px-6 py-4">
-        <h3 className="text-sm font-semibold text-ink">Exams Over Time</h3>
-        <p className="mt-0.5 text-xs text-ink-3">
-          {exams.length} scheduled exam{exams.length !== 1 ? "s" : ""} by month
-        </p>
-      </div>
-      <div className="px-6 py-5">
-        {series.length > 0 ? (
-          <AreaChart data={series} height={200} />
-        ) : (
-          <EmptyState icon={<FileText />} title="No exams" description="Exams scheduled will appear here." />
+    <Card className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Needs attention</h3>
+          <p className="mt-0.5 text-xs text-ink-3">Upcoming exams with work left before exam day</p>
+        </div>
+        {items.length > 0 && (
+          <Badge variant={items.some((i) => i.severity === "danger") ? "danger" : "warning"}>
+            {plural(items.length, "item")}
+          </Badge>
         )}
+      </div>
+      {shown.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-5 py-10 text-center">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
+            <Sparkles className="h-5 w-5" />
+          </span>
+          <p className="mt-3 text-sm font-medium text-ink">You&rsquo;re all caught up</p>
+          <p className="mt-0.5 text-xs text-ink-3">Every upcoming exam is on track.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-line">
+          {shown.map((it) => (
+            <li key={it.exam.id} className="flex items-center gap-3 px-5 py-3">
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                  it.severity === "danger" ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning"
+                }`}
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">
+                  <span className="font-mono text-xs text-ink-3">{it.exam.course_code}</span>{" "}
+                  {it.exam.exam_name}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-ink-2">
+                  {it.reason} · <span className="text-ink-3">{formatRelative(examDateTime(it.exam), new Date(now))}</span>
+                </p>
+              </div>
+              <Link href={it.href}>
+                <Button variant="secondary" size="sm">
+                  {it.action}
+                </Button>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {items.length > shown.length && (
+        <Link
+          href="/app/exams"
+          className="mt-auto flex items-center justify-center gap-1 border-t border-line px-5 py-2.5 text-xs font-medium text-accent hover:bg-surface-2"
+        >
+          View all {items.length} <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      )}
+    </Card>
+  );
+}
+
+// ── Status pipeline ────────────────────────────────────────────────────────
+
+function StatusPipeline({ exams }: { exams: Exam[] }) {
+  const counts = useMemo(() => {
+    const m = new Map<string, number>(STATUS_ORDER.map((s) => [s, 0]));
+    for (const e of exams) if (m.has(e.status)) m.set(e.status, (m.get(e.status) ?? 0) + 1);
+    return STATUS_ORDER.map((s) => ({ status: s, count: m.get(s) ?? 0 }));
+  }, [exams]);
+  const total = counts.reduce((a, c) => a + c.count, 0);
+
+  return (
+    <Card className="h-full">
+      <div className="border-b border-line px-5 py-3.5">
+        <h3 className="text-sm font-semibold text-ink">Exam pipeline</h3>
+        <p className="mt-0.5 text-xs text-ink-3">Where each exam sits in the workflow</p>
+      </div>
+      <div className="px-5 py-5">
+        <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-surface-hover">
+          {counts
+            .filter((c) => c.count > 0)
+            .map((c) => (
+              <div
+                key={c.status}
+                className="h-full first:rounded-l-full last:rounded-r-full"
+                style={{ width: `${(c.count / Math.max(1, total)) * 100}%`, background: STATUS_COLOR[c.status] }}
+                title={`${STATUS_LABEL[c.status]}: ${c.count}`}
+              />
+            ))}
+        </div>
+        <ul className="mt-5 space-y-1">
+          {counts.map((c) => (
+            <li key={c.status}>
+              <Link
+                href={`/app/exams?status=${c.status}`}
+                className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface-2"
+              >
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: STATUS_COLOR[c.status] }} />
+                <span className="flex-1 text-ink-2">{STATUS_LABEL[c.status]}</span>
+                <span className="tnum font-medium text-ink">{c.count}</span>
+                <span className="tnum w-10 text-right text-xs text-ink-3">
+                  {total > 0 ? `${Math.round((c.count / total) * 100)}%` : "—"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </Card>
   );
 }
 
-// ── Status funnel ──────────────────────────────────────────────────────────
+// ── Weekly load ────────────────────────────────────────────────────────────
 
-function StatusFunnel({ exams }: { exams: Exam[] }) {
-  const buckets = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const e of STATUS_ORDER) counts.set(e, 0);
-    for (const e of exams) {
-      if (!e.status) continue;
-      counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
-    }
-    const palette = [
-      "var(--ink-3)",
-      "var(--accent)",
-      "var(--success)",
-      "var(--violet)",
-      "var(--violet-strong)",
-    ];
-    return STATUS_ORDER.filter((s) => (counts.get(s) ?? 0) > 0).map(
-      (s, i) => ({
-        label: STATUS_LABEL[s] ?? s,
-        value: counts.get(s) ?? 0,
-        color: palette[i % palette.length],
-      })
-    );
-  }, [exams]);
+function WeeklyLoad({ exams }: { exams: Exam[] }) {
+  const now = useNow(60_000);
+  const weeks = useMemo(() => weeklyLoad(exams, now), [exams, now]);
+  const max = Math.max(1, ...weeks.map((w) => w.count));
+  const busiest = weeks.reduce((a, w) => (w.count > a.count ? w : a), weeks[0]);
 
   return (
-    <Card>
-      <div className="border-b border-line px-6 py-4">
-        <h3 className="text-sm font-semibold text-ink">Exam status pipeline</h3>
-        <p className="mt-0.5 text-xs text-ink-3">
-          Where each exam sits right now
-        </p>
-      </div>
-      <div className="px-6 py-5">
-        {buckets.length > 0 ? (
-          <Funnel data={buckets} />
-        ) : (
-          <EmptyState icon={<FileText />} title="No exams" />
+    <Card className="h-full">
+      <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-3.5">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Exam load, next 8 weeks</h3>
+          <p className="mt-0.5 text-xs text-ink-3">Exams scheduled per week</p>
+        </div>
+        {busiest.count > 0 && (
+          <p className="text-right text-xs text-ink-3">
+            Busiest week
+            <span className="block text-sm font-medium text-ink">
+              {formatMonthDay(busiest.start)} · {plural(busiest.count, "exam")}
+            </span>
+          </p>
         )}
+      </div>
+      <div className="px-5 pb-4 pt-6">
+        <div className="flex h-40 items-end gap-2 sm:gap-3">
+          {weeks.map((w, i) => (
+            <div key={i} className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+              <span className="tnum text-[11px] font-medium text-ink-2 opacity-0 transition-opacity group-hover:opacity-100">
+                {w.count}
+              </span>
+              <div
+                className={`w-full max-w-12 rounded-md transition-colors ${
+                  i === 0 ? "bg-accent" : "bg-accent/25 group-hover:bg-accent/45"
+                }`}
+                style={{ height: `${Math.max(w.count > 0 ? 6 : 2, (w.count / max) * 100)}%` }}
+                title={`Week of ${formatDateShort(w.start)}: ${plural(w.count, "exam")}`}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2 border-t border-line pt-2 sm:gap-3">
+          {weeks.map((w, i) => (
+            <span key={i} className="tnum flex-1 truncate text-center text-[10px] text-ink-3">
+              {i === 0 ? "This wk" : formatMonthDay(w.start)}
+            </span>
+          ))}
+        </div>
       </div>
     </Card>
   );
@@ -464,93 +571,99 @@ function StatusFunnel({ exams }: { exams: Exam[] }) {
 
 // ── Upcoming exams ─────────────────────────────────────────────────────────
 
-function UpcomingExams({ exams }: { exams: Exam[] }) {
-  const now = useNow();
+function ReadinessBar({ summary }: { summary?: ExamSummary }) {
+  if (!summary || summary.roster_count === 0) {
+    return <span className="text-xs text-ink-3">No roster</span>;
+  }
+  const pct = summary.assigned_count / Math.max(1, summary.roster_count);
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-hover">
+        <div
+          className={`h-full rounded-full ${pct >= 1 ? "bg-success" : "bg-accent"}`}
+          style={{ width: `${Math.round(pct * 100)}%` }}
+        />
+      </div>
+      <span className="tnum text-xs text-ink-2">
+        {summary.assigned_count}/{summary.roster_count}
+      </span>
+    </div>
+  );
+}
+
+function UpcomingExams({ exams, summaries }: { exams: Exam[]; summaries: Record<string, ExamSummary> }) {
+  const now = useNow(60_000);
   const upcoming = useMemo(
     () =>
       exams
         .filter((e) => examDateTime(e).getTime() >= now)
         .sort((a, b) => examDateTime(a).getTime() - examDateTime(b).getTime())
-        .slice(0, 5),
+        .slice(0, 6),
     [exams, now]
   );
 
   return (
-    <Card>
-      <div className="border-b border-line px-6 py-4">
-        <h3 className="text-sm font-semibold text-ink">Upcoming exams</h3>
-        <p className="mt-0.5 text-xs text-ink-3">
-          {upcoming.length} exam{upcoming.length !== 1 ? "s" : ""} scheduled
-        </p>
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Upcoming exams</h3>
+          <p className="mt-0.5 text-xs text-ink-3">Next sittings by date</p>
+        </div>
+        <Link href="/app/exams" className="flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-strong">
+          All exams <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
-      <div className="divide-y divide-line">
-          {upcoming.length === 0 ? (
-            <div className="py-10 text-center">
-              <Calendar className="mx-auto h-8 w-8 text-ink-3" />
-              <p className="mt-3 text-sm text-ink-2">No upcoming exams scheduled.</p>
-            </div>
-          ) : (
-            upcoming.map((e) => {
-              const when = examDateTime(e);
-              const dotColor = STATUS_DOT[e.status] ?? "bg-ink-3";
-              return (
+      {upcoming.length === 0 ? (
+        <EmptyState
+          icon={<CalendarDays className="h-5 w-5 text-ink-3" />}
+          title="Nothing scheduled"
+          description="Upcoming exams will appear here."
+        />
+      ) : (
+        <ul className="divide-y divide-line">
+          {upcoming.map((e) => {
+            const when = examDateTime(e);
+            const soon = when.getTime() - now < 3 * DAY;
+            return (
+              <li key={e.id}>
                 <Link
-                  key={e.id}
                   href={`/app/exams/${e.id}`}
-                  className="flex items-center justify-between gap-4 px-6 py-3 transition-all duration-150 hover:bg-surface-hover hover:pl-8"
+                  className="group flex items-center gap-4 px-5 py-3 transition-colors hover:bg-surface-2"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`}
-                      aria-hidden="true"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">
-                        {e.course_code} — {e.exam_name}
-                      </p>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {fmtDate(e.exam_date)}{" "}
-                        <span aria-hidden="true">•</span>{" "}
-                        <Clock className="h-3.5 w-3.5" />
-                        {fmtTime(e.start_time)}
-                      </div>
-                    </div>
+                  <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg border border-line bg-surface-2 leading-none">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-accent">
+                      {formatMonthName(when)}
+                    </span>
+                    <span className="tnum mt-0.5 text-base font-semibold text-ink">{when.getDate()}</span>
                   </div>
-                  <div className="flex items-center gap-2.5">
-                    <Badge
-                      variant={STATUS_BADGES[e.status]}
-                      className="text-[10px]"
-                    >
-                      {STATUS_LABEL[e.status] ?? e.status}
-                    </Badge>
-                    <Countdown target={when} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {e.exam_name}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-ink-3">
+                      <span className="font-mono">{e.course_code}</span>
+                      <span aria-hidden="true">·</span>
+                      <Clock className="h-3 w-3" />
+                      {formatTime(e.start_time)}
+                      {e.duration_minutes ? ` · ${e.duration_minutes} min` : ""}
+                    </p>
                   </div>
+                  <div className="hidden md:block">
+                    <ReadinessBar summary={summaries[e.id]} />
+                  </div>
+                  <Badge variant={STATUS_BADGES[e.status]} className="hidden sm:inline-flex">
+                    {STATUS_LABEL[e.status] ?? e.status}
+                  </Badge>
+                  <span className={`tnum w-24 shrink-0 text-right text-xs ${soon ? "font-medium text-danger" : "text-ink-3"}`}>
+                    {formatRelative(when, new Date(now))}
+                  </span>
                 </Link>
-              );
-            })
-          )}
-      </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Card>
-  );
-}
-
-/** Countdown badge that ticks every second via useNow. */
-function Countdown({ target }: { target: Date }) {
-  const now = useNow();
-  const remaining = timeUntil(target, now);
-  const urgent = target.getTime() - now < 3600000;
-  return (
-    <span
-      className={`tnum inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
-        urgent
-          ? "bg-danger/10 text-danger"
-          : "bg-surface-hover text-ink-2"
-      }`}
-    >
-      <Clock className="h-3 w-3" />
-      {remaining}
-    </span>
   );
 }
 
@@ -559,7 +672,6 @@ function Countdown({ target }: { target: Date }) {
 interface ActivityEvent {
   id: string;
   when: string;
-  whenLabel: string;
   kind: "roster" | "seating" | "ready" | "exam";
   title: string;
   detail: string;
@@ -570,38 +682,43 @@ function buildActivity(exams: Exam[], summaries: Record<string, ExamSummary>): A
   for (const e of exams) {
     const s = summaries[e.id];
     const ts = e.updated_at;
-    const whenLabel = fmtDate(ts);
-    if (e.status === "READY" || e.status === "GENERATED") {
+    if (e.status === "READY" || e.status === "GENERATED" || e.status === "COMPLETED") {
+      events.push({
+        id: `${e.id}-status`,
+        when: ts,
+        kind: e.status === "READY" ? "ready" : "exam",
+        title: `Marked ${STATUS_LABEL[e.status].toLowerCase()}`,
+        detail: `${e.course_code} · ${e.exam_name}`,
+      });
+    }
+    if (s?.assigned_count && s.assigned_count > 0) {
       events.push({
         id: `${e.id}-seating`,
         when: ts,
-        whenLabel,
-        kind: "exam",
-        title: `${e.exam_name} reached ${STATUS_LABEL[e.status]}`,
-        detail: e.course_code,
+        kind: "seating",
+        title: `${plural(s.assigned_count, "seat")} assigned`,
+        detail: `${e.course_code} · ${e.exam_name}`,
       });
-    }
-    if (s?.roster_count && s.roster_count > 0) {
+    } else if (s?.roster_count && s.roster_count > 0) {
       events.push({
         id: `${e.id}-roster`,
         when: ts,
-        whenLabel,
         kind: "roster",
-        title: `${s.roster_count} students rostered`,
+        title: `${plural(s.roster_count, "student")} rostered`,
         detail: `${e.course_code} · ${e.exam_name}`,
       });
     }
   }
   return events
     .sort((a, b) => Date.parse(b.when) - Date.parse(a.when))
-    .slice(0, 8);
+    .slice(0, 7);
 }
 
-const ACTIVITY_ICON: Record<ActivityEvent["kind"], React.ReactNode> = {
-  roster: <Users className="h-3.5 w-3.5 text-accent" />,
-  seating: <DoorOpen className="h-3.5 w-3.5 text-violet" />,
-  ready: <CheckCircle className="h-3.5 w-3.5 text-success" />,
-  exam: <FileText className="h-3.5 w-3.5 text-ink-3" />,
+const ACTIVITY_ICON: Record<ActivityEvent["kind"], { icon: React.ReactNode; tone: string }> = {
+  roster: { icon: <Users className="h-3.5 w-3.5" />, tone: "bg-accent/10 text-accent" },
+  seating: { icon: <DoorOpen className="h-3.5 w-3.5" />, tone: "bg-violet/10 text-violet" },
+  ready: { icon: <CheckCircle2 className="h-3.5 w-3.5" />, tone: "bg-success/10 text-success" },
+  exam: { icon: <FileText className="h-3.5 w-3.5" />, tone: "bg-surface-hover text-ink-2" },
 };
 
 function ActivityFeed({
@@ -611,39 +728,38 @@ function ActivityFeed({
   exams: Exam[];
   summaries: Record<string, ExamSummary>;
 }) {
+  const now = useNow(60_000);
   const events = useMemo(
     () => buildActivity(exams, summaries),
     [exams, summaries]
   );
   return (
-    <Card>
-      <div className="border-b border-line px-6 py-4">
+    <Card className="h-full">
+      <div className="border-b border-line px-5 py-3.5">
         <h3 className="text-sm font-semibold text-ink">Recent activity</h3>
-        <p className="mt-0.5 text-xs text-ink-3">Latest exam lifecycle events</p>
+        <p className="mt-0.5 text-xs text-ink-3">Latest changes across exams</p>
       </div>
-      <div className="divide-y divide-line">
-        {events.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-ink-2">
-            No recent activity.
-          </p>
-        ) : (
-          events.map((ev) => (
-            <li
-              key={ev.id}
-              className="flex items-start gap-3 px-6 py-3"
-            >
-              <span className="mt-0.25 shrink-0">{ACTIVITY_ICON[ev.kind]}</span>
-              <div className="min-w-0">
+      {events.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-ink-3">No recent activity.</p>
+      ) : (
+        <ol className="relative px-5 py-4">
+          <span className="absolute bottom-6 left-[34px] top-6 w-px bg-line" aria-hidden="true" />
+          {events.map((ev) => (
+            <li key={ev.id} className="relative flex items-start gap-3 py-2">
+              <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-4 ring-surface ${ACTIVITY_ICON[ev.kind].tone}`}>
+                {ACTIVITY_ICON[ev.kind].icon}
+              </span>
+              <div className="min-w-0 flex-1 pt-0.5">
                 <p className="text-sm font-medium text-ink">{ev.title}</p>
-                <p className="text-xs text-ink-3">{ev.detail}</p>
+                <p className="truncate text-xs text-ink-3">{ev.detail}</p>
               </div>
-              <span className="tnum shrink-0 text-xs text-ink-3">
-                {ev.whenLabel}
+              <span className="tnum shrink-0 pt-1 text-[11px] text-ink-3">
+                {formatRelative(ev.when, new Date(now))}
               </span>
             </li>
-          ))
-        )}
-      </div>
+          ))}
+        </ol>
+      )}
     </Card>
   );
 }
@@ -658,22 +774,18 @@ function DashboardWorkspace() {
 
   if (loading) {
     return (
-      <div className="animate-fade-in flex h-full flex-col">
-        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-          <WorkspaceHeader exams={[]} onImported={reload} />
-          <DashboardSkeleton />
-        </div>
-      </div>
+      <PageContainer className="animate-fade-in space-y-6">
+        <WorkspaceHeader exams={[]} onImported={reload} />
+        <DashboardSkeleton />
+      </PageContainer>
     );
   }
   if (error) {
     return (
-      <div className="animate-fade-in flex h-full flex-col">
-        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-          <WorkspaceHeader exams={[]} onImported={reload} />
-          <DataError onRetry={reload} />
-        </div>
-      </div>
+      <PageContainer className="animate-fade-in space-y-6">
+        <WorkspaceHeader exams={[]} onImported={reload} />
+        <DataError onRetry={reload} />
+      </PageContainer>
     );
   }
   if (!data) return null;
@@ -682,49 +794,52 @@ function DashboardWorkspace() {
 
   if (exams.length === 0) {
     return (
-      <div className="animate-fade-in flex h-full flex-col">
-        <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-          <WorkspaceHeader exams={exams} onImported={reload} />
+      <PageContainer className="animate-fade-in space-y-6">
+        <WorkspaceHeader exams={exams} onImported={reload} />
+        <Card>
           <EmptyState
-            icon={<FileText className="h-8 w-8 text-ink-3" />}
+            icon={<FileText className="h-5 w-5 text-ink-3" />}
             title="No exams yet"
-            description="Schedule your first exam to start building readiness dashboards."
+            description="Schedule your first exam to start tracking rosters, seating and packages."
             action={
               <Link href="/app/exams/new">
                 <Button>
-                  <Plus className="h-4 w-4" /> Create exam
+                  <Plus /> Create exam
                 </Button>
               </Link>
             }
           />
-        </div>
-      </div>
+        </Card>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="animate-fade-in flex h-full flex-col">
-      <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-        <WorkspaceHeader exams={exams} onImported={reload} />
+    <PageContainer className="animate-fade-in space-y-6">
+      <WorkspaceHeader exams={exams} onImported={reload} />
 
-        {/* KPIs */}
-        <KpiCards exams={exams} summaries={summaries} />
+      <KpiCards exams={exams} summaries={summaries} />
 
-        {/* Charts row */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ExamsOverTime exams={exams} />
-          <StatusFunnel exams={exams} />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <div className="xl:col-span-3">
+          <NeedsAttention exams={exams} summaries={summaries} />
         </div>
+        <div className="xl:col-span-2">
+          <StatusPipeline exams={exams} />
+        </div>
+      </div>
 
-        {/* Upcoming + activity */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <UpcomingExams exams={exams} />
-          </div>
+      <UpcomingExams exams={exams} summaries={summaries} />
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <div className="xl:col-span-3">
+          <WeeklyLoad exams={exams} />
+        </div>
+        <div className="xl:col-span-2">
           <ActivityFeed exams={exams} summaries={summaries} />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -732,33 +847,31 @@ function DashboardWorkspace() {
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="surface-card h-28 px-5 py-4">
-            <Skeleton className="h-3 w-20 rounded" />
-            <Skeleton className="mt-2 h-6 w-10 rounded" />
+          <div key={i} className="surface-card h-[124px] px-5 py-4">
+            <Skeleton className="h-3 w-24 rounded" />
+            <Skeleton className="mt-3 h-7 w-12 rounded" />
+            <Skeleton className="mt-5 h-1.5 w-full rounded" />
           </div>
         ))}
       </div>
-      <Skeleton className="h-64 w-full" />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <Skeleton className="h-72 w-full rounded-xl xl:col-span-3" />
+        <Skeleton className="h-72 w-full rounded-xl xl:col-span-2" />
       </div>
-      <Skeleton className="h-72 w-full" />
+      <Skeleton className="h-80 w-full rounded-xl" />
     </div>
   );
 }
 
 function DashboardSkeletonPage() {
   return (
-    <div className="animate-fade-in flex h-full flex-col">
-      <div className="flex-1 px-4 py-6 sm:px-6">
-        <Skeleton className="mb-4 h-7 w-32 rounded" />
-        <DashboardSkeleton />
-      </div>
-    </div>
+    <PageContainer className="animate-fade-in">
+      <Skeleton className="mb-6 h-8 w-64 rounded" />
+      <DashboardSkeleton />
+    </PageContainer>
   );
 }
 

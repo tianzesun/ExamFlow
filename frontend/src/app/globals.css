@@ -6,126 +6,112 @@
 
 /*
   ─────────────────────────────────────────────
-  Design tokens — "Mint & Cool" analytics UI
+  Design tokens — "Registrar" UI
   ─────────────────────────────────────────────
-  Consolidated system: shadcn/ui base with custom
-  ExamFlow tokens for domain-specific styling.
+  Calm neutral canvas, crisp white surfaces and a
+  single confident blue accent. Dark mode is driven
+  by the `.dark` class (next-themes), so the custom
+  tokens and the shadcn/ui tokens always agree.
 */
 :root {
-  --canvas: #eef4f3;
+  --canvas: #f5f6f8;
   --surface: #ffffff;
-  --surface-2: #f4f9f7;
-  --surface-hover: #e7f1ee;
+  --surface-2: #f8f9fb;
+  --surface-hover: #f0f2f5;
 
-  --line: rgba(22, 60, 54, 0.12);
-  --line-strong: rgba(22, 60, 54, 0.22);
+  --line: rgba(15, 23, 42, 0.08);
+  --line-strong: rgba(15, 23, 42, 0.16);
 
-  --ink: #0d1b18;
-  --ink-2: #4c5f5b;
-  --ink-3: #84a09a;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #7c8799;
 
-  --accent: #0e9f86;
-  --accent-strong: #0b7f6b;
-  --accent-subtle: rgba(14, 159, 134, 0.10);
+  --brand: #1e3765;
+  /* Deep brand surface for hero panels; stays navy in both themes */
+  --brand-panel: #1e3765;
+  --accent: #2b59d9;
+  --accent-strong: #1f45b3;
+  --accent-subtle: rgba(43, 89, 217, 0.08);
 
-  --violet: #6f7cff;
-  --violet-strong: #5562ec;
-  --violet-subtle: rgba(111, 124, 255, 0.10);
+  --violet: #7357e8;
+  --violet-strong: #5b40cf;
+  --violet-subtle: rgba(115, 87, 232, 0.10);
 
-  --success: #178a4e;
-  --warning: #b97712;
-  --danger: #c6393f;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #d1343b;
 
-  /* shadcn/ui tokens */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.02);
+  --shadow-md: 0 4px 16px -4px rgba(15, 23, 42, 0.10), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.22);
+
+  /* shadcn/ui tokens, mapped onto the ExamFlow palette */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-hover);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-hover);
+  --muted-foreground: var(--ink-2);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--accent);
+  --chart-1: var(--accent);
+  --chart-2: var(--violet);
+  --chart-3: var(--success);
+  --chart-4: var(--warning);
+  --chart-5: var(--ink-3);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #07100e;
-    --surface: #0f1a17;
-    --surface-2: #12201c;
-    --surface-hover: #18302a;
-
-    --ink: #e6f4f0;
-    --ink-2: #9eb6b0;
-    --ink-3: #53746d;
-
-    --accent: #47e5c5;
-    --accent-strong: #8af2de;
-    --accent-subtle: rgba(71, 229, 197, 0.16);
-
-    --violet: #aab3ff;
-    --violet-strong: #c6ccff;
-    --violet-subtle: rgba(170, 179, 255, 0.16);
-
-    --success: #51e2b4;
-    --danger: #f07074;
-  }
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--surface-hover);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --canvas: #0a0c10;
+  --surface: #111419;
+  --surface-2: #151920;
+  --surface-hover: #1b2029;
+
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.14);
+
+  --ink: #e8ebf0;
+  --ink-2: #a2abba;
+  --ink-3: #6c7686;
+
+  --brand: #8fa8ff;
+  --brand-panel: #142650;
+  --accent: #6f8fff;
+  --accent-strong: #9ab0ff;
+  --accent-subtle: rgba(111, 143, 255, 0.14);
+
+  --violet: #a996ff;
+  --violet-strong: #c4b7ff;
+  --violet-subtle: rgba(169, 150, 255, 0.14);
+
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+
+  --primary-foreground: #0a0c10;
+  --sidebar-primary-foreground: #0a0c10;
 }
 
 @theme inline {
@@ -140,6 +126,8 @@
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
 
+  --color-brand: var(--brand);
+  --color-brand-panel: var(--brand-panel);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-subtle: var(--accent-subtle);
@@ -201,10 +189,8 @@
 html {
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+html.dark {
+  color-scheme: dark;
 }
 
 body {
@@ -233,12 +219,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(16, 40, 36, 0.04);
-}
-@media (prefers-color-scheme: dark) {
-  .surface-card {
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  }
+  box-shadow: var(--shadow-sm);
 }
 
 /* 'Glass' translucent surface for headers */
@@ -251,7 +232,7 @@ body {
 
 /* Gradient accent text (use sparingly) */
 .text-mint-gradient {
-  background: linear-gradient(120deg, var(--accent-strong), var(--violet));
+  background: linear-gradient(120deg, var(--accent), var(--violet));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -283,6 +264,21 @@ body {
   background: var(--ink-2);
   border: 3px solid transparent;
   background-clip: padding-box;
+}
+
+/* Section eyebrow label */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Faint dot grid used behind hero areas (login, empty states) */
+.dot-grid {
+  background-image: radial-gradient(var(--line-strong) 1px, transparent 1px);
+  background-size: 18px 18px;
 }
 
 /* Numbers alignment for metrics */
@@ -327,12 +323,9 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
 }
-@media (prefers-color-scheme: dark) {
-  .skeleton::after {
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
-    background-size: 200% 100%;
-    animation: shimmer 1.6s infinite;
-  }
+.dark .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background-size: 200% 100%;
 }
 
 /* Subtle, professional hover lift for interactive cards */
@@ -341,13 +334,7 @@ body {
 }
 .hoverable:hover {
   border-color: var(--line-strong);
-  box-shadow: 0 1px 2px rgba(16, 20, 26, 0.05);
-}
-@media (prefers-color-scheme: dark) {
-  .hoverable:hover {
-    border-color: var(--line-strong);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  }
+  box-shadow: var(--shadow-md);
 }
 
 /* Card hover lift — uses transform for a tangible elevation cue */
@@ -355,13 +342,8 @@ body {
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(16, 20, 26, 0.08);
-}
-@media (prefers-color-scheme: dark) {
-  .card:hover {
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-  }
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 /* Numeric ticker scroll animation (stepped) */

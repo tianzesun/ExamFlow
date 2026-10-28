@@ -3,10 +3,9 @@
 import { useAuth } from "@/lib/auth/context";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/card";
 import { fetchApi } from "@/lib/api/client";
-import { PageLoader } from "@/components/spinner";
-import { ShieldCheck, AlertCircle, CheckCircle } from "lucide-react";
+import { Badge, PageContainer, PageHeader, Skeleton } from "@/components";
+import { ShieldCheck, AlertCircle, CheckCircle2 } from "lucide-react";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -32,35 +31,47 @@ export default function AdminPage() {
     return null;
   }
 
-  return (
-    <div className="animate-fade-in flex h-full flex-col">
-      <div className="flex-1 px-4 py-6 sm:px-6 space-y-6">
-        <h1 className="text-2xl font-bold text-black dark:text-white flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6 text-zinc-400" />
-          Admin Area
-        </h1>
+  const status = error ? "error" : adminTest ? "ok" : "loading";
 
-        <Card>
-          <CardContent>
-            <h2 className="text-lg font-medium text-black dark:text-white">
-              Admin Test Endpoint
-            </h2>
-            {error ? (
-              <div className="mt-2 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-                <AlertCircle className="h-4 w-4" />
-                {error}
-              </div>
-            ) : adminTest ? (
-              <div className="mt-2 flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                <CheckCircle className="h-4 w-4" />
-                {adminTest}
-              </div>
-            ) : (
-              <PageLoader />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+  return (
+    <PageContainer className="space-y-6">
+      <PageHeader
+        eyebrow="Administration"
+        title="Admin area"
+        description="System checks available to administrators."
+        meta={<Badge variant="violet"><ShieldCheck className="h-3 w-3" /> Admin only</Badge>}
+      />
+
+      <section className="surface-card max-w-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Admin test endpoint</h2>
+            <p className="mt-0.5 text-xs text-ink-3">
+              Verifies that admin-only API routes accept your session.
+            </p>
+          </div>
+          {status === "ok" && <Badge variant="success">Passing</Badge>}
+          {status === "error" && <Badge variant="danger">Failing</Badge>}
+          {status === "loading" && <Badge>Checking…</Badge>}
+        </div>
+        <div className="px-5 py-4">
+          <p className="eyebrow mb-1.5">Response</p>
+          {status === "error" ? (
+            <div className="flex items-center gap-2 text-sm text-danger">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          ) : status === "ok" ? (
+            <div className="flex items-center gap-2 text-sm text-ink">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+              <span className="font-mono text-xs">{adminTest}</span>
+            </div>
+          ) : (
+            <Skeleton className="h-5 w-64" />
+          )}
+          <p className="mt-3 font-mono text-[11px] text-ink-3">GET /api/admin/test</p>
+        </div>
+      </section>
+    </PageContainer>
   );
 }

@@ -28,10 +28,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-          <div className="max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h1 className="text-xl font-bold text-red-600">Something went wrong</h1>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
+          <div className="surface-card w-full max-w-md p-8">
+            <h1 className="text-lg font-semibold text-ink">Something went wrong</h1>
+            <p className="mt-2 text-sm text-ink-2">
               An unexpected error occurred. Please try refreshing the page.
             </p>
             <button
@@ -39,7 +39,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 this.setState({ hasError: false, error: null });
                 window.location.reload();
               }}
-              className="mt-4 rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black"
+              className="mt-6 inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-canvas shadow-[var(--shadow-sm)] hover:bg-accent-strong"
             >
               Refresh Page
             </button>
