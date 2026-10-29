@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -17,4 +17,5 @@ class ExamRoom(Base):
 
     __table_args__ = (
         UniqueConstraint("exam_id", "room_id", name="uq_exam_room"),
+        Index("ix_exam_rooms_room_id", "room_id"),
     )

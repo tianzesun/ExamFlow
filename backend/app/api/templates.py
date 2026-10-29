@@ -11,8 +11,9 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
 from app.services import template_service
+from app.services.exam_status_service import block_writes_to_archived_exam
 
-router = APIRouter(tags=["templates"])
+router = APIRouter(tags=["templates"], dependencies=[Depends(block_writes_to_archived_exam)])
 
 
 class TemplateResponse(BaseModel):

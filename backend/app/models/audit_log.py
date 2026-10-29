@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, String
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.database import Base
@@ -18,3 +18,9 @@ class AuditLog(Base):
     old_values = Column(JSONB)
     new_values = Column(JSONB)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    __table_args__ = (
+        Index("ix_audit_logs_entity_type_entity_id", "entity_type", "entity_id"),
+        Index("ix_audit_logs_user_id", "user_id"),
+        Index("ix_audit_logs_created_at", "created_at"),
+    )

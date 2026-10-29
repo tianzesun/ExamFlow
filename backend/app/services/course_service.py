@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.models.course import Course
+from app.models.exam import Exam
+from app.models.meeting import Meeting
 from app.schemas.course import CourseCreate, CourseUpdate
 
 
@@ -79,3 +81,25 @@ def update_course(db: Session, course_id: UUID, data: CourseUpdate, user_id: UUI
     db.commit()
     db.refresh(course)
     return course
+
+
+def delete_course(db: Session, course_id: UUID, user_id: UUID) -> bool:
+    """Delete a course that has no exams. Its timetable meetings go with it."""
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        return False
+    exam_count = db.query(func.count(Exam.id)).filter(Exam.course_id == course_id).scalar() or 0
+    if exam_count:
+        raise ValueError(f"This course has {exam_count} exam(s). Delete or move them first.")
+
+    db.query(Meeting).filter(Meeting.course_id == course_id).delete(synchronize_session=False)
+    db.add(AuditLog(
+        user_id=user_id,
+        action="COURSE_DELETED",
+        entity_type="course",
+        entity_id=course.id,
+        old_values={"course_code": course.course_code, "course_name": course.course_name},
+    ))
+    db.delete(course)
+    db.commit()
+    return True

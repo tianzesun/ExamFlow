@@ -56,6 +56,14 @@ def list_rooms(
     return {"rooms": [RoomResponse.model_validate(r).model_dump() for r in rooms], "total": total}
 
 
+@router.get("/usage", response_model=dict)
+def room_usage(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return room_service.get_room_usage(db)
+
+
 @router.post("", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
 def create_room(
     data: RoomCreate,
@@ -119,5 +127,9 @@ def delete_room(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN")),
 ):
-    if not room_service.delete_room(db, room_id, user.id):
+    try:
+        deleted = room_service.delete_room(db, room_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")

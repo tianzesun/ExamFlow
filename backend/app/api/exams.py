@@ -74,3 +74,13 @@ def update_exam(
         return exam
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exam(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    if not exam_service.delete_exam(db, exam_id, user.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")

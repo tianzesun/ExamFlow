@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -20,4 +20,5 @@ class Room(Base):
 
     __table_args__ = (
         UniqueConstraint("building", "room_number", name="uq_building_room"),
+        CheckConstraint("capacity >= 0", name="ck_rooms_capacity"),
     )

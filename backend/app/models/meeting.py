@@ -4,7 +4,7 @@ Meeting model for course sections/schedules from TTB.
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -31,3 +31,9 @@ class Meeting(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
     course = relationship("Course", backref="meetings")
+
+    __table_args__ = (
+        Index("ix_meetings_course_id", "course_id"),
+        Index("ix_meetings_semester", "semester"),
+        Index("ix_meetings_section_code", "section_code"),
+    )

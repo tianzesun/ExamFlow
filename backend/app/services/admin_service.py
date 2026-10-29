@@ -30,6 +30,7 @@ def generate_qr_for_exams(db: Session, exam_id: UUID, user_id: UUID) -> int:
     generated = db.query(GeneratedExam).filter(
         GeneratedExam.exam_id == exam_id,
         GeneratedExam.qr_token.is_(None),
+        GeneratedExam.status == "GENERATED",
     ).all()
 
     count = 0
@@ -259,7 +260,9 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
     student_count = db.query(func.count(ExamStudent.id)).filter(ExamStudent.exam_id == exam_id).scalar() or 0
     assignment_count = db.query(func.count(ExamAssignment.id)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0
     room_count = db.query(func.count(ExamRoom.id)).filter(ExamRoom.exam_id == exam_id).scalar() or 0
-    doc_count = db.query(func.count(GeneratedExam.id)).filter(GeneratedExam.exam_id == exam_id).scalar() or 0
+    doc_count = db.query(func.count(GeneratedExam.id)).filter(
+        GeneratedExam.exam_id == exam_id, GeneratedExam.status == "GENERATED"
+    ).scalar() or 0
 
     page_width, page_height = 612, 792
     margin = 50

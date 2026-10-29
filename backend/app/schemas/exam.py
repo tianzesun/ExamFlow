@@ -12,6 +12,7 @@ class ExamCreate(BaseModel):
     exam_date: date
     start_time: time
     duration_minutes: int = Field(..., gt=0, le=600)
+    notes: str | None = Field(None, max_length=5000)
 
 
 class ExamUpdate(BaseModel):
@@ -21,6 +22,7 @@ class ExamUpdate(BaseModel):
     exam_date: date | None = None
     start_time: time | None = None
     duration_minutes: int | None = Field(None, gt=0, le=600)
+    notes: str | None = Field(None, max_length=5000)
     status: str | None = None
 
 
@@ -35,6 +37,7 @@ class ExamResponse(BaseModel):
     exam_date: date
     start_time: time
     duration_minutes: int
+    notes: str | None = None
     status: str
     created_by: UUID
     created_at: datetime

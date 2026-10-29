@@ -12,9 +12,9 @@ from app.database import get_db
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import pdf_service
-from app.services.exam_status_service import sync_exam_status
+from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 
-router = APIRouter(tags=["generated-exams"])
+router = APIRouter(tags=["generated-exams"], dependencies=[Depends(block_writes_to_archived_exam)])
 
 
 class GeneratedExamListResponse(BaseModel):
@@ -108,7 +108,7 @@ def download_generated(
 ):
     ge = _verify_generated_ownership(db, generated_exam_id, exam_id)
 
-    filepath = pdf_service.get_generated_exam_path(ge)
+    filepath = ge.storage_key
     if not os.path.exists(filepath):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 

@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -56,6 +56,20 @@ def get_readiness(
             for c in result.checks
         ],
     )
+
+
+class ExamSummariesRequest(BaseModel):
+    exam_ids: list[UUID] = Field(..., max_length=1000)
+
+
+@router.post("/api/exams/summaries", response_model=dict[str, ExamSummaryResponse])
+def get_exam_summaries(
+    data: ExamSummariesRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Summaries for many exams in one request (the dashboard and exam list)."""
+    return readiness_service.get_exam_summaries(db, data.exam_ids)
 
 
 @router.get("/api/exams/{exam_id}/summary", response_model=ExamSummaryResponse)

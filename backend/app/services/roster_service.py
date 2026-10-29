@@ -2,11 +2,13 @@ import csv
 import io
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.models.exam_student import ExamStudent
 from app.models.student import Student
+from app.utils import utcnow
 
 
 def parse_csv(file_content: str) -> list[dict]:
@@ -67,6 +69,8 @@ def preview_roster_import(db: Session, exam_id: UUID, file_content: str) -> dict
         preview.append({
             "student_number": student_number,
             "full_name": display_name,
+            "utorid": row.get("utorid") or None,
+            "email": row.get("email") or None,
         })
 
     return {
@@ -115,14 +119,30 @@ def import_roster(db: Session, exam_id: UUID, file_content: str, user_id: UUID) 
             skipped += 1
             continue
 
+        utorid = row.get("utorid", "").strip().lower() or None
+        email = row.get("email", "").strip() or None
+        if utorid and db.query(Student.id).filter(
+            Student.utorid == utorid, Student.student_number != student_number
+        ).first():
+            # UTORids are unique; don't let a bad row attach one to the wrong student.
+            utorid = None
+
         student = db.query(Student).filter(Student.student_number == student_number).first()
         if not student:
             student = Student(
                 student_number=student_number,
                 full_name=display_name,
+                utorid=utorid,
+                email=email,
             )
             db.add(student)
             db.flush()
+        else:
+            # Fill in contact details we didn't have before; never overwrite existing ones.
+            student.utorid = student.utorid or utorid
+            student.email = student.email or email
+            db.flush()
+        existing_student_numbers.add(student_number)
 
         exam_student = ExamStudent(
             exam_id=exam_id,
@@ -178,3 +198,76 @@ def remove_from_roster(db: Session, exam_id: UUID, student_id: UUID, user_id: UU
     ))
     db.commit()
     return True
+
+
+def _get_exam_student(db: Session, exam_id: UUID, student_id: UUID) -> ExamStudent | None:
+    return db.query(ExamStudent).filter(
+        ExamStudent.exam_id == exam_id,
+        ExamStudent.student_id == student_id,
+    ).first()
+
+
+def set_attendance(
+    db: Session, exam_id: UUID, student_id: UUID, attendance_status: str, user_id: UUID
+) -> ExamStudent | None:
+    es = _get_exam_student(db, exam_id, student_id)
+    if not es:
+        return None
+    old_status = es.attendance_status
+    es.attendance_status = attendance_status
+    if attendance_status == "PRESENT":
+        es.checked_in_at = utcnow()
+        es.checked_in_by = user_id
+    else:
+        es.checked_in_at = None
+        es.checked_in_by = None
+    db.add(AuditLog(
+        user_id=user_id,
+        action="ATTENDANCE_RECORDED",
+        entity_type="exam_student",
+        entity_id=es.id,
+        old_values={"attendance_status": old_status},
+        new_values={"attendance_status": attendance_status},
+    ))
+    db.commit()
+    db.refresh(es)
+    return es
+
+
+def set_accommodation(
+    db: Session, exam_id: UUID, student_id: UUID, extra_time_minutes: int, notes: str | None, user_id: UUID
+) -> ExamStudent | None:
+    es = _get_exam_student(db, exam_id, student_id)
+    if not es:
+        return None
+    old = {"extra_time_minutes": es.extra_time_minutes, "has_notes": bool(es.accommodation_notes)}
+    es.extra_time_minutes = extra_time_minutes
+    es.accommodation_notes = (notes or "").strip() or None
+    # Accommodation details are sensitive; the audit trail records that they changed, not what they say.
+    db.add(AuditLog(
+        user_id=user_id,
+        action="ACCOMMODATION_UPDATED",
+        entity_type="exam_student",
+        entity_id=es.id,
+        old_values=old,
+        new_values={"extra_time_minutes": es.extra_time_minutes, "has_notes": bool(es.accommodation_notes)},
+    ))
+    db.commit()
+    db.refresh(es)
+    return es
+
+
+def attendance_summary(db: Session, exam_id: UUID) -> dict:
+    rows = (
+        db.query(ExamStudent.attendance_status, func.count(ExamStudent.id))
+        .filter(ExamStudent.exam_id == exam_id)
+        .group_by(ExamStudent.attendance_status)
+        .all()
+    )
+    counts = {s: n for s, n in rows}
+    return {
+        "expected": counts.get("EXPECTED", 0),
+        "present": counts.get("PRESENT", 0),
+        "absent": counts.get("ABSENT", 0),
+        "total": sum(counts.values()),
+    }

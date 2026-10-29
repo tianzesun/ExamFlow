@@ -69,3 +69,11 @@ def test_archive_is_final():
     exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
     assert _patch_status(exam_id, "ARCHIVED").json()["status"] == "ARCHIVED"
     assert _patch_status(exam_id, "DRAFT").status_code == 400
+
+
+def test_bulk_summaries_match_single_summary():
+    exam_id, _, _ = _create_exam_with_students(student_count=2, capacity=5)
+    client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS)
+    single = client.get(f"/api/exams/{exam_id}/summary", headers=ADMIN_HEADERS).json()
+    bulk = client.post("/api/exams/summaries", json={"exam_ids": [exam_id]}, headers=ADMIN_HEADERS).json()
+    assert bulk[exam_id] == single

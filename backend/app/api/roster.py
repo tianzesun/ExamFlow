@@ -5,12 +5,24 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
+from app.models.student import Student
 from app.models.user import User
-from app.schemas.student import ExamStudentResponse, RosterImportPreview, RosterStats
+from app.schemas.student import (
+    AccommodationUpdate,
+    AttendanceSummary,
+    AttendanceUpdate,
+    ExamStudentResponse,
+    RosterImportPreview,
+    RosterStats,
+)
 from app.services import roster_service
-from app.services.exam_status_service import sync_exam_status
+from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 
-router = APIRouter(prefix="/api/exams/{exam_id}/roster", tags=["roster"])
+router = APIRouter(
+    prefix="/api/exams/{exam_id}/roster",
+    tags=["roster"],
+    dependencies=[Depends(block_writes_to_archived_exam)],
+)
 
 
 @router.get("", response_model=dict)
@@ -22,18 +34,68 @@ def list_roster(
     _user: User = Depends(get_current_user),
 ):
     results, total = roster_service.get_roster(db, exam_id, page, page_size)
-    students = [
-        ExamStudentResponse(
-            id=es.id,
-            exam_id=es.exam_id,
-            student_id=s.id,
-            student_number=s.student_number,
-            full_name=s.full_name,
-            created_at=es.created_at,
-        )
-        for es, s in results
-    ]
+    students = [_roster_entry(es, s) for es, s in results]
     return {"students": [s.model_dump() for s in students], "total": total}
+
+
+def _roster_entry(es, s) -> ExamStudentResponse:
+    return ExamStudentResponse(
+        id=es.id,
+        exam_id=es.exam_id,
+        student_id=s.id,
+        student_number=s.student_number,
+        full_name=s.full_name,
+        utorid=s.utorid,
+        email=s.email,
+        attendance_status=es.attendance_status,
+        checked_in_at=es.checked_in_at,
+        extra_time_minutes=es.extra_time_minutes,
+        accommodation_notes=es.accommodation_notes,
+        created_at=es.created_at,
+    )
+
+
+@router.get("/attendance", response_model=AttendanceSummary)
+def attendance_summary(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return roster_service.attendance_summary(db, exam_id)
+
+
+@router.put("/{student_id}/attendance", response_model=ExamStudentResponse)
+def set_attendance(
+    exam_id: UUID,
+    student_id: UUID,
+    data: AttendanceUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF", "INSTRUCTOR", "TA")),
+):
+    es = roster_service.set_attendance(db, exam_id, student_id, data.attendance_status, user.id)
+    if not es:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in roster")
+    return _roster_entry(es, _student_for(db, es))
+
+
+@router.put("/{student_id}/accommodation", response_model=ExamStudentResponse)
+def set_accommodation(
+    exam_id: UUID,
+    student_id: UUID,
+    data: AccommodationUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    es = roster_service.set_accommodation(
+        db, exam_id, student_id, data.extra_time_minutes, data.accommodation_notes, user.id
+    )
+    if not es:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in roster")
+    return _roster_entry(es, _student_for(db, es))
+
+
+def _student_for(db: Session, es) -> Student:
+    return db.query(Student).filter(Student.id == es.student_id).one()
 
 
 @router.get("/stats", response_model=RosterStats)

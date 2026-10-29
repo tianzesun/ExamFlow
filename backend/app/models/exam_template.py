@@ -1,6 +1,17 @@
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -28,4 +39,7 @@ class ExamTemplate(Base):
 
     __table_args__ = (
         UniqueConstraint("exam_id", "version", name="uq_exam_template_version"),
+        CheckConstraint("version >= 1", name="ck_exam_templates_version"),
+        CheckConstraint("file_size >= 0", name="ck_exam_templates_file_size"),
+        Index("ix_exam_templates_file_hash", "file_hash"),
     )

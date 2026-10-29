@@ -1,8 +1,12 @@
+from datetime import date
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.exam import Exam
+from app.models.exam_assignment import ExamAssignment
 from app.models.room import Room
 from app.models.seat import Seat
 
@@ -92,6 +96,15 @@ def delete_room(db: Session, room_id: UUID, user_id: UUID) -> bool:
     if not room:
         return False
 
+    in_use = (
+        db.query(ExamAssignment.id)
+        .join(Seat, ExamAssignment.seat_id == Seat.id)
+        .filter(Seat.room_id == room_id)
+        .first()
+    )
+    if in_use:
+        raise ValueError("This room has students seated in it. Remove it from those exams first.")
+
     db.add(AuditLog(
         user_id=user_id,
         action="ROOM_DELETED",
@@ -144,3 +157,34 @@ def update_room(
     db.commit()
     db.refresh(room)
     return room
+
+
+def get_room_usage(db: Session) -> dict[str, dict]:
+    """Per room: seat counts and how full it gets at its busiest upcoming exam."""
+    seats = dict(
+        db.query(Seat.room_id, func.count(Seat.id)).group_by(Seat.room_id).all()
+    )
+    blocked = dict(
+        db.query(Seat.room_id, func.count(Seat.id)).filter(Seat.status != "AVAILABLE").group_by(Seat.room_id).all()
+    )
+    per_exam = (
+        db.query(Seat.room_id, ExamAssignment.exam_id, func.count(ExamAssignment.id))
+        .join(ExamAssignment, ExamAssignment.seat_id == Seat.id)
+        .join(Exam, Exam.id == ExamAssignment.exam_id)
+        .filter(Exam.exam_date >= date.today(), Exam.status != "ARCHIVED")
+        .group_by(Seat.room_id, ExamAssignment.exam_id)
+        .all()
+    )
+    upcoming: dict = {}
+    for room_id, _exam_id, n in per_exam:
+        u = upcoming.setdefault(room_id, {"upcoming_exams": 0, "peak_assigned": 0})
+        u["upcoming_exams"] += 1
+        u["peak_assigned"] = max(u["peak_assigned"], n)
+    return {
+        str(room_id): {
+            "seats": seats.get(room_id, 0),
+            "blocked": blocked.get(room_id, 0),
+            **upcoming.get(room_id, {"upcoming_exams": 0, "peak_assigned": 0}),
+        }
+        for room_id in set(seats) | set(upcoming)
+    }

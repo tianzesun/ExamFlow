@@ -1,13 +1,16 @@
 import hashlib
 import io
 import os
+import secrets
 import uuid
 from uuid import UUID
 
 import pymupdf
+import qrcode
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.audit_log import AuditLog
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
@@ -17,6 +20,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
+from app.utils import utcnow
 
 MARGIN_TOP = 50
 MARGIN_LEFT = 50
@@ -56,12 +60,30 @@ def _draw_header(
     page.draw_line(pymupdf.Point(MARGIN_LEFT, y), pymupdf.Point(rect.width - MARGIN_LEFT, y), color=(0, 0, 0), width=0.5)
 
 
+QR_SIZE = 64
+
+
+def verify_url(token: str) -> str:
+    return f"{get_settings().PUBLIC_APP_URL.rstrip('/')}/verify/{token}"
+
+
+def _draw_qr(page: pymupdf.Page, token: str) -> None:
+    """Stamp a verification QR code in the top-right corner of the first page."""
+    img = qrcode.make(verify_url(token), box_size=4, border=1)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    right = page.rect.width - MARGIN_LEFT
+    top = MARGIN_TOP - 30
+    page.insert_image(pymupdf.Rect(right - QR_SIZE, top, right, top + QR_SIZE), stream=buf.getvalue())
+
+
 def generate_one_student_pdf(
     template_bytes: bytes,
     exam: Exam,
     student: Student,
     room: Room,
     seat: Seat,
+    qr_token: str | None = None,
 ) -> bytes:
     doc = pymupdf.open(stream=template_bytes, filetype="pdf")
 
@@ -71,6 +93,8 @@ def generate_one_student_pdf(
 
     page = doc[0]
     _draw_header(page, exam, student, room, seat)
+    if qr_token:
+        _draw_qr(page, qr_token)
 
     output = io.BytesIO()
     doc.save(output)
@@ -183,7 +207,8 @@ def generate_all_exams(
 
     for assignment, student, seat, room in assignments:
         try:
-            pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat)
+            qr_token = secrets.token_urlsafe(32)
+            pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat, qr_token)
             file_hash = hashlib.sha256(pdf_bytes).hexdigest()
 
             file_name = f"{exam.course_code}-{student.student_number}-v{new_version}.pdf"
@@ -204,6 +229,8 @@ def generate_all_exams(
                 file_hash=file_hash,
                 status="GENERATED",
                 generation_version=new_version,
+                qr_token=qr_token,
+                qr_generated_at=utcnow(),
                 created_by=user_id,
             )
             generated_objects.append(ge)
@@ -224,7 +251,11 @@ def generate_all_exams(
             f"First failure near student: {failed_student}"
         )
 
-    # All succeeded — commit
+    # All succeeded — retire earlier versions so counts, packages and QR checks only see this set.
+    db.query(GeneratedExam).filter(
+        GeneratedExam.exam_id == exam_id,
+        GeneratedExam.status == "GENERATED",
+    ).update({"status": "SUPERSEDED"}, synchronize_session=False)
     db.add_all(generated_objects)
     db.add(AuditLog(
         user_id=user_id,
@@ -259,7 +290,7 @@ def get_generated_exams(
         .join(ExamStudent, GeneratedExam.exam_student_id == ExamStudent.id)
         .join(Student, ExamStudent.student_id == Student.id)
         .outerjoin(ExamTemplate, GeneratedExam.exam_template_id == ExamTemplate.id)
-        .filter(GeneratedExam.exam_id == exam_id)
+        .filter(GeneratedExam.exam_id == exam_id, GeneratedExam.status == "GENERATED")
     )
 
     if query:
@@ -288,6 +319,7 @@ def get_generated_exams(
             "file_hash": ge.file_hash,
             "status": ge.status,
             "generation_version": ge.generation_version,
+            "has_qr": ge.qr_token is not None,
             "template_version": tmpl.version if tmpl else None,
             "created_at": ge.created_at.isoformat() if ge.created_at else None,
         }

@@ -1,6 +1,16 @@
 import uuid
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -29,4 +39,10 @@ class GeneratedExam(Base):
 
     __table_args__ = (
         UniqueConstraint("exam_id", "exam_student_id", "generation_version", name="uq_generated_exam_version"),
+        CheckConstraint("status IN ('GENERATED', 'SUPERSEDED', 'FAILED')", name="ck_generated_exams_status"),
+        CheckConstraint("generation_version >= 1", name="ck_generated_exams_version"),
+        Index("ix_generated_exams_status", "status"),
+        Index("ix_generated_exams_exam_student_id", "exam_student_id"),
+        Index("ix_generated_exams_exam_assignment_id", "exam_assignment_id"),
+        Index("ix_generated_exams_exam_template_id", "exam_template_id"),
     )

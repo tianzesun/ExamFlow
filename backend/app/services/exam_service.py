@@ -1,3 +1,5 @@
+import os
+import shutil
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -37,6 +39,7 @@ def create_exam(db: Session, data: ExamCreate, user_id: UUID) -> Exam:
         exam_date=data.exam_date,
         start_time=data.start_time,
         duration_minutes=data.duration_minutes,
+        notes=data.notes or None,
         status="DRAFT",
         created_by=user_id,
     )
@@ -101,6 +104,8 @@ def update_exam(db: Session, exam_id: UUID, data: ExamUpdate, user_id: UUID) -> 
         return None
 
     update_data = data.model_dump(exclude_unset=True)
+    if exam.status == "ARCHIVED" and update_data:
+        raise ValueError("This exam is archived and can no longer be changed.")
 
     if "status" in update_data:
         new_status = update_data["status"]
@@ -138,3 +143,22 @@ def update_exam(db: Session, exam_id: UUID, data: ExamUpdate, user_id: UUID) -> 
     db.commit()
     db.refresh(exam)
     return exam
+
+
+def delete_exam(db: Session, exam_id: UUID, user_id: UUID) -> bool:
+    """Delete an exam with its roster, seating, templates and generated papers (rows cascade)."""
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return False
+    db.add(AuditLog(
+        user_id=user_id,
+        action="EXAM_DELETED",
+        entity_type="exam",
+        entity_id=exam.id,
+        old_values={"course_code": exam.course_code, "exam_name": exam.exam_name, "status": exam.status},
+    ))
+    db.delete(exam)
+    db.commit()
+    # Stored PDFs belong only to this exam; remove them once the rows are gone.
+    shutil.rmtree(os.path.join("storage", "exams", str(exam_id)), ignore_errors=True)
+    return True

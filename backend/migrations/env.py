@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.database import Base
 
 # Import all models for autogenerate support
+import app.models  # noqa: E402,F401
 
 config = context.config
 settings = get_settings()

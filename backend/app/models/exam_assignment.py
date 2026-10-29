@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -22,4 +22,7 @@ class ExamAssignment(Base):
     __table_args__ = (
         UniqueConstraint("exam_id", "exam_student_id", name="uq_exam_exam_student"),
         UniqueConstraint("exam_id", "seat_id", name="uq_exam_seat"),
+        CheckConstraint("assignment_method IN ('AUTOMATIC', 'MANUAL')", name="ck_exam_assignments_method"),
+        Index("ix_exam_assignments_seat_id", "seat_id"),
+        Index("ix_exam_assignments_exam_student_id", "exam_student_id"),
     )

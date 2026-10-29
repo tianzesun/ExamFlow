@@ -1,22 +1,25 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.audit_log import AuditLog
+from app.models.exam import Exam
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import admin_service
+from app.services.exam_status_service import block_writes_to_archived_exam
+from app.utils import attachment_headers
 
 router = APIRouter(tags=["administration"])
 
 
 # ── QR Generate ─────────────────────────────────────────────
 
-@router.post("/api/exams/{exam_id}/qr/generate")
+@router.post("/api/exams/{exam_id}/qr/generate", dependencies=[Depends(block_writes_to_archived_exam)])
 def generate_qr(
     exam_id: UUID,
     db: Session = Depends(get_db),
@@ -52,10 +55,20 @@ def verify_qr(
     ))
     db.commit()
 
+    if ge.status != "GENERATED":
+        # The paper was replaced by a later generation; this copy shouldn't be in use.
+        return {"valid": False, "message": "This paper has been replaced by a newer version", "status": ge.status}
+
+    exam = db.query(Exam).filter(Exam.id == ge.exam_id).first()
     return {
         "valid": True,
         "message": "Valid Exam Document",
         "status": ge.status,
+        # Identifies the sitting only; nothing about the student is disclosed.
+        "course_code": exam.course_code if exam else None,
+        "exam_name": exam.exam_name if exam else None,
+        "exam_date": exam.exam_date.isoformat() if exam else None,
+        "generation_version": ge.generation_version,
     }
 
 
@@ -73,14 +86,7 @@ def download_signature_list(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    def iterfile():
-        yield from pdf_bytes
-
-    return StreamingResponse(
-        iterfile(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="Signature-List.pdf"'},
-    )
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers("Signature-List.pdf"))
 
 
 # ── Seating Map ─────────────────────────────────────────────
@@ -97,14 +103,7 @@ def download_seating_map(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    def iterfile():
-        yield from pdf_bytes
-
-    return StreamingResponse(
-        iterfile(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="Seating-Map.pdf"'},
-    )
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers("Seating-Map.pdf"))
 
 
 # ── Package Generate ────────────────────────────────────────
@@ -136,11 +135,4 @@ def download_package(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    def iterfile():
-        yield from zip_bytes
-
-    return StreamingResponse(
-        iterfile(),
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return Response(content=zip_bytes, media_type="application/zip", headers=attachment_headers(filename))

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -22,4 +22,5 @@ class Seat(Base):
 
     __table_args__ = (
         UniqueConstraint("room_id", "seat_code", name="uq_room_seat"),
+        CheckConstraint("status IN ('AVAILABLE', 'BLOCKED', 'RESERVED')", name="ck_seats_status"),
     )

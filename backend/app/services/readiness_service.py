@@ -153,3 +153,41 @@ def get_exam_summary(db: Session, exam_id: UUID) -> dict:
         "has_template": active_template is not None,
         "template_version": active_template.version if active_template else None,
     }
+
+
+def get_exam_summaries(db: Session, exam_ids: list[UUID]) -> dict[str, dict]:
+    """get_exam_summary for many exams at once, using one grouped query per table."""
+    if not exam_ids:
+        return {}
+
+    def counts(column, *filters):
+        return dict(
+            db.query(column, func.count())
+            .filter(column.in_(exam_ids), *filters)
+            .group_by(column)
+            .all()
+        )
+
+    roster = counts(ExamStudent.exam_id)
+    assigned = counts(ExamAssignment.exam_id)
+    rooms = counts(ExamRoom.exam_id)
+    generated = counts(GeneratedExam.exam_id, GeneratedExam.status == "GENERATED")
+    qr = counts(GeneratedExam.exam_id, GeneratedExam.status == "GENERATED", GeneratedExam.qr_token.isnot(None))
+    templates = dict(
+        db.query(ExamTemplate.exam_id, ExamTemplate.version)
+        .filter(ExamTemplate.exam_id.in_(exam_ids), ExamTemplate.is_active == True)  # noqa: E712
+        .all()
+    )
+    return {
+        str(eid): {
+            "roster_count": roster.get(eid, 0),
+            "assigned_count": assigned.get(eid, 0),
+            "unassigned_count": roster.get(eid, 0) - assigned.get(eid, 0),
+            "room_count": rooms.get(eid, 0),
+            "generated_count": generated.get(eid, 0),
+            "qr_count": qr.get(eid, 0),
+            "has_template": eid in templates,
+            "template_version": templates.get(eid),
+        }
+        for eid in exam_ids
+    }

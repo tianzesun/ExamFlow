@@ -7,8 +7,10 @@ ARCHIVED are set by staff and are never changed automatically.
 
 from uuid import UUID
 
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.exam import Exam
 from app.services import readiness_service
@@ -53,3 +55,20 @@ def sync_exam_status(db: Session, exam_id: UUID, user_id: UUID | None = None) ->
         db.commit()
         db.refresh(exam)
     return exam
+
+
+READ_ONLY_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def block_writes_to_archived_exam(request: Request, db: Session = Depends(get_db)) -> None:
+    """Router dependency: archived exams are final, so refuse any change to their data."""
+    exam_id = request.path_params.get("exam_id")
+    if request.method in READ_ONLY_METHODS or not exam_id:
+        return
+    try:
+        exam_uuid = UUID(str(exam_id))
+    except ValueError:
+        return  # let the route's own validation reject it
+    status = db.query(Exam.status).filter(Exam.id == exam_uuid).scalar()
+    if status == "ARCHIVED":
+        raise HTTPException(status_code=409, detail="This exam is archived and can no longer be changed.")

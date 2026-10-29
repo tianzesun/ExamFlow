@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     NEXT_PUBLIC_API_URL: str = "http://localhost:3000"
     BACKEND_PORT: int = 8000
     FRONTEND_PORT: int = 3000
+    # Public base URL of the web app; printed in the QR code on each paper.
+    PUBLIC_APP_URL: str = "http://localhost:3000"
 
     # Authentication
     AUTH_DEV_MODE: bool = True

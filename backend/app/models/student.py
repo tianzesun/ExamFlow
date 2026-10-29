@@ -13,5 +13,7 @@ class Student(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_number = Column(String(50), unique=True, nullable=False)
     full_name = Column(String(255), nullable=False)
+    utorid = Column(String(50), unique=True)  # students_utorid_key
+    email = Column(String(255))
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
