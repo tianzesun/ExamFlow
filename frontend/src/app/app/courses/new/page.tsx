@@ -29,7 +29,7 @@ export default function NewCoursePage() {
 
   return (
     <PageContainer className="space-y-6">
-      <div className="mx-auto w-full max-w-2xl space-y-6">
+      <div className="w-full max-w-3xl space-y-6">
         <PageHeader title="Create course" description="Add a course that isn't available from the Timetable Builder sync." />
 
         <form onSubmit={handleSubmit} className="surface-card">

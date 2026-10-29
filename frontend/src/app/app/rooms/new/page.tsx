@@ -31,7 +31,7 @@ export default function NewRoomPage() {
     <PageContainer className="space-y-6">
       <PageHeader title="New room" description="Add an examination room to the room inventory." />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         <section className="surface-card">
           <div className="border-b border-line px-5 py-4">
             <h2 className="text-sm font-semibold text-ink">Location</h2>

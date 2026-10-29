@@ -54,7 +54,7 @@ function NewExamForm() {
 
   return (
     <PageContainer className="space-y-6">
-      <div className="mx-auto w-full max-w-2xl space-y-6">
+      <div className="w-full max-w-3xl space-y-6">
         <PageHeader title="Create exam" description="Set up an examination. You can add rooms and seating after it's created." />
 
         <form onSubmit={handleSubmit} className="surface-card">
