@@ -24,6 +24,7 @@ import {
   Download, FileText, ClipboardCheck, DoorOpen, LayoutGrid, Package, QrCode,
 } from "lucide-react";
 
+import { notifyExamChanged } from "@/components/exam/workspace";
 const CHECK_LABELS: Record<string, string> = {
   roster: "Roster imported",
   rooms: "Rooms configured",
@@ -93,6 +94,7 @@ export default function AdministrationPage() {
     setError(null);
     try {
       await generateQr(examId);
+      notifyExamChanged();
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "QR generation failed");
@@ -107,6 +109,7 @@ export default function AdministrationPage() {
     setError(null);
     try {
       const result = await generatePackage(examId);
+      notifyExamChanged();
       setPackageInfo(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Package generation failed");
@@ -133,7 +136,7 @@ export default function AdministrationPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-ink">Administration</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Exam day</h2>
           <p className="text-sm text-ink-2">Final checks, QR codes and the printable package for exam day.</p>
         </div>
         {canEdit && (

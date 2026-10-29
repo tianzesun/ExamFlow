@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { getExam } from "@/lib/api/exams";
 import { getRooms, Room } from "@/lib/api/rooms";
 import {
@@ -22,10 +21,11 @@ import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
 import {
-  AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, LayoutGrid, Plus, Trash2, Armchair,
+  AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, Armchair,
   ChevronLeft, ChevronRight, DoorOpen, RefreshCw, Search, Sparkles, Users, UserX,
 } from "lucide-react";
 
+import { notifyExamChanged } from "@/components/exam/workspace";
 type PreviewData = {
   students: number; rooms: number; available_seats: number; assigned: number; unused: number;
   items: { assignment_order: number; student_number: string; full_name: string; building: string; room_number: string; seat_code: string }[];
@@ -106,6 +106,7 @@ export default function SeatingPage() {
     setError(null);
     try {
       await addExamRoom(examId, selectedAddRoom);
+      notifyExamChanged();
       setSelectedAddRoom("");
       fetchAll();
     } catch (err) {
@@ -118,6 +119,7 @@ export default function SeatingPage() {
     setError(null);
     try {
       await removeExamRoom(examId, roomId);
+      notifyExamChanged();
       fetchAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove room");
@@ -143,6 +145,7 @@ export default function SeatingPage() {
     setError(null);
     try {
       await confirmAssignment(examId);
+      notifyExamChanged();
       setPreview(null);
       fetchAll();
     } catch (err) {
@@ -158,6 +161,7 @@ export default function SeatingPage() {
     setShowRegenConfirm(false);
     try {
       await regenerateAssignment(examId);
+      notifyExamChanged();
       fetchAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Regeneration failed");
@@ -181,7 +185,7 @@ export default function SeatingPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-ink">Seating</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Seats</h2>
           <p className="text-sm text-ink-2">
             {hasAssignments
               ? "Seating has been generated. Fine-tune individual seats on the seat map."
@@ -189,11 +193,6 @@ export default function SeatingPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/app/exams/${examId}/seat-map`}>
-            <Button variant="secondary">
-              <LayoutGrid className="h-4 w-4" /> Open seat map
-            </Button>
-          </Link>
           {canEdit && (hasAssignments ? (
             <Button variant="secondary" className="text-danger" onClick={() => setShowRegenConfirm(true)} disabled={regenerating} loading={regenerating}>
               <RefreshCw className="h-4 w-4" /> Regenerate

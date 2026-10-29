@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { getExam } from "@/lib/api/exams";
 import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
-import { listTemplates, ExamTemplate } from "@/lib/api/templates";
+import { ExamTemplate } from "@/lib/api/templates";
 import {
   validateGeneration, generateExams, listGeneratedExams,
   getGeneratedExamDownloadUrl, GeneratedExam,
@@ -19,6 +18,9 @@ import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
+import { TemplateCard } from "@/components/exam/TemplateCard";
+import { notifyExamChanged } from "@/components/exam/workspace";
+import { errorReference } from "@/lib/api/client";
 import {
   FileText, Download, AlertCircle, CheckCircle, AlertTriangle, FileCheck2,
   ChevronLeft, ChevronRight, Search,
@@ -55,26 +57,24 @@ export default function DocumentsPage() {
       })
       .then(async () => {
         if (cancelled) return null;
-        const [e, s, t, g] = await Promise.all([
+        const [e, s, g] = await Promise.all([
           getExam(examId),
           getAssignmentSummary(examId).catch(() => null),
-          listTemplates(examId).catch(() => []),
           listGeneratedExams(examId, { page, page_size: 50, query: searchQuery || undefined }),
         ]);
         if (cancelled) return null;
-        return { exam: e, summary: s, templates: t, generated: g } as const;
+        return { exam: e, summary: s, generated: g } as const;
       })
       .then((next) => {
         if (!cancelled && next) {
           setExam(next.exam);
           setSummary(next.summary);
-          setTemplates(next.templates);
           setGenerated(next.generated.exams);
           setTotalGenerated(next.generated.total);
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(`Exam papers could not be loaded. Try again in a moment.${errorReference(err)}`);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -95,7 +95,7 @@ export default function DocumentsPage() {
       setValidation(v);
       if (v.valid) setShowConfirm(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Validation failed");
+      setError(`The pre-generation check could not run. Try again in a moment.${errorReference(err)}`);
     }
   };
 
@@ -107,8 +107,9 @@ export default function DocumentsPage() {
       const result = await generateExams(examId);
       setGenResult(result);
       fetchData();
+      notifyExamChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
+      setError(`Papers could not be generated. Try again in a moment.${errorReference(err)}`);
     } finally {
       setGenerating(false);
     }
@@ -121,24 +122,21 @@ export default function DocumentsPage() {
   const assigned = summary?.assigned_students ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalGenerated / 50));
   const readiness = [
-    { label: "Active template", ok: !!activeTemplate, detail: activeTemplate ? `${activeTemplate.original_filename} · v${activeTemplate.version}` : "Upload one on Overview" },
+    { label: "Active template", ok: !!activeTemplate, detail: activeTemplate ? `${activeTemplate.original_filename} · v${activeTemplate.version}` : "Upload it in part A" },
     { label: "Roster", ok: (summary?.registered_students ?? 0) > 0, detail: plural(summary?.registered_students ?? 0, "student") },
     { label: "Seating", ok: assigned > 0, detail: `${formatNumber(assigned)} of ${formatNumber(summary?.registered_students ?? 0)} seated` },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight text-ink">Documents</h2>
-          <p className="text-sm text-ink-2">Personalized exam papers generated from the active template.</p>
-        </div>
-        {canEdit && (
-          <Button onClick={handleValidate} disabled={generating || !activeTemplate} loading={generating}>
-            <FileCheck2 className="h-4 w-4" /> Validate &amp; generate
-          </Button>
-        )}
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight text-ink">Exam papers</h2>
+        <p className="text-sm text-ink-2">
+          Upload the exam template (A), then generate a personalized paper for every seated student (B).
+        </p>
       </div>
+
+      <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} />
 
       {error && (
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -150,7 +148,7 @@ export default function DocumentsPage() {
       {genResult && (
         <div role="status" className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Generated {plural(genResult.generated, "document")}
+          Generated {plural(genResult.generated, "paper")}
           {genResult.failed > 0 && <span className="text-danger">· {formatNumber(genResult.failed)} failed</span>}
         </div>
       )}
@@ -163,7 +161,7 @@ export default function DocumentsPage() {
               <FileText className="h-4 w-4" />
             </span>
             <div>
-              <h3 className="text-sm font-semibold text-ink">Generate {plural(assigned, "document")}?</h3>
+              <h3 className="text-sm font-semibold text-ink">Generate {plural(assigned, "paper")}?</h3>
               <p className="mt-0.5 text-sm text-ink-2">
                 Uses template {activeTemplate?.original_filename} v{activeTemplate?.version}. Validation passed.
               </p>
@@ -189,7 +187,22 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* Readiness */}
+      {/* Generation */}
+      {canEdit && (
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">B · Generate papers</h3>
+            <p className="text-xs text-ink-3">
+              {activeTemplate
+                ? "Checks everything below, then creates one PDF per seated student."
+                : "Available once the template in part A is uploaded."}
+            </p>
+          </div>
+          <Button onClick={handleValidate} disabled={generating || !activeTemplate} loading={generating}>
+            <FileCheck2 className="h-4 w-4" /> Check &amp; generate papers
+          </Button>
+        </div>
+      )}
       {canEdit && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           {readiness.map((r) => (
@@ -217,8 +230,8 @@ export default function DocumentsPage() {
       <div className="surface-card overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-ink">Generated documents</h3>
-            <p className="tnum text-xs text-ink-3">{plural(totalGenerated, "document")}</p>
+            <h3 className="text-sm font-semibold text-ink">Generated papers</h3>
+            <p className="tnum text-xs text-ink-3">{plural(totalGenerated, "paper")}</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -235,19 +248,15 @@ export default function DocumentsPage() {
         {generated.length === 0 ? (
           <EmptyState
             icon={<FileText className="h-5 w-5 text-ink-3" />}
-            title={searchQuery ? "No matching documents" : "No documents generated yet"}
-            description={searchQuery ? "Try a different student number or name." : "Validate and generate personalized exams once the template and seating are in place."}
+            title={searchQuery ? "No matching papers" : "No papers generated yet"}
+            description={searchQuery ? "Try a different student number or name." : activeTemplate ? "Use “Check & generate papers” to create them." : "Upload the exam template in part A first."}
             action={
               canEdit && !searchQuery ? (
                 activeTemplate ? (
                   <Button onClick={handleValidate} disabled={generating} loading={generating}>
-                    <FileCheck2 className="h-4 w-4" /> Validate &amp; generate
+                    <FileCheck2 className="h-4 w-4" /> Check &amp; generate papers
                   </Button>
-                ) : (
-                  <Link href={`/app/exams/${examId}`}>
-                    <Button>Upload template</Button>
-                  </Link>
-                )
+                ) : undefined
               ) : undefined
             }
           />

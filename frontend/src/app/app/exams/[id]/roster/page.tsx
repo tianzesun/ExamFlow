@@ -22,6 +22,7 @@ import {
   ChevronLeft, ChevronRight, FileSpreadsheet,
 } from "lucide-react";
 
+import { notifyExamChanged } from "@/components/exam/workspace";
 export default function RosterPage() {
   const params = useParams();
   const { user } = useAuth();
@@ -92,6 +93,7 @@ export default function RosterPage() {
     setError(null);
     try {
       const result = await confirmRosterImport(examId, importFile);
+      notifyExamChanged();
       setImportResult(result);
       setPreview(null);
       setImportFile(null);
@@ -112,6 +114,7 @@ export default function RosterPage() {
     if (!confirm("Remove this student from the roster?")) return;
     try {
       await removeFromRoster(examId, studentId);
+      notifyExamChanged();
       getRoster(examId, page)
         .then((res) => { setStudents(res.students); setTotal(res.total); })
         .catch(() => {})
@@ -134,7 +137,7 @@ export default function RosterPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-ink">Roster</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Students</h2>
           <p className="text-sm text-ink-2">
             {loading ? "Loading students…" : `${plural(total, "student")} registered${exam ? ` for ${exam.course_code}` : ""}`}
           </p>

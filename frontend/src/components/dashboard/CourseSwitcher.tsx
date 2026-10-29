@@ -46,7 +46,7 @@ export function CourseSwitcher({ className = "" }: { className?: string }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[10px] font-medium uppercase tracking-wider text-ink-3">
-            Course
+            Showing exams for
           </span>
           <span className="block truncate text-[13px] font-medium leading-tight text-ink">
             {current ? current.course_code : "All courses"}

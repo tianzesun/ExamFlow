@@ -37,6 +37,7 @@ import { PageTransition } from "@/components/page-transition";
 import { cn } from "@/lib/utils";
 import { formatDateLong, formatTime, plural } from "@/lib/format";
 
+import { notifyExamChanged } from "@/components/exam/workspace";
 const DRAG_TYPE = "application/x-examflow-student";
 
 /** A student "in hand": picked from a seat or from the unassigned list. */
@@ -214,6 +215,7 @@ export default function SeatMapPage() {
     setBusy(true);
     try {
       const res = await moveStudent(examId, studentId, targetSeatId);
+      notifyExamChanged();
       if (res.action === "swapped") toast.success(`Swapped ${name} and ${target.occupant?.full_name}`);
       else if (res.action === "moved") toast.success(`Moved ${name} to ${target.seat_code}`);
       else if (res.action === "assigned") toast.success(`Seated ${name} in ${target.seat_code}`);
@@ -233,6 +235,7 @@ export default function SeatMapPage() {
     setBusy(true);
     try {
       await removeAssignment(examId, assignment_id);
+      notifyExamChanged();
       toast.success(`${full_name} removed from ${seat.seat_code}`);
       setCarry(null);
       await refresh();

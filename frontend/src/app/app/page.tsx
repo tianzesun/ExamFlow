@@ -285,7 +285,7 @@ function WorkspaceHeader({
               disabled={!selectedCourseId}
               title={selectedCourseId ? undefined : "Choose a course in the sidebar first"}
             >
-              <Upload /> Import roster
+              <Upload /> Import students
             </Button>
             <Link href="/app/exams/new">
               <Button>
@@ -314,6 +314,10 @@ function KpiCards({ exams, summaries }: { exams: Exam[]; summaries: Record<strin
   const total = exams.length;
   const upcoming = exams.filter((e) => examDateTime(e).getTime() >= now);
   const nextTwoWeeks = upcoming.filter((e) => examDateTime(e).getTime() - now < 14 * DAY).length;
+  const soonest = upcoming.reduce<Exam | null>(
+    (a, e) => (!a || examDateTime(e) < examDateTime(a) ? e : a),
+    null,
+  );
   const withRoster = exams.filter((e) => (summaries[e.id]?.roster_count ?? 0) > 0).length;
   const prepared = exams.filter(isPrepared).length;
   const unassigned = exams.reduce((acc, e) => acc + (summaries[e.id]?.unassigned_count ?? 0), 0);
@@ -324,12 +328,16 @@ function KpiCards({ exams, summaries }: { exams: Exam[]; summaries: Record<strin
       icon: CalendarDays,
       label: "Upcoming exams",
       value: upcoming.length,
-      hint: nextTwoWeeks > 0 ? `${nextTwoWeeks} in the next 14 days` : "None in the next 14 days",
+      hint: nextTwoWeeks > 0
+        ? `${nextTwoWeeks} in the next 14 days`
+        : soonest
+          ? `Next one ${formatRelative(examDateTime(soonest), new Date(now))}`
+          : "Nothing scheduled",
       color: "accent",
     },
     {
       icon: Users,
-      label: "Rosters imported",
+      label: "Students imported",
       value: withRoster,
       hint: `of ${plural(total, "exam")}`,
       progress: withRoster / Math.max(1, total),
@@ -337,7 +345,7 @@ function KpiCards({ exams, summaries }: { exams: Exam[]; summaries: Record<strin
     },
     {
       icon: CheckCircle2,
-      label: "Packages generated",
+      label: "Papers generated",
       value: prepared,
       hint: `of ${plural(total, "exam")}`,
       progress: prepared / Math.max(1, total),
@@ -347,7 +355,7 @@ function KpiCards({ exams, summaries }: { exams: Exam[]; summaries: Record<strin
       icon: DoorOpen,
       label: "Students without a seat",
       value: unassigned,
-      hint: unassigned > 0 ? "Run seating to place them" : "Everyone rostered has a seat",
+      hint: unassigned > 0 ? "Assign seats to place them" : "Everyone rostered has a seat",
       progress: assigned + unassigned > 0 ? assigned / (assigned + unassigned) : undefined,
       color: unassigned > 0 ? "warning" : "success",
     },
@@ -380,15 +388,15 @@ function buildAttention(exams: Exam[], summaries: Record<string, ExamSummary>, n
     const s = summaries[e.id];
     const soon = t - now < 14 * DAY;
     if (!s || s.roster_count === 0) {
-      items.push({ exam: e, reason: "No roster imported", action: "Import roster", href: `/app/exams/${e.id}/roster`, severity: soon ? "danger" : "warning" });
+      items.push({ exam: e, reason: "No students imported", action: "Import students", href: `/app/exams/${e.id}/roster`, severity: soon ? "danger" : "warning" });
     } else if (s.room_count === 0) {
-      items.push({ exam: e, reason: "No rooms assigned", action: "Add rooms", href: `/app/exams/${e.id}/seating`, severity: soon ? "danger" : "warning" });
+      items.push({ exam: e, reason: "No rooms chosen", action: "Assign seats", href: `/app/exams/${e.id}/seating`, severity: soon ? "danger" : "warning" });
     } else if (s.unassigned_count > 0) {
-      items.push({ exam: e, reason: `${plural(s.unassigned_count, "student")} without a seat`, action: "Run seating", href: `/app/exams/${e.id}/seating`, severity: soon ? "danger" : "warning" });
+      items.push({ exam: e, reason: `${plural(s.unassigned_count, "student")} without a seat`, action: "Assign seats", href: `/app/exams/${e.id}/seating`, severity: soon ? "danger" : "warning" });
     } else if (!s.has_template) {
-      items.push({ exam: e, reason: "No exam template uploaded", action: "Upload template", href: `/app/exams/${e.id}/documents`, severity: soon ? "danger" : "warning" });
+      items.push({ exam: e, reason: "Exam paper not uploaded", action: "Upload exam paper", href: `/app/exams/${e.id}/documents`, severity: soon ? "danger" : "warning" });
     } else if (soon) {
-      items.push({ exam: e, reason: "Ready to generate packages", action: "Generate", href: `/app/exams/${e.id}/documents`, severity: "warning" });
+      items.push({ exam: e, reason: "Ready to generate papers", action: "Generate papers", href: `/app/exams/${e.id}/documents`, severity: "warning" });
     }
   }
   return items.sort(
@@ -408,7 +416,7 @@ function NeedsAttention({ exams, summaries }: { exams: Exam[]; summaries: Record
       <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
         <div>
           <h3 className="text-sm font-semibold text-ink">Needs attention</h3>
-          <p className="mt-0.5 text-xs text-ink-3">Upcoming exams with work left before exam day</p>
+          <p className="mt-0.5 text-xs text-ink-3">Upcoming exams with setup left to do, most urgent first</p>
         </div>
         {items.length > 0 && (
           <Badge variant={items.some((i) => i.severity === "danger") ? "danger" : "warning"}>
@@ -436,12 +444,12 @@ function NeedsAttention({ exams, summaries }: { exams: Exam[]; summaries: Record
                 <AlertTriangle className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-ink">
+                <Link href={`/app/exams/${it.exam.id}`} className="block truncate text-sm font-medium text-ink hover:text-accent">
                   <span className="font-mono text-xs text-ink-3">{it.exam.course_code}</span>{" "}
                   {it.exam.exam_name}
-                </p>
+                </Link>
                 <p className="mt-0.5 truncate text-xs text-ink-2">
-                  {it.reason} · <span className="text-ink-3">{formatRelative(examDateTime(it.exam), new Date(now))}</span>
+                  {it.reason} · <span className="text-ink-3">{formatDateShort(it.exam.exam_date)}, {formatRelative(examDateTime(it.exam), new Date(now))}</span>
                 </p>
               </div>
               <Link href={it.href}>
@@ -544,7 +552,7 @@ function WeeklyLoad({ exams }: { exams: Exam[] }) {
         <div className="flex h-40 items-end gap-2 sm:gap-3">
           {weeks.map((w, i) => (
             <div key={i} className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-              <span className="tnum text-[11px] font-medium text-ink-2 opacity-0 transition-opacity group-hover:opacity-100">
+              <span className={`tnum text-[11px] font-medium ${w.count ? "text-ink-2" : "text-ink-3/60"}`}>
                 {w.count}
               </span>
               <div
@@ -820,7 +828,7 @@ function DashboardWorkspace() {
 
       <KpiCards exams={exams} summaries={summaries} />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-5">
         <div className="xl:col-span-3">
           <NeedsAttention exams={exams} summaries={summaries} />
         </div>
@@ -831,7 +839,7 @@ function DashboardWorkspace() {
 
       <UpcomingExams exams={exams} summaries={summaries} />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-5">
         <div className="xl:col-span-3">
           <WeeklyLoad exams={exams} />
         </div>

@@ -20,7 +20,7 @@ import {
 import { getExams, updateExam, type ExamFilters } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
 import type { Exam, Course } from "@/lib/types";
-import { formatDate, formatDateShort, formatTime, formatNumber, plural } from "@/lib/format";
+import { formatDateLong, formatDateShort, formatRelative, formatTime, formatNumber, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   Badge,
@@ -53,12 +53,12 @@ const BOARD_COLUMNS = [
 ] as const;
 type ColumnStatus = (typeof BOARD_COLUMNS)[number];
 
-const COLUMN_META: Record<ColumnStatus, { label: string; dot: string }> = {
-  DRAFT: { label: "Draft", dot: "bg-ink-3" },
-  CONFIGURED: { label: "Configured", dot: "bg-accent" },
-  READY: { label: "Ready", dot: "bg-warning" },
-  GENERATED: { label: "Generated", dot: "bg-violet" },
-  COMPLETED: { label: "Completed", dot: "bg-success" },
+const COLUMN_META: Record<ColumnStatus, { label: string; dot: string; hint: string }> = {
+  DRAFT: { label: "Draft", dot: "bg-ink-3", hint: "Being set up" },
+  CONFIGURED: { label: "Configured", dot: "bg-accent", hint: "Roster and rooms in place" },
+  READY: { label: "Ready", dot: "bg-warning", hint: "Seating confirmed" },
+  GENERATED: { label: "Generated", dot: "bg-violet", hint: "Papers produced" },
+  COMPLETED: { label: "Completed", dot: "bg-success", hint: "Exam written" },
 };
 
 function statusLabel(status: string): string {
@@ -119,7 +119,7 @@ function ExamsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [courseFilter, setCourseFilter] = useState(() => searchParams.get("course_id") ?? "");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"board" | "table">("board");
+  const [view, setView] = useState<"board" | "table">("table");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<ColumnStatus | null>(null);
 
@@ -343,8 +343,8 @@ function ExamsPageContent() {
 /* ── Board / Table segmented toggle ── */
 function ViewToggle({ view, onChange }: { view: "board" | "table"; onChange: (v: "board" | "table") => void }) {
   const opts = [
-    { value: "board" as const, label: "Board", Icon: LayoutGrid },
-    { value: "table" as const, label: "Table", Icon: List },
+    { value: "table" as const, label: "List", Icon: List },
+    { value: "board" as const, label: "By status", Icon: LayoutGrid },
   ];
   return (
     <div role="group" aria-label="View" className="inline-flex h-9 items-center rounded-lg border border-line bg-surface-2 p-0.5">
@@ -386,11 +386,11 @@ function MoveToMenu({
         className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 data-[popup-open]:bg-surface-hover data-[popup-open]:text-ink"
       >
         <ArrowRightLeft className="h-3 w-3" />
-        Move
+        Status
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align} className="w-40">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Move to</DropdownMenuLabel>
+          <DropdownMenuLabel>Set status to</DropdownMenuLabel>
           {BOARD_COLUMNS.map((s) => (
             <DropdownMenuItem key={s} onClick={() => onStatusChange(exam.id, s)}>
               <span className={cn("h-1.5 w-1.5 rounded-full", COLUMN_META[s].dot)} />
@@ -445,10 +445,13 @@ function KanbanColumn({
         isOver ? "border-accent bg-accent/5" : "border-line"
       )}
     >
-      <header className="flex items-center justify-between px-3 pb-2 pt-3">
+      <header className="flex items-start justify-between px-3 pb-2 pt-3">
         <div className="flex items-center gap-2">
-          <span className={cn("h-2 w-2 rounded-full", meta.dot)} />
-          <h2 className="text-[13px] font-semibold text-ink">{meta.label}</h2>
+          <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", meta.dot)} />
+          <div>
+            <h2 className="text-[13px] font-semibold leading-tight text-ink">{meta.label}</h2>
+            <p className="text-[11px] leading-tight text-ink-3">{meta.hint}</p>
+          </div>
         </div>
         <span className="tnum min-w-5 rounded-md bg-surface px-1.5 py-0.5 text-center text-[11px] font-medium text-ink-2 ring-1 ring-inset ring-line">
           {exams.length}
@@ -546,7 +549,7 @@ function KanbanCard({
   );
 }
 
-/* ── Table view ── */
+/* ── List view: upcoming exams first, soonest at the top ── */
 function ExamsTable({
   exams,
   onStatusChange,
@@ -554,58 +557,73 @@ function ExamsTable({
   exams: Exam[];
   onStatusChange: (id: string, status: ColumnStatus) => void;
 }) {
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+  const key = (e: Exam) => `${e.exam_date}${e.start_time ?? ""}`;
+  const upcoming = exams.filter((e) => e.exam_date >= today).sort((a, b) => key(a).localeCompare(key(b)));
+  const past = exams.filter((e) => e.exam_date < today).sort((a, b) => key(b).localeCompare(key(a)));
+  const sections = [
+    { title: "Upcoming", rows: upcoming },
+    { title: "Past", rows: past },
+  ].filter((sec) => sec.rows.length > 0);
+
   return (
     <div className="surface-card overflow-hidden">
       <Table>
         <TableHead>
+          <Th>Date</Th>
           <Th>Course</Th>
           <Th>Exam</Th>
-          <Th>Term</Th>
-          <Th>Date</Th>
           <Th>Status</Th>
           <Th className="w-0">
             <span className="sr-only">Actions</span>
           </Th>
         </TableHead>
-        <TableBody>
-          {exams.map((exam) => {
-            const time = formatTime(exam.start_time);
-            return (
-              <tr key={exam.id} className="group">
-                <Td className="whitespace-nowrap">
-                  <span className="font-mono text-xs text-ink-2">{exam.course_code}</span>
-                </Td>
-                <Td>
-                  <Link href={`/app/exams/${exam.id}`} className="font-medium text-ink hover:text-accent">
-                    {examTitle(exam)}
-                  </Link>
-                </Td>
-                <Td className="whitespace-nowrap text-ink-2">
-                  {exam.term} {exam.academic_year}
-                </Td>
-                <Td className="tnum whitespace-nowrap text-ink-2">
-                  {formatDate(exam.exam_date)}
-                  {time && <span className="text-ink-3"> · {time}</span>}
-                </Td>
-                <Td>
-                  <Badge variant={STATUS_BADGES[exam.status] ?? "default"}>{statusLabel(exam.status)}</Badge>
-                </Td>
-                <Td className="whitespace-nowrap text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <MoveToMenu exam={exam} onStatusChange={onStatusChange} />
-                    <Link
-                      href={`/app/exams/${exam.id}`}
-                      aria-label={`Open ${exam.exam_name}`}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-surface-hover hover:text-ink"
-                    >
-                      <ChevronRight className="h-4 w-4" />
+        {sections.map((sec) => (
+          <TableBody key={sec.title}>
+            <tr>
+              <td colSpan={5} className="border-y border-line bg-surface-2 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+                {sec.title} · {formatNumber(sec.rows.length)}
+              </td>
+            </tr>
+            {sec.rows.map((exam) => {
+              const time = formatTime(exam.start_time);
+              return (
+                <tr key={exam.id} className="group">
+                  <Td className="tnum whitespace-nowrap">
+                    <span className="block font-medium text-ink">{formatDateLong(exam.exam_date)}</span>
+                    <span className="block text-xs text-ink-3">
+                      {time}
+                      {time && " · "}
+                      {formatRelative(exam.exam_date)}
+                    </span>
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    <span className="font-mono text-xs text-ink-2">{exam.course_code}</span>
+                    <span className="block text-xs text-ink-3">{exam.term} {exam.academic_year}</span>
+                  </Td>
+                  <Td>
+                    <Link href={`/app/exams/${exam.id}`} className="font-medium text-ink hover:text-accent">
+                      {examTitle(exam)}
                     </Link>
-                  </div>
-                </Td>
-              </tr>
-            );
-          })}
-        </TableBody>
+                  </Td>
+                  <Td>
+                    <Badge variant={STATUS_BADGES[exam.status] ?? "default"}>{statusLabel(exam.status)}</Badge>
+                  </Td>
+                  <Td className="whitespace-nowrap text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <MoveToMenu exam={exam} onStatusChange={onStatusChange} />
+                      <Link href={`/app/exams/${exam.id}`}>
+                        <Button variant="secondary" size="sm">
+                          Open <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </Td>
+                </tr>
+              );
+            })}
+          </TableBody>
+        ))}
       </Table>
     </div>
   );

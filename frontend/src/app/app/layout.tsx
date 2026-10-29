@@ -139,7 +139,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3" aria-label="Main">
-        <p className="eyebrow px-2.5 pb-2">Workspace</p>
+        <p className="eyebrow px-2.5 pb-2">Menu</p>
         {navItems.map((item) => {
           const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
           return (
