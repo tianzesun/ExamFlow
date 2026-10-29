@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
-import { getCourse, updateCourse } from "@/lib/api/courses";
-import { getExams } from "@/lib/api/exams";
+import { deleteCourse, getCourse, updateCourse } from "@/lib/api/courses";
+import { errorReference } from "@/lib/api/client";
+import { getAllExams } from "@/lib/api/exams";
 import {
   Button,
   Input,
@@ -15,7 +17,7 @@ import {
   STATUS_BADGES,
 } from "@/components";
 import { PageLoader } from "@/components/spinner";
-import { Pencil, Plus, BookOpen, FileText, ChevronRight, AlertCircle } from "lucide-react";
+import { Pencil, Plus, BookOpen, FileText, ChevronRight, AlertCircle, Trash2 } from "lucide-react";
 import type { Course, Exam } from "@/lib/types";
 import { formatDate, formatDateTime, formatTime, plural } from "@/lib/format";
 
@@ -48,6 +50,7 @@ export default function CourseDetailPage() {
   const [form, setForm] = useState({ course_code: "", course_name: "", department: "" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +58,7 @@ export default function CourseDetailPage() {
       .then((c) => { if (!cancelled) setCourse(c); })
       .catch(() => { if (!cancelled) setError("This course could not be found or you don't have access to it."); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    getExams({ course_id: courseId }, 1, 100)
+    getAllExams({ course_id: courseId })
       .then((r) => { if (!cancelled) setExams(r.exams ?? []); })
       .catch(() => { if (!cancelled) setExams([]); });
     return () => { cancelled = true; };
@@ -92,6 +95,18 @@ export default function CourseDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!course) return;
+    if (!confirm(`Delete ${course.course_code}? This can't be undone.`)) return;
+    try {
+      await deleteCourse(course.id);
+      toast.success(`${course.course_code} deleted`);
+      router.push("/app/courses");
+    } catch (err) {
+      toast.error(`The course couldn't be deleted. Try again.${errorReference(err)}`);
+    }
+  };
+
   if (loading) return <PageLoader />;
   if (error && !course)
     return (
@@ -122,6 +137,11 @@ export default function CourseDetailPage() {
         meta={course.department ? <Badge>{course.department}</Badge> : <Badge variant="warning">No department</Badge>}
         actions={
           <>
+            {!editing && exams !== null && exams.length === 0 && (
+              <Button variant="ghost" className="text-ink-3 hover:text-danger" onClick={handleDelete} title="Only courses without exams can be deleted">
+                <Trash2 /> Delete
+              </Button>
+            )}
             {!editing && (
               <Button variant="secondary" onClick={startEdit}>
                 <Pencil /> Edit

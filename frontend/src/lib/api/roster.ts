@@ -1,5 +1,5 @@
 import { fetchApi } from "./client";
-import { ExamStudent } from "../types";
+import { AttendanceStatus, ExamStudent } from "../types";
 
 export async function getRoster(
   examId: string,
@@ -48,5 +48,38 @@ export async function confirmRosterImport(
 export async function removeFromRoster(examId: string, studentId: string): Promise<void> {
   return fetchApi(`/api/exams/${examId}/roster/${studentId}`, {
     method: "DELETE",
+  });
+}
+
+/** Every student on the roster, fetched page by page. */
+export async function getFullRoster(examId: string): Promise<ExamStudent[]> {
+  const pageSize = 200;
+  const first = await getRoster(examId, 1, pageSize);
+  const pages = Math.ceil(first.total / pageSize);
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, i) => getRoster(examId, i + 2, pageSize)),
+  );
+  return [first, ...rest].flatMap((p) => p.students);
+}
+
+export async function setAttendance(
+  examId: string,
+  studentId: string,
+  attendance_status: AttendanceStatus,
+): Promise<ExamStudent> {
+  return fetchApi(`/api/exams/${examId}/roster/${studentId}/attendance`, {
+    method: "PUT",
+    body: JSON.stringify({ attendance_status }),
+  });
+}
+
+export async function setAccommodation(
+  examId: string,
+  studentId: string,
+  data: { extra_time_minutes: number; accommodation_notes: string | null },
+): Promise<ExamStudent> {
+  return fetchApi(`/api/exams/${examId}/roster/${studentId}/accommodation`, {
+    method: "PUT",
+    body: JSON.stringify(data),
   });
 }

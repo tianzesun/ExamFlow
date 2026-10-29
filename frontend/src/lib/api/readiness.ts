@@ -31,3 +31,12 @@ export async function getReadiness(examId: string): Promise<ReadinessResult> {
 export async function getExamSummary(examId: string): Promise<ExamSummary> {
   return fetchApi<ExamSummary>(`/api/exams/${examId}/summary`);
 }
+
+/** Summaries for many exams in one request. */
+export async function getExamSummaries(examIds: string[]): Promise<Record<string, ExamSummary>> {
+  if (examIds.length === 0) return {};
+  return fetchApi<Record<string, ExamSummary>>("/api/exams/summaries", {
+    method: "POST",
+    body: JSON.stringify({ exam_ids: examIds }),
+  });
+}

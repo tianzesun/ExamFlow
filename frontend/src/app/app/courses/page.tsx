@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { getCourses } from "@/lib/api/courses";
-import { getExams } from "@/lib/api/exams";
+import { getAllExams } from "@/lib/api/exams";
 import { syncTTBCourses } from "@/lib/api/ttb";
 import { errorReference } from "@/lib/api/client";
 import type { ReactNode } from "react";
@@ -95,7 +95,7 @@ export default function CoursesPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-    getExams({}, 1, 100)
+    getAllExams()
       .then((es) => setExams(es.exams ?? []))
       .catch(() => {});
   };

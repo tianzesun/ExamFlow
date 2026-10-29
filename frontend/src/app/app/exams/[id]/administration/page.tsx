@@ -7,9 +7,11 @@ import { getExam } from "@/lib/api/exams";
 import { getReadiness, ReadinessResult, CheckResult } from "@/lib/api/readiness";
 import { getExamRooms } from "@/lib/api/assignments";
 import {
-  generateQr, generatePackage, getPackageDownloadUrl,
+  generatePackage, getPackageDownloadUrl,
   getSignatureListUrl, getSeatingMapUrl,
 } from "@/lib/api/administration";
+import { errorReference } from "@/lib/api/client";
+import { AttendanceCard } from "@/components/exam/AttendanceCard";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
 import { Card, CardHeader } from "@/components/card";
@@ -17,14 +19,15 @@ import { Badge } from "@/components/badge";
 import { EmptyState } from "@/components/empty-state";
 import { formatNumber, plural } from "@/lib/format";
 import { Button } from "@/components/button";
+import { DownloadButton } from "@/components/download-button";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import {
   CheckCircle, XCircle, AlertCircle, AlertTriangle,
   Download, FileText, ClipboardCheck, DoorOpen, LayoutGrid, Package, QrCode,
 } from "lucide-react";
-
 import { notifyExamChanged } from "@/components/exam/workspace";
+
 const CHECK_LABELS: Record<string, string> = {
   roster: "Roster imported",
   rooms: "Rooms configured",
@@ -45,7 +48,6 @@ export default function AdministrationPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [generatingQr, setGeneratingQr] = useState(false);
   const [generatingPkg, setGeneratingPkg] = useState(false);
   const [packageInfo, setPackageInfo] = useState<{ filename: string; size: number } | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -76,7 +78,7 @@ export default function AdministrationPage() {
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(`This page couldn't be loaded. Try again.${errorReference(err)}`);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -89,20 +91,6 @@ export default function AdministrationPage() {
     return cleanup;
   }, [fetchData]);
 
-  const handleGenerateQr = async () => {
-    setGeneratingQr(true);
-    setError(null);
-    try {
-      await generateQr(examId);
-      notifyExamChanged();
-      fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "QR generation failed");
-    } finally {
-      setGeneratingQr(false);
-    }
-  };
-
   const handleGeneratePackage = async () => {
     setGeneratingPkg(true);
     setShowConfirm(false);
@@ -112,7 +100,7 @@ export default function AdministrationPage() {
       notifyExamChanged();
       setPackageInfo(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Package generation failed");
+      setError(`The package couldn't be generated. Try again.${errorReference(err)}`);
     } finally {
       setGeneratingPkg(false);
     }
@@ -137,14 +125,10 @@ export default function AdministrationPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-ink">Exam day</h2>
-          <p className="text-sm text-ink-2">Final checks, QR codes and the printable package for exam day.</p>
+          <p className="text-sm text-ink-2">Final checks, printable room documents and attendance on the day.</p>
         </div>
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={handleGenerateQr} disabled={generatingQr || generatedCount === 0} loading={generatingQr}>
-              <QrCode className="h-4 w-4" /> Generate QR codes
-              {pendingQr > 0 && <span className="tnum rounded bg-surface-hover px-1.5 text-[11px] text-ink-2">{formatNumber(pendingQr)}</span>}
-            </Button>
             <Button onClick={() => setShowConfirm(true)} disabled={generatingPkg || !allReady || generatedCount === 0} loading={generatingPkg}>
               <Package className="h-4 w-4" /> Generate package
             </Button>
@@ -156,6 +140,21 @@ export default function AdministrationPage() {
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {pendingQr > 0 && (
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2 text-sm text-ink">
+            <QrCode className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <span>
+              {plural(pendingQr, "paper")} {pendingQr === 1 ? "was" : "were"} generated before QR codes were printed on papers.{" "}
+              <span className="text-ink-2">Generate the papers again to add a verification code to each one.</span>
+            </span>
+          </p>
+          <Link href={`/app/exams/${examId}/documents`} className="shrink-0">
+            <Button size="sm" variant="secondary">Open exam papers</Button>
+          </Link>
         </div>
       )}
 
@@ -196,11 +195,9 @@ export default function AdministrationPage() {
               </p>
             </div>
           </div>
-          <a href={getPackageDownloadUrl(examId)} target="_blank" rel="noopener noreferrer" className="shrink-0">
-            <Button>
+          <DownloadButton url={getPackageDownloadUrl(examId)} filename="exam-package.zip" className="shrink-0">
               <Download className="h-4 w-4" /> Download package
-            </Button>
-          </a>
+            </DownloadButton>
         </div>
       )}
 
@@ -300,16 +297,12 @@ export default function AdministrationPage() {
                   </Td>
                   <Td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
-                      <a href={getSignatureListUrl(examId, r.id)} target="_blank" rel="noopener noreferrer">
-                        <Button variant="ghost" size="sm">
+                      <DownloadButton url={getSignatureListUrl(examId, r.id)} filename="Signature-List.pdf" variant="ghost" size="sm">
                           <FileText className="h-3.5 w-3.5" /> Signature list
-                        </Button>
-                      </a>
-                      <a href={getSeatingMapUrl(examId, r.id)} target="_blank" rel="noopener noreferrer">
-                        <Button variant="ghost" size="sm">
+                        </DownloadButton>
+                      <DownloadButton url={getSeatingMapUrl(examId, r.id)} filename="Seating-Map.pdf" variant="ghost" size="sm">
                           <LayoutGrid className="h-3.5 w-3.5" /> Seating map
-                        </Button>
-                      </a>
+                        </DownloadButton>
                     </div>
                   </Td>
                 </tr>
@@ -318,6 +311,8 @@ export default function AdministrationPage() {
           </Table>
         )}
       </div>
+
+      <AttendanceCard examId={examId} canMark={user?.role !== undefined} />
     </div>
   );
 }

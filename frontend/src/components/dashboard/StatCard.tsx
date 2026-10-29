@@ -51,21 +51,29 @@ export function StatCard({
     typeof value === "number" && Number.isFinite(value);
   const tint = color === "neutral" ? undefined : `var(${COLOR_VAR_BG[color]})`;
   return (
-    <div className="surface-card flex h-full flex-col px-4 pb-4 pt-4 sm:px-5">
+    <div className="surface-card card hoverable group flex h-full flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[13px] font-medium leading-snug text-ink-2">{label}</p>
         <span
-          className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-hover text-ink-3"
-          style={tint ? { color: tint, background: `color-mix(in srgb, ${tint} 12%, transparent)` } : undefined}
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-hover text-ink-3 transition-transform duration-200 group-hover:scale-110"
+          style={
+            tint
+              ? {
+                  color: "#fff",
+                  background: `linear-gradient(135deg, ${tint}, color-mix(in srgb, ${tint} 55%, var(--violet)))`,
+                  boxShadow: `0 6px 16px -6px color-mix(in srgb, ${tint} 70%, transparent)`,
+                }
+              : undefined
+          }
         >
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="h-4 w-4" />
         </span>
       </div>
       <div className="mt-1.5 flex items-baseline gap-2">
         {numeric ? (
           <NumberTicker
             value={value}
-            className="tnum text-[28px] font-semibold leading-none tracking-tight text-ink"
+            className="tnum text-[32px] font-semibold leading-none tracking-tight text-ink"
           />
         ) : (
           <span className="tnum text-[28px] font-semibold leading-none tracking-tight text-ink">
@@ -92,7 +100,10 @@ export function StatCard({
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
             <div
               className="h-full rounded-full transition-[width] duration-500"
-              style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`, background: COLOR_VAR[color] }}
+              style={{
+                width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
+                background: `linear-gradient(90deg, ${COLOR_VAR[color]}, color-mix(in srgb, ${COLOR_VAR[color]} 50%, var(--violet)))`,
+              }}
             />
           </div>
         ) : sparkline && sparkline.length >= 2 ? (

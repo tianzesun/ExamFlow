@@ -14,7 +14,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
-import { getExams, type ExamFilters } from "@/lib/api/exams";
+import { getAllExams, type ExamFilters } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
 import type { Exam, Course } from "@/lib/types";
 import { formatDateLong, formatDateShort, formatRelative, formatTime, formatNumber, plural } from "@/lib/format";
@@ -121,7 +121,7 @@ function ExamsPageContent() {
   useEffect(() => {
     const filters: ExamFilters = {};
     if (courseFilter) filters.course_id = courseFilter;
-    Promise.all([getExams(filters, 1, 100), getCourses(1, 100)])
+    Promise.all([getAllExams(filters), getCourses(1, 100)])
       .then(([examRes]) => {
         setExams(examRes.exams ?? []);
         setTotal(examRes.total ?? 0);

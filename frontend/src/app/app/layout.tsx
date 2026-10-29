@@ -45,7 +45,7 @@ const ROLE_LABEL: Record<string, string> = {
 function Logo() {
   return (
     <Link href="/app" className="flex items-center gap-2.5 px-1">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white shadow-[var(--shadow-sm)] dark:text-[#0a0c10]">
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-grad-primary text-white shadow-[0_6px_18px_-6px_rgba(124,77,255,0.8)]">
         <FileText className="h-4 w-4" />
       </span>
       <span className="leading-tight">
@@ -150,11 +150,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
               onClick={() => setMobileOpen(false)}
               className={`group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                 isActive
-                  ? "bg-accent-subtle font-medium text-accent"
+                  ? "nav-active font-medium text-white"
                   : "text-ink-2 hover:bg-surface-hover hover:text-ink"
               }`}
             >
-              <item.icon className={`h-4 w-4 ${isActive ? "text-accent" : "text-ink-3 group-hover:text-ink-2"}`} />
+              <item.icon className={`h-4 w-4 ${isActive ? "text-[#a9b8ff]" : "text-ink-3 group-hover:text-ink-2"}`} />
               {item.label}
             </Link>
           );
@@ -187,7 +187,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     <CourseProvider>
       <div className="app-canvas flex h-screen overflow-hidden">
         {/* Desktop sidebar */}
-        <aside className="hidden w-64 shrink-0 border-r border-line bg-surface lg:block">
+        <aside className="dark sidebar-shell hidden w-64 shrink-0 lg:block">
           {sidebar}
         </aside>
 
@@ -198,7 +198,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
               className="absolute inset-0 bg-black/40 animate-fade-in"
               onClick={() => setMobileOpen(false)}
             />
-            <aside className="absolute inset-y-0 left-0 w-72 border-r border-line bg-surface shadow-[var(--shadow-lg)] animate-fade-in">
+            <aside className="dark sidebar-shell absolute inset-y-0 left-0 w-72 shadow-[var(--shadow-lg)] animate-fade-in">
               <button
                 onClick={() => setMobileOpen(false)}
                 className="absolute right-3 top-3.5 rounded-lg p-1.5 text-ink-2 hover:bg-surface-hover"
@@ -227,7 +227,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden h-8 w-64 items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 text-sm text-ink-3 transition-colors hover:border-line-strong hover:text-ink-2 md:flex"
+              className="hidden h-9 w-72 items-center gap-2 rounded-xl border border-line bg-surface/80 px-3 shadow-[var(--shadow-sm)] text-sm text-ink-3 transition-colors hover:border-line-strong hover:text-ink-2 md:flex"
               aria-label="Search (Ctrl K)"
             >
               <Search className="h-3.5 w-3.5" />

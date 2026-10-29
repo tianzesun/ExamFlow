@@ -36,6 +36,7 @@ export async function createExam(data: {
   exam_date: string;
   start_time: string;
   duration_minutes: number;
+  notes?: string | null;
 }): Promise<Exam> {
   return fetchApi<Exam>("/api/exams", {
     method: "POST",
@@ -52,6 +53,7 @@ export async function updateExam(
     exam_date?: string;
     start_time?: string;
     duration_minutes?: number;
+    notes?: string | null;
     status?: string;
   }
 ): Promise<Exam> {
@@ -59,4 +61,18 @@ export async function updateExam(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+/** Every exam matching the filters, fetched page by page (the API caps pages at 100). */
+export async function getAllExams(filters: ExamFilters = {}): Promise<ExamListResponse> {
+  const first = await getExams(filters, 1, 100);
+  const pages = Math.ceil(first.total / 100);
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, i) => getExams(filters, i + 2, 100)),
+  );
+  return { ...first, exams: [first, ...rest].flatMap((r) => r.exams), page_size: first.total };
+}
+
+export async function deleteExam(id: string): Promise<void> {
+  return fetchApi<void>(`/api/exams/${id}`, { method: "DELETE" });
 }

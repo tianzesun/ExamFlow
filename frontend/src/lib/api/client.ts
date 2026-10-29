@@ -64,4 +64,32 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
   return response.json();
 }
 
+/**
+ * Download a protected file. Plain links can't send the bearer token, so fetch it
+ * with auth headers and hand the browser a temporary object URL.
+ */
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  const response = await fetch(url.startsWith("http") ? url : `${API_BASE}${url}`, {
+    credentials: "include",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Download failed" }));
+    throw new ApiError(String(error.detail ?? "Download failed"), response.status, response.headers.get("X-Request-Id"));
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plain = /filename="([^"]+)"/i.exec(disposition)?.[1];
+  const name = utf8 ? decodeURIComponent(utf8) : plain || fallbackName;
+
+  const href = URL.createObjectURL(await response.blob());
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 10_000);
+}
+
 export { API_BASE };

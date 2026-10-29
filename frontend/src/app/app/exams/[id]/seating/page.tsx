@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { getExam } from "@/lib/api/exams";
-import { getRooms, Room } from "@/lib/api/rooms";
+import { getAllRooms, Room } from "@/lib/api/rooms";
 import {
   getExamRooms, addExamRoom, removeExamRoom,
   getAssignmentSummary, previewAssignment, confirmAssignment, regenerateAssignment,
@@ -69,7 +69,7 @@ export default function SeatingPage() {
         if (cancelled) return null;
         const [e, r, er, s, a] = await Promise.all([
           getExam(examId),
-          getRooms(1, 100),
+          getAllRooms(),
           getExamRooms(examId),
           getAssignmentSummary(examId),
           getAssignments(examId, { page, page_size: 50, query: searchQuery || undefined, room_id: filterRoom || undefined }),

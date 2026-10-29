@@ -29,10 +29,11 @@ export default function NewRoomPage() {
 
   return (
     <PageContainer className="space-y-6">
-      <PageHeader title="New room" description="Add an examination room to the room inventory." />
+      <PageHeader eyebrow="Rooms" title="New room" description="Add an examination room to the room inventory." />
 
-      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
-        <section className="surface-card">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <section className="surface-card accent-top animate-rise">
           <div className="border-b border-line px-5 py-4">
             <h2 className="text-sm font-semibold text-ink">Location</h2>
             <p className="mt-0.5 text-xs text-ink-3">Where the room is on campus.</p>
@@ -86,6 +87,23 @@ export default function NewRoomPage() {
           </div>
         </section>
       </form>
+
+        <aside className="hero-panel animate-rise px-5 py-5 xl:sticky xl:top-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">Preview</p>
+          <p className="mt-3 text-xl font-semibold tracking-tight">
+            {form.building || "Building"} {form.room_number || "000"}
+          </p>
+          <p className="tnum mt-1 text-sm text-white/70">{form.capacity || 0} seats</p>
+          <div className="mt-4 grid grid-cols-10 gap-1" aria-hidden>
+            {Array.from({ length: Math.min(60, Math.max(0, form.capacity || 0)) }).map((_, i) => (
+              <span key={i} className="h-2.5 rounded-[3px] bg-white/30" />
+            ))}
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-white/70">
+            Seats are created automatically in rows (A01, A02 …) and grow or shrink if you change the capacity later.
+          </p>
+        </aside>
+      </div>
     </PageContainer>
   );
 }

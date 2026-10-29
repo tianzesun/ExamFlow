@@ -23,6 +23,7 @@ export interface Exam {
   exam_date: string;
   start_time: string;
   duration_minutes: number;
+  notes?: string | null;
   status: string;
   created_by: string;
   created_at: string;
@@ -42,8 +43,16 @@ export interface ExamStudent {
   student_id: string;
   student_number: string;
   full_name: string;
+  utorid?: string | null;
+  email?: string | null;
+  attendance_status?: AttendanceStatus;
+  checked_in_at?: string | null;
+  extra_time_minutes?: number;
+  accommodation_notes?: string | null;
   created_at: string;
 }
+
+export type AttendanceStatus = "EXPECTED" | "PRESENT" | "ABSENT";
 
 export enum ExamStatus {
   Draft = "DRAFT",

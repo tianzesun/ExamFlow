@@ -45,7 +45,7 @@ function StepMarker({ step }: { step: WorkspaceStep }) {
       className={cn(
         "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tnum",
         step.state === "done" && "bg-success text-white",
-        step.state === "current" && "bg-accent text-white",
+        step.state === "current" && "bg-grad-primary text-white shadow-[var(--glow-accent)]",
         step.state === "attention" && "bg-warning/15 text-warning ring-1 ring-warning/40",
         step.state === "todo" && "bg-surface text-ink-3 ring-1 ring-line-strong",
       )}
@@ -118,50 +118,52 @@ export default function ExamWorkspaceLayout({ children }: { children: ReactNode 
       <PageContainer className="space-y-6">
         <div className="print:hidden">
           {/* Workspace header */}
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <header className="hero-panel animate-rise flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-end sm:justify-between sm:px-7">
             {exam ? (
               <div className="min-w-0">
-                <p className="eyebrow mb-1.5">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
                   {exam.course_code} · {exam.term} {exam.academic_year}
                 </p>
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">{displayTitle(exam)}</h1>
-                  <Badge variant={STATUS_BADGES[exam.status] || "default"}>
-                    {STATUS_LABELS[exam.status] || exam.status}
-                  </Badge>
-                </div>
-                <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-2">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-ink-3" />
-                    {formatDateLong(exam.exam_date)}
-                    <span className="text-ink-3">({formatRelative(exam.exam_date)})</span>
+                  <h1 className="truncate text-2xl font-semibold tracking-tight text-white sm:text-[28px]">{displayTitle(exam)}</h1>
+                  <span className="dark">
+                    <Badge variant={STATUS_BADGES[exam.status] || "default"}>
+                      {STATUS_LABELS[exam.status] || exam.status}
+                    </Badge>
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-ink-3" />
+                </div>
+                <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/85">
+                  <span className="hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1">
+                    <Calendar className="h-3.5 w-3.5 text-white/60" />
+                    {formatDateLong(exam.exam_date)}
+                    <span className="text-white/60">({formatRelative(exam.exam_date)})</span>
+                  </span>
+                  <span className="hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1">
+                    <Clock className="h-3.5 w-3.5 text-white/60" />
                     {formatTime(exam.start_time, "—")}
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Timer className="h-3.5 w-3.5 text-ink-3" />
+                  <span className="hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1">
+                    <Timer className="h-3.5 w-3.5 text-white/60" />
                     {formatDuration(exam.duration_minutes)}
                   </span>
                 </p>
               </div>
             ) : failed ? (
               <div>
-                <p className="eyebrow mb-1.5">Exam</p>
-                <h1 className="text-2xl font-semibold tracking-tight text-ink">Exam unavailable</h1>
-                <p className="mt-1 text-sm text-ink-2">This exam could not be loaded.</p>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">Exam</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">Exam unavailable</h1>
+                <p className="mt-1 text-sm text-white/70">This exam could not be loaded.</p>
               </div>
             ) : (
               <div className="space-y-2">
-                <Skeleton className="h-3 w-32" />
-                <Skeleton className="h-7 w-80" />
-                <Skeleton className="h-4 w-64" />
+                <Skeleton className="h-3 w-32 bg-white/15" />
+                <Skeleton className="h-7 w-80 bg-white/15" />
+                <Skeleton className="h-4 w-64 bg-white/15" />
               </div>
             )}
             {next && activeSegment !== "" && !isActive(next) && !blocker && (
               <Link href={`${base}/${next.segment}`} className="shrink-0">
-                <Button>
+                <Button variant="secondary" className="border-transparent bg-white text-[#1e2f86] hover:bg-white/90">
                   Next: {next.action}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -179,7 +181,7 @@ export default function ExamWorkspaceLayout({ children }: { children: ReactNode 
                   className={cn(
                     "flex h-full items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-medium transition-colors",
                     activeSegment === ""
-                      ? "border-accent bg-accent-subtle text-accent"
+                      ? "border-accent/60 bg-surface text-accent shadow-[0_0_0_3px_var(--accent-subtle),var(--shadow-md)]"
                       : "border-line bg-surface text-ink-2 hover:border-line-strong hover:text-ink",
                   )}
                 >
@@ -195,10 +197,10 @@ export default function ExamWorkspaceLayout({ children }: { children: ReactNode 
                       href={`${base}/${step.segment}`}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex h-full items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors",
+                        "flex h-full items-center gap-3 rounded-xl border px-3.5 py-3 transition-all duration-150",
                         active
-                          ? "border-accent bg-accent-subtle shadow-[var(--shadow-sm)]"
-                          : "border-line bg-surface hover:border-line-strong",
+                          ? "border-accent/60 bg-surface shadow-[0_0_0_3px_var(--accent-subtle),var(--shadow-md)]"
+                          : "border-line bg-surface hover:-translate-y-0.5 hover:border-line-strong hover:shadow-[var(--shadow-md)]",
                       )}
                     >
                       <StepMarker step={step} />

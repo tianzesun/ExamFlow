@@ -8,16 +8,17 @@
   ─────────────────────────────────────────────
   Design tokens — "Registrar" UI
   ─────────────────────────────────────────────
-  Calm neutral canvas, crisp white surfaces and a
-  single confident blue accent. Dark mode is driven
+  Cool canvas with a soft aurora wash, crisp white
+  surfaces, an indigo→violet accent gradient and a deep
+  navy sidebar. Dark mode is driven
   by the `.dark` class (next-themes), so the custom
   tokens and the shadcn/ui tokens always agree.
 */
 :root {
-  --canvas: #f5f6f8;
+  --canvas: #f4f6fb;
   --surface: #ffffff;
-  --surface-2: #f8f9fb;
-  --surface-hover: #f0f2f5;
+  --surface-2: #f8f9fc;
+  --surface-hover: #eff2f8;
 
   --line: rgba(15, 23, 42, 0.08);
   --line-strong: rgba(15, 23, 42, 0.16);
@@ -29,20 +30,25 @@
   --brand: #1e3765;
   /* Deep brand surface for hero panels; stays navy in both themes */
   --brand-panel: #1e3765;
-  --accent: #2b59d9;
-  --accent-strong: #1f45b3;
-  --accent-subtle: rgba(43, 89, 217, 0.08);
+  --accent: #3b5bfd;
+  --accent-strong: #2a45d8;
+  --accent-subtle: rgba(59, 91, 253, 0.09);
 
-  --violet: #7357e8;
-  --violet-strong: #5b40cf;
-  --violet-subtle: rgba(115, 87, 232, 0.10);
+  --violet: #7c4dff;
+  --violet-strong: #6236f0;
+  --violet-subtle: rgba(124, 77, 255, 0.10);
+
+  /* Signature gradient: buttons, hero panels, active nav */
+  --grad-primary: linear-gradient(135deg, #3b5bfd 0%, #6a4dff 55%, #9b4dff 100%);
+  --grad-hero: linear-gradient(125deg, #0d1b4c 0%, #1e2f86 45%, #4b2fb8 100%);
+  --glow-accent: 0 8px 24px -8px rgba(59, 91, 253, 0.55);
 
   --success: #15803d;
   --warning: #b45309;
   --danger: #d1343b;
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.02);
-  --shadow-md: 0 4px 16px -4px rgba(15, 23, 42, 0.10), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 10px 28px -10px rgba(30, 41, 99, 0.18), 0 2px 6px -2px rgba(15, 23, 42, 0.06);
   --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.22);
 
   /* shadcn/ui tokens, mapped onto the ExamFlow palette */
@@ -94,9 +100,12 @@
 
   --brand: #8fa8ff;
   --brand-panel: #142650;
-  --accent: #6f8fff;
-  --accent-strong: #9ab0ff;
-  --accent-subtle: rgba(111, 143, 255, 0.14);
+  --accent: #7b93ff;
+  --accent-strong: #a3b4ff;
+  --accent-subtle: rgba(123, 147, 255, 0.14);
+  --grad-primary: linear-gradient(135deg, #6f8bff 0%, #8f74ff 55%, #b48cff 100%);
+  --grad-hero: linear-gradient(125deg, #0c1638 0%, #1a2768 45%, #3a2690 100%);
+  --glow-accent: 0 8px 24px -8px rgba(123, 147, 255, 0.45);
 
   --violet: #a996ff;
   --violet-strong: #c4b7ff;
@@ -207,10 +216,13 @@ body {
   color: inherit;
 }
 
-/* App shell canvas — cool mint tint, flat & calm */
+/* App shell canvas — soft aurora wash in the top corners */
 .app-canvas {
   min-height: 100%;
-  background: var(--canvas);
+  background:
+    radial-gradient(900px 420px at 100% -10%, color-mix(in srgb, var(--violet) 10%, transparent), transparent 70%),
+    radial-gradient(800px 380px at 20% -15%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+    var(--canvas);
 }
 
 /* Card surface */
@@ -218,9 +230,100 @@ body {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
   box-shadow: var(--shadow-sm);
 }
+
+/* Sidebar: deep navy in both themes. Rendered inside `.dark` so every
+   token-based child (switcher, menus) picks up dark colours. */
+.sidebar-shell {
+  --surface: #121d44;
+  --surface-2: #0f1838;
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --ink: #f1f4ff;
+  --ink-2: #b7c0de;
+  --ink-3: #7f8bb3;
+  background:
+    radial-gradient(420px 260px at 0% 0%, rgba(124, 77, 255, 0.28), transparent 70%),
+    radial-gradient(380px 300px at 100% 100%, rgba(59, 91, 253, 0.22), transparent 70%),
+    linear-gradient(180deg, #0b1433 0%, #0e1a42 100%);
+  color: var(--ink);
+}
+.nav-active {
+  background: linear-gradient(90deg, rgba(123, 147, 255, 0.26), rgba(155, 77, 255, 0.10));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.nav-active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--grad-primary);
+  box-shadow: 0 0 12px rgba(123, 147, 255, 0.9);
+}
+
+/* Gradient surfaces */
+.bg-grad-primary { background: var(--grad-primary); }
+.hero-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--grad-hero);
+  color: #fff;
+  box-shadow: 0 24px 48px -24px rgba(30, 41, 120, 0.55);
+}
+.hero-panel::before {
+  /* fine grid texture */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(110deg, #000 10%, transparent 75%);
+  pointer-events: none;
+}
+.hero-panel::after {
+  /* glow orb */
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -120px;
+  width: 360px;
+  height: 360px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.55), transparent 65%);
+  pointer-events: none;
+}
+.hero-panel > * { position: relative; z-index: 1; }
+.hero-chip {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* Thin gradient stripe along the top of a card */
+.accent-top::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+  background: var(--grad-primary);
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-rise { animation: rise-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 
 /* 'Glass' translucent surface for headers */
 .glass {
@@ -333,7 +436,7 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 .hoverable:hover {
-  border-color: var(--line-strong);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
   box-shadow: var(--shadow-md);
 }
 
@@ -342,7 +445,7 @@ body {
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 

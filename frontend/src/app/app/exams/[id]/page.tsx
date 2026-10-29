@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getExam, updateExam } from "@/lib/api/exams";
+import { deleteExam, getExam, updateExam } from "@/lib/api/exams";
 import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
 import { errorReference } from "@/lib/api/client";
 import { Exam } from "@/lib/types";
@@ -17,7 +17,7 @@ import { notifyExamChanged, useExamWorkspace, nextStep } from "@/components/exam
 import { formatDate, formatDateLong, formatDateTime, formatNumber, formatTime, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
-  AlertCircle, Archive, ArrowRight, Check, ChevronRight, DoorOpen, LayoutGrid, Undo2,
+  AlertCircle, Archive, ArrowRight, Check, ChevronRight, DoorOpen, LayoutGrid, Pencil, StickyNote, Trash2, Undo2,
 } from "lucide-react";
 
 const STEP_LABELS: Record<string, string> = {
@@ -51,6 +51,8 @@ export default function ExamDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [notesDraft, setNotesDraft] = useState<string | null>(null);
+  const router = useRouter();
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
@@ -100,6 +102,34 @@ export default function ExamDetailPage() {
     } catch (err) {
       setError(`The status could not be changed. Try again in a moment.${errorReference(err)}`);
     } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!exam || notesDraft === null) return;
+    setUpdating(true);
+    try {
+      const updated = await updateExam(exam.id, { notes: notesDraft.trim() || null });
+      setExam(updated);
+      notifyExamChanged(updated);
+      setNotesDraft(null);
+    } catch (err) {
+      setError(`The notes couldn't be saved. Try again in a moment.${errorReference(err)}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!exam) return;
+    if (!confirm(`Delete "${exam.exam_name}"? Its students, seating and generated papers will be removed. This can't be undone.`)) return;
+    setUpdating(true);
+    try {
+      await deleteExam(exam.id);
+      router.push("/app/exams");
+    } catch (err) {
+      setError(`The exam couldn't be deleted. Try again in a moment.${errorReference(err)}`);
       setUpdating(false);
     }
   };
@@ -236,6 +266,39 @@ export default function ExamDetailPage() {
               </div>
             ))}
           </dl>
+          <div className="border-t border-line px-5 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
+                <StickyNote className="h-3.5 w-3.5" /> Notes for invigilators
+              </h3>
+              {canEdit && exam.status !== "ARCHIVED" && notesDraft === null && (
+                <Button variant="ghost" size="sm" onClick={() => setNotesDraft(exam.notes ?? "")}>
+                  <Pencil className="h-3.5 w-3.5" /> {exam.notes ? "Edit" : "Add"}
+                </Button>
+              )}
+            </div>
+            {notesDraft !== null ? (
+              <div className="mt-2 space-y-2">
+                <textarea
+                  rows={4}
+                  maxLength={5000}
+                  autoFocus
+                  aria-label="Notes for invigilators"
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setNotesDraft(null)}>Cancel</Button>
+                  <Button size="sm" onClick={handleSaveNotes} loading={updating}>Save notes</Button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1.5 whitespace-pre-wrap text-sm text-ink-2">
+                {exam.notes || <span className="text-ink-3">No notes yet.</span>}
+              </p>
+            )}
+          </div>
         </Card>
 
         {/* Seating */}
@@ -332,8 +395,11 @@ export default function ExamDetailPage() {
               {!canReopen && exam.status !== "ARCHIVED" && " Updates automatically as you work through the steps."}
             </p>
           </div>
-          {canEdit && canArchive && (
+          {canEdit && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button variant="ghost" size="sm" className="text-ink-3 hover:text-danger" onClick={handleDelete} disabled={updating}>
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </Button>
               {canArchive && (
                 <Button variant="ghost" size="sm" onClick={() => handleStatusChange("ARCHIVED")} disabled={updating}>
                   <Archive className="h-3.5 w-3.5" /> Archive

@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 
 import { notifyExamChanged } from "@/components/exam/workspace";
+import { AccommodationDialog } from "@/components/exam/AccommodationDialog";
+import { errorReference } from "@/lib/api/client";
 export default function RosterPage() {
   const params = useParams();
   const { user } = useAuth();
@@ -49,6 +51,7 @@ export default function RosterPage() {
   }>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<null | { imported: number; skipped: number }>(null);
+  const [editing, setEditing] = useState<ExamStudent | null>(null);
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
@@ -104,7 +107,7 @@ export default function RosterPage() {
         .catch(() => {})
         .finally(() => setLoading(false));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      setError(`The import didn't finish. Check the file and try again.${errorReference(err)}`);
     } finally {
       setImporting(false);
     }
@@ -120,7 +123,7 @@ export default function RosterPage() {
         .catch(() => {})
         .finally(() => setLoading(false));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Remove failed");
+      setError(`The student couldn't be removed. Try again.${errorReference(err)}`);
     }
   };
 
@@ -202,7 +205,9 @@ export default function RosterPage() {
           {!preview && (
             <CardContent className="text-sm text-ink-2">
               Expected columns: <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">student_number,first_name,last_name</code>{" "}
-              or <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">student_number,name</code>
+              or <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">student_number,name</code>.
+              Optional: <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">utorid</code>,{" "}
+              <code className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-ink">email</code>
             </CardContent>
           )}
 
@@ -290,8 +295,11 @@ export default function RosterPage() {
         <div className="surface-card overflow-hidden">
           <Table>
             <TableHead>
-              <Th className="w-48">Student #</Th>
+              <Th className="w-40">Student #</Th>
               <Th>Name</Th>
+              <Th className="hidden md:table-cell">UTORid</Th>
+              <Th className="hidden lg:table-cell">Email</Th>
+              <Th>Accommodations</Th>
               {canEdit && <Th className="text-right">Actions</Th>}
             </TableHead>
             <TableBody>
@@ -299,8 +307,28 @@ export default function RosterPage() {
                 <tr key={s.id}>
                   <Td className="font-mono text-xs text-ink-2">{s.student_number}</Td>
                   <Td className="font-medium">{s.full_name}</Td>
+                  <Td className="hidden font-mono text-xs text-ink-2 md:table-cell">{s.utorid || <span className="text-ink-3">—</span>}</Td>
+                  <Td className="hidden text-ink-2 lg:table-cell">{s.email || <span className="text-ink-3">—</span>}</Td>
+                  <Td>
+                    {(s.extra_time_minutes ?? 0) > 0 || s.accommodation_notes ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        {(s.extra_time_minutes ?? 0) > 0 && (
+                          <span className="tnum rounded-full bg-violet-subtle px-2 py-0.5 text-[11px] font-medium text-violet">+{s.extra_time_minutes} min</span>
+                        )}
+                        {s.accommodation_notes && (
+                          <span className="max-w-48 truncate text-xs text-ink-2" title={s.accommodation_notes}>{s.accommodation_notes}</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-ink-3">None</span>
+                    )}
+                  </Td>
                   {canEdit && (
-                    <Td className="py-1.5 text-right">
+                    <Td className="py-1.5">
+                      <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(s)} aria-label={`Edit accommodations for ${s.full_name}`}>
+                        Accommodations
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -310,6 +338,7 @@ export default function RosterPage() {
                       >
                         <UserMinus className="h-3.5 w-3.5" /> Remove
                       </Button>
+                      </div>
                     </Td>
                   )}
                 </tr>
@@ -335,6 +364,13 @@ export default function RosterPage() {
           </div>
         </div>
       )}
+
+      <AccommodationDialog
+        examId={examId}
+        student={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(u) => setStudents((list) => list.map((x) => (x.student_id === u.student_id ? { ...x, ...u } : x)))}
+      />
     </div>
   );
 }

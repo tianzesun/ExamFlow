@@ -15,11 +15,11 @@ interface PageHeaderProps {
 /** Standard page heading used at the top of every /app page. */
 export function PageHeader({ title, description, eyebrow, meta, actions, className }: PageHeaderProps) {
   return (
-    <header className={cn("flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between", className)}>
+    <header className={cn("animate-rise flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between", className)}>
       <div className="min-w-0">
         {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
         <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">{title}</h1>
           {meta}
         </div>
         {description && <p className="mt-1 text-sm text-ink-2">{description}</p>}

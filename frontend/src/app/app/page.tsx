@@ -18,8 +18,8 @@ import {
 } from "lucide-react";
 import { useCourseContext } from "@/lib/course-context";
 import { useAuth } from "@/lib/auth/context";
-import { getExams } from "@/lib/api/exams";
-import { getExamSummary } from "@/lib/api/readiness";
+import { getAllExams } from "@/lib/api/exams";
+import { getExamSummaries } from "@/lib/api/readiness";
 import { getCourses } from "@/lib/api/courses";
 import type { ExamSummary } from "@/lib/api/readiness";
 import type { Exam } from "@/lib/types";
@@ -43,7 +43,6 @@ import {
   StatCard,
   type StatCardProps,
   PageContainer,
-  PageHeader,
 } from "@/components";
 import { PageTransition } from "@/components/page-transition";
 import { RosterUploadDialog } from "@/components/dashboard/RosterUploadDialog";
@@ -154,7 +153,7 @@ function useDashboardData(courseId: string | null) {
       .then(async () => {
         if (cancelled) return null as null;
         const [examRes, courseRes] = await Promise.all([
-          getExams({}, 1, 100),
+          getAllExams(),
           getCourses(1, 100),
         ]);
         // Fall back to realistic seed data when the backend is unpopulated so
@@ -178,24 +177,7 @@ function useDashboardData(courseId: string | null) {
         if (usingMock) {
           summaries = MOCK_SUMMARIES;
         } else {
-          // Fan-out per-exam readiness summaries (N requests); a course-level
-          // aggregate endpoint would collapse this to one.
-          const results = await Promise.allSettled(
-            visible.map((e) =>
-              getExamSummary(e.id).then(
-                (s): [string, ExamSummary] => [e.id, s],
-                () => [e.id, null] as [string, null]
-              )
-            )
-          );
-          summaries = Object.fromEntries(
-            results
-              .filter(
-                (r): r is PromiseFulfilledResult<[string, ExamSummary]> =>
-                  r.status === "fulfilled" && !!r.value[1]
-              )
-              .map((r) => r.value)
-          );
+          summaries = await getExamSummaries(visible.map((e) => e.id)).catch(() => ({}));
         }
 
         return {
@@ -266,21 +248,40 @@ function WorkspaceHeader({
   const [rosterOpen, setRosterOpen] = useState(false);
   const course = courses.find((c) => c.id === selectedCourseId);
   const firstName = (user?.display_name ?? "").split(/\s+/)[0];
+  const thisWeek = exams.filter((e) => {
+    const d = examDateTime(e).getTime() - now;
+    return d >= 0 && d < 7 * DAY;
+  }).length;
 
   return (
     <>
-      <PageHeader
-        eyebrow={formatDateLong(new Date(now))}
-        title={course ? course.course_code : `${greeting(now)}${firstName ? `, ${firstName}` : ""}`}
-        description={
-          course
-            ? course.course_name
-            : "Here's where every exam stands across your courses."
-        }
-        actions={
-          <>
+      <section className="hero-panel animate-rise px-6 py-7 sm:px-8 sm:py-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
+              {formatDateLong(new Date(now))}
+            </p>
+            <h1 className="mt-2 truncate text-3xl font-semibold tracking-tight sm:text-[34px]">
+              {course ? course.course_code : `${greeting(now)}${firstName ? `, ${firstName}` : ""}`}
+            </h1>
+            <p className="mt-1.5 max-w-xl text-sm text-white/70">
+              {course ? course.course_name : "Here's where every exam stands across your courses."}
+            </p>
+            {exams.length > 0 && <div className="mt-5 flex flex-wrap gap-2 text-xs">
+              <span className="hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+                <CalendarDays className="h-3.5 w-3.5 text-white/70" />
+                <span className="tnum font-semibold">{thisWeek}</span> this week
+              </span>
+              <span className="hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+                <FileText className="h-3.5 w-3.5 text-white/70" />
+                <span className="tnum font-semibold">{exams.length}</span> {exams.length === 1 ? "exam" : "exams"} in view
+              </span>
+            </div>}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
-              variant="secondary"
+              variant="ghost"
+              className="hero-chip text-white hover:bg-white/15 hover:text-white"
               onClick={() => setRosterOpen(true)}
               disabled={!selectedCourseId}
               title={selectedCourseId ? undefined : "Choose a course in the sidebar first"}
@@ -288,13 +289,13 @@ function WorkspaceHeader({
               <Upload /> Import students
             </Button>
             <Link href="/app/exams/new">
-              <Button>
+              <Button variant="secondary" className="border-transparent bg-white text-[#1e2f86] hover:bg-white/90">
                 <Plus /> Create exam
               </Button>
             </Link>
-          </>
-        }
-      />
+          </div>
+        </div>
+      </section>
 
       <RosterUploadDialog
         open={rosterOpen}

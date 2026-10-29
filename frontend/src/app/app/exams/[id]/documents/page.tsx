@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth/context";
 import { Badge } from "@/components/badge";
 import { formatDate, formatNumber, plural } from "@/lib/format";
 import { Button } from "@/components/button";
+import { DownloadButton } from "@/components/download-button";
 import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
@@ -288,11 +289,9 @@ export default function DocumentsPage() {
                     </Td>
                     <Td className="text-xs text-ink-2">{formatDate(g.created_at, "")}</Td>
                     <Td className="py-1.5 text-right">
-                      <a href={getGeneratedExamDownloadUrl(examId, g.id)} target="_blank" rel="noopener noreferrer">
-                        <Button variant="ghost" size="sm">
+                      <DownloadButton url={getGeneratedExamDownloadUrl(examId, g.id)} filename="exam-paper.pdf" variant="ghost" size="sm">
                           <Download className="h-3.5 w-3.5" /> Download
-                        </Button>
-                      </a>
+                        </DownloadButton>
                     </Td>
                   </tr>
                 ))}

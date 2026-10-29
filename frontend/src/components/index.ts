@@ -1,5 +1,6 @@
 export { Spinner, PageLoader } from "./spinner";
 export { Button } from "./button";
+export { DownloadButton } from "./download-button";
 export { Card, CardHeader, CardContent } from "./card";
 export { Input } from "./input";
 export { Select } from "./select";

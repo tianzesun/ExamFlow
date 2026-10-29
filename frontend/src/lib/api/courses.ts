@@ -56,3 +56,7 @@ export async function updateCourse(
     body: JSON.stringify(data),
   });
 }
+
+export async function deleteCourse(id: string): Promise<void> {
+  return fetchApi<void>(`/api/courses/${id}`, { method: "DELETE" });
+}

@@ -10,6 +10,7 @@ import { errorReference } from "@/lib/api/client";
 import { Card, CardHeader } from "@/components/card";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
+import { DownloadButton } from "@/components/download-button";
 import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { formatDate } from "@/lib/format";
@@ -128,11 +129,9 @@ export function TemplateCard({
                 </p>
               </div>
             </div>
-            <a href={getTemplateDownloadUrl(examId, active.id)} target="_blank" rel="noopener noreferrer">
-              <Button variant="secondary" size="sm">
+            <DownloadButton url={getTemplateDownloadUrl(examId, active.id)} filename="exam-paper.pdf" variant="secondary" size="sm">
                 <Download className="h-3.5 w-3.5" /> Download
-              </Button>
-            </a>
+              </DownloadButton>
           </div>
         ) : (
           <div className="flex items-center gap-3 rounded-lg border border-dashed border-line-strong px-4 py-3.5 text-sm text-ink-2">
@@ -192,9 +191,7 @@ export function TemplateCard({
                   {canEdit && (
                     <Td className="text-right">
                       <div className="flex justify-end gap-1">
-                        <a href={getTemplateDownloadUrl(examId, t.id)} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="sm">Download</Button>
-                        </a>
+                        <DownloadButton url={getTemplateDownloadUrl(examId, t.id)} filename="exam-paper.pdf" variant="ghost" size="sm">Download</DownloadButton>
                         {!t.is_active && (
                           <Button variant="ghost" size="sm" className="text-accent hover:text-accent-strong" onClick={() => handleActivate(t.id)}>
                             Activate

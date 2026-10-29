@@ -12,8 +12,11 @@ import {
   LayoutGrid,
   List,
   Armchair,
+  Trash2,
 } from "lucide-react";
-import { getRooms, getRoomSeats, type Room, type Seat } from "@/lib/api/rooms";
+import { deleteRoom, getAllRooms, getRoomUsage, type Room, type RoomUsage } from "@/lib/api/rooms";
+import { ApiError, errorReference } from "@/lib/api/client";
+import { toast } from "sonner";
 import {
   Badge,
   Button,
@@ -33,7 +36,7 @@ import { useAuth } from "@/lib/auth/context";
 import { formatNumber, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type Occupancy = { assigned: number; total: number; pct: number };
+type Occupancy = { assigned: number; total: number; pct: number; upcoming: number };
 type View = "grid" | "table";
 
 const ALL_BUILDINGS = "__all__";
@@ -41,7 +44,7 @@ const ALL_BUILDINGS = "__all__";
 export default function RoomsPage() {
   const { user } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [seatMap, setSeatMap] = useState<Record<string, Seat[]>>({});
+  const [usage, setUsage] = useState<Record<string, RoomUsage>>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -50,43 +53,48 @@ export default function RoomsPage() {
   const [view, setView] = useState<View>("grid");
 
   useEffect(() => {
-    Promise.all([getRooms(1, 100), fetchSeats()])
-      .then(([roomsRes, seats]) => {
+    Promise.all([getAllRooms(), getRoomUsage().catch(() => ({}))])
+      .then(([roomsRes, u]) => {
         setRooms(roomsRes.rooms ?? []);
         setTotal(roomsRes.total ?? 0);
-        setSeatMap(seats);
+        setUsage(u);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-
-    async function fetchSeats(): Promise<Record<string, Seat[]>> {
-      const res = await getRooms(1, 100);
-      const list = res.rooms ?? [];
-      const entries = await Promise.all(
-        list.map((r) =>
-          getRoomSeats(r.id)
-            .then((s) => [r.id, s] as const)
-            .catch(() => [r.id, [] as Seat[]] as const)
-        )
-      );
-      return Object.fromEntries(entries);
-    }
   }, []);
+
+  const handleDelete = async (room: Room) => {
+    if (!confirm(`Delete ${room.building} ${room.room_number}? This can't be undone.`)) return;
+    try {
+      await deleteRoom(room.id);
+      setRooms((list) => list.filter((r) => r.id !== room.id));
+      setTotal((n) => n - 1);
+      toast.success(`${room.building} ${room.room_number} deleted`);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError && err.status === 409
+          ? "Students are seated in this room. Remove it from those exams first."
+          : `The room couldn't be deleted. Try again.${errorReference(err)}`,
+      );
+    }
+  };
 
   const canCreate = user?.role === "ADMIN";
 
-  // Occupancy derived from fetched seat assignments.
+  // How full each room gets at its busiest upcoming exam.
   const occupancy = useMemo(() => {
     const map: Record<string, Occupancy> = {};
     for (const r of rooms) {
-      const seats = seatMap[r.id] ?? [];
-      const assigned = seats.filter((s) => s.status === "ASSIGNED").length;
-      const total = seats.length;
+      const u = usage[r.id];
+      const total = u?.seats ?? r.capacity;
+      const assigned = u?.peak_assigned ?? 0;
       const pct = total > 0 ? Math.round((assigned / total) * 100) : 0;
-      map[r.id] = { assigned, total, pct };
+      map[r.id] = { assigned, total, pct, upcoming: u?.upcoming_exams ?? 0 };
     }
     return map;
-  }, [rooms, seatMap]);
+  }, [rooms, usage]);
+
+  const booked = rooms.filter((r) => (occupancy[r.id]?.upcoming ?? 0) > 0).length;
 
   const stats = useMemo(() => {
     const active = rooms.filter((r) => r.is_active);
@@ -215,9 +223,9 @@ export default function RoomsPage() {
                 label="Active capacity"
                 value={formatNumber(stats.totalCapacity)}
                 hint={
-                  stats.seats > 0
-                    ? `${formatNumber(stats.assigned)} of ${plural(stats.seats, "seat")} assigned`
-                    : "No seats assigned yet"
+                  booked > 0
+                    ? `${plural(booked, "room")} booked for upcoming exams`
+                    : "No rooms booked yet"
                 }
               />
             </div>
@@ -293,7 +301,7 @@ export default function RoomsPage() {
             ) : view === "grid" ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {filteredRooms.map((room) => (
-                  <RoomGridCard key={room.id} room={room} occ={occupancy[room.id]} />
+                  <RoomGridCard key={room.id} room={room} occ={occupancy[room.id]} onDelete={canCreate ? () => handleDelete(room) : undefined} />
                 ))}
               </div>
             ) : (
@@ -303,8 +311,9 @@ export default function RoomsPage() {
                     <Th>Room</Th>
                     <Th>Building</Th>
                     <Th>Capacity</Th>
-                    <Th>Seats assigned</Th>
+                    <Th>Busiest upcoming exam</Th>
                     <Th>Status</Th>
+                    {canCreate && <Th className="text-right">Actions</Th>}
                   </TableHead>
                   <TableBody>
                     {filteredRooms.map((room) => {
@@ -327,7 +336,9 @@ export default function RoomsPage() {
                               <UtilisationBar occ={occ} className="w-24" />
                               <span className="tnum text-xs text-ink-2">
                                 {occ && occ.total > 0
-                                  ? `${formatNumber(occ.assigned)}/${formatNumber(occ.total)}`
+                                  ? occ.upcoming > 0
+                                    ? `${formatNumber(occ.assigned)}/${formatNumber(occ.total)} · ${plural(occ.upcoming, "exam")}`
+                                    : "Not booked"
                                   : "—"}
                               </span>
                             </div>
@@ -337,6 +348,13 @@ export default function RoomsPage() {
                               {room.is_active ? "Active" : "Inactive"}
                             </Badge>
                           </Td>
+                          {canCreate && (
+                            <Td className="py-1.5 text-right">
+                              <Button variant="ghost" size="sm" className="text-ink-3 hover:text-danger" onClick={() => handleDelete(room)} aria-label={`Delete ${room.building} ${room.room_number}`}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </Td>
+                          )}
                         </tr>
                       );
                     })}
@@ -413,10 +431,10 @@ function UtilisationBar({ occ, className }: { occ?: Occupancy; className?: strin
 }
 
 /* ── Compact room card ── */
-function RoomGridCard({ room, occ }: { room: Room; occ?: Occupancy }) {
-  const hasSeats = !!occ && occ.total > 0;
+function RoomGridCard({ room, occ, onDelete }: { room: Room; occ?: Occupancy; onDelete?: () => void }) {
+  const booked = !!occ && occ.upcoming > 0;
   return (
-    <div className={cn("surface-card flex flex-col p-4", !room.is_active && "opacity-70")}>
+    <div className={cn("surface-card card hoverable group flex flex-col p-4", !room.is_active && "opacity-70")}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-mono text-sm font-semibold text-ink">{room.room_number}</p>
@@ -425,14 +443,26 @@ function RoomGridCard({ room, occ }: { room: Room; occ?: Occupancy }) {
             <span className="truncate">{room.building}</span>
           </p>
         </div>
-        {room.is_active ? (
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Active
-          </span>
-        ) : (
-          <Badge>Inactive</Badge>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          {room.is_active ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              Active
+            </span>
+          ) : (
+            <Badge>Inactive</Badge>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="rounded-md p-1 text-ink-3 opacity-0 transition-opacity hover:bg-surface-hover hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+              aria-label={`Delete ${room.building} ${room.room_number}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 flex items-end justify-between gap-3">
@@ -442,7 +472,7 @@ function RoomGridCard({ room, occ }: { room: Room; occ?: Occupancy }) {
           {room.capacity === 1 ? "seat" : "seats"}
         </div>
         <span className="tnum text-[11px] text-ink-3">
-          {hasSeats && occ.assigned > 0 ? `${occ.pct}% assigned` : "Unassigned"}
+          {booked ? `${occ.pct}% full · ${plural(occ.upcoming, "exam")}` : "Not booked"}
         </span>
       </div>
       <UtilisationBar occ={occ} className="mt-2 w-full" />
