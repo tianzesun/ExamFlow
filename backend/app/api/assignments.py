@@ -8,6 +8,7 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
 from app.services import assignment_service
+from app.services.exam_status_service import sync_exam_status
 
 router = APIRouter(prefix="/api/exams/{exam_id}/assignments", tags=["assignments"])
 
@@ -79,6 +80,7 @@ def add_exam_room(
 ):
     try:
         exam_room = assignment_service.add_exam_room(db, exam_id, data.room_id, user.id)
+        sync_exam_status(db, exam_id, user.id)
         return {"id": str(exam_room.id), "room_id": str(exam_room.room_id)}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -96,6 +98,7 @@ def remove_exam_room(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not selected for this exam")
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
 
 
 # ── Summary ─────────────────────────────────────────────────
@@ -130,9 +133,11 @@ def confirm_assignment(
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        return assignment_service.confirm_assignment(db, exam_id, user.id)
+        result = assignment_service.confirm_assignment(db, exam_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
+    return result
 
 
 @router.post("/regenerate")
@@ -142,9 +147,11 @@ def regenerate_assignment(
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        return assignment_service.regenerate_assignment(db, exam_id, user.id)
+        result = assignment_service.regenerate_assignment(db, exam_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
+    return result
 
 
 # ── Seat Map / Manual Seating ───────────────────────────────
@@ -175,9 +182,11 @@ def move_student(
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        return assignment_service.move_student(db, exam_id, data.student_id, data.seat_id, user.id)
+        result = assignment_service.move_student(db, exam_id, data.student_id, data.seat_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
+    return result
 
 
 # ── List / Search ───────────────────────────────────────────
@@ -213,6 +222,7 @@ def assign_seat(
         assignment = assignment_service.assign_student(
             db, exam_id, data.student_id, data.seat_id, user.id
         )
+        sync_exam_status(db, exam_id, user.id)
         assignments = assignment_service.get_assignments(db, exam_id)
         return next(a for a in assignments if a["id"] == str(assignment.id))
     except ValueError as e:
@@ -228,3 +238,4 @@ def remove_assignment(
 ):
     if not assignment_service.remove_assignment(db, exam_id, assignment_id, user.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    sync_exam_status(db, exam_id, user.id)

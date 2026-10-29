@@ -195,13 +195,23 @@ def test_update_exam_status():
         headers=ADMIN_HEADERS,
     )
     exam_id = create_resp.json()["id"]
+    assert create_resp.json()["status"] == "DRAFT"
+
+    # Draft..Generated follow the exam's data and can't be set by hand.
     response = client.patch(
         f"/api/exams/{exam_id}",
         json={"status": "CONFIGURED"},
         headers=ADMIN_HEADERS,
     )
+    assert response.status_code == 400
+
+    response = client.patch(
+        f"/api/exams/{exam_id}",
+        json={"status": "ARCHIVED"},
+        headers=ADMIN_HEADERS,
+    )
     assert response.status_code == 200
-    assert response.json()["status"] == "CONFIGURED"
+    assert response.json()["status"] == "ARCHIVED"
 
 
 def test_unauthenticated_exam():

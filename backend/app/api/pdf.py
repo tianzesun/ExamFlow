@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import pdf_service
+from app.services.exam_status_service import sync_exam_status
 
 router = APIRouter(tags=["generated-exams"])
 
@@ -68,6 +69,7 @@ def generate_exams(
         result = pdf_service.generate_all_exams(db, exam_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
 
     return GenerationResultResponse(
         generated=result["generated"],

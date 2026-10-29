@@ -6,14 +6,18 @@ from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.exam import Exam
 from app.schemas.exam import ExamCreate, ExamUpdate
+from app.services import exam_status_service
 
 VALID_STATUSES = {"DRAFT", "CONFIGURED", "READY", "GENERATED", "COMPLETED", "ARCHIVED"}
+# Only the manual statuses can be requested directly; DRAFT..GENERATED follow the
+# exam's data (see exam_status_service). Requesting a derived status from
+# COMPLETED reopens the exam at whatever its data says.
 STATUS_TRANSITIONS = {
-    "DRAFT": {"CONFIGURED", "ARCHIVED"},
-    "CONFIGURED": {"READY", "DRAFT", "ARCHIVED"},
-    "READY": {"GENERATED", "CONFIGURED", "ARCHIVED"},
-    "GENERATED": {"COMPLETED", "READY", "ARCHIVED"},
-    "COMPLETED": {"ARCHIVED"},
+    "DRAFT": {"ARCHIVED"},
+    "CONFIGURED": {"ARCHIVED"},
+    "READY": {"COMPLETED", "ARCHIVED"},
+    "GENERATED": {"COMPLETED", "ARCHIVED"},
+    "COMPLETED": {"ARCHIVED", *exam_status_service.DERIVED_STATUSES},
     "ARCHIVED": set(),
 }
 
@@ -103,10 +107,16 @@ def update_exam(db: Session, exam_id: UUID, data: ExamUpdate, user_id: UUID) -> 
         if new_status not in VALID_STATUSES:
             raise ValueError(f"Invalid status: {new_status}")
         if new_status not in STATUS_TRANSITIONS.get(exam.status, set()):
+            if new_status in exam_status_service.DERIVED_STATUSES and exam.status != "ARCHIVED":
+                raise ValueError(
+                    f"{new_status} is set automatically from the roster, seating and generated papers"
+                )
             raise ValueError(
                 f"Cannot transition from {exam.status} to {new_status}. "
-                f"Valid transitions: {STATUS_TRANSITIONS.get(exam.status, set())}"
+                f"Valid transitions: {sorted(STATUS_TRANSITIONS.get(exam.status, set()))}"
             )
+        if new_status in exam_status_service.DERIVED_STATUSES:
+            update_data["status"] = exam_status_service.derived_status_for(db, exam.id)
 
     old_values = {}
     for field, value in update_data.items():

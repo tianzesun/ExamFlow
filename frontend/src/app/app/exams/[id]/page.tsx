@@ -20,8 +20,6 @@ import {
   AlertCircle, Archive, ArrowRight, Check, ChevronRight, DoorOpen, LayoutGrid, Undo2,
 } from "lucide-react";
 
-const WORKFLOW = ["DRAFT", "CONFIGURED", "READY", "GENERATED", "COMPLETED"] as const;
-
 const STEP_LABELS: Record<string, string> = {
   DRAFT: "Draft",
   CONFIGURED: "Configured",
@@ -31,21 +29,15 @@ const STEP_LABELS: Record<string, string> = {
   ARCHIVED: "Archived",
 };
 
+// Draft..Generated are set by the server from the exam's data; staff only
+// mark an exam completed (once everyone is seated), reopen it, or archive it.
 const STATUS_HELP: Record<string, string> = {
-  DRAFT: "Draft: still being set up.",
-  CONFIGURED: "Configured: roster and rooms are in place.",
-  READY: "Ready: seating has been checked and confirmed.",
-  GENERATED: "Generated: exam papers have been produced.",
-  COMPLETED: "Completed: the exam has been written.",
-};
-
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ["CONFIGURED", "ARCHIVED"],
-  CONFIGURED: ["READY", "DRAFT", "ARCHIVED"],
-  READY: ["GENERATED", "CONFIGURED", "ARCHIVED"],
-  GENERATED: ["COMPLETED", "READY", "ARCHIVED"],
-  COMPLETED: ["ARCHIVED"],
-  ARCHIVED: [],
+  DRAFT: "Still being set up: students or rooms are missing.",
+  CONFIGURED: "Students and rooms are in place; some students still need a seat.",
+  READY: "Every student has a seat.",
+  GENERATED: "Every seated student has a personalized paper.",
+  COMPLETED: "Marked as written. It no longer changes automatically.",
+  ARCHIVED: "This exam is archived and read-only.",
 };
 
 export default function ExamDetailPage() {
@@ -99,6 +91,7 @@ export default function ExamDetailPage() {
 
   const handleStatusChange = async (newStatus: string) => {
     if (!exam) return;
+    if (newStatus === "ARCHIVED" && !confirm("Archive this exam? Archived exams are read-only and can't be reopened.")) return;
     setUpdating(true);
     try {
       const updated = await updateExam(exam.id, { status: newStatus });
@@ -125,11 +118,9 @@ export default function ExamDetailPage() {
     );
   }
 
-  const transitions = VALID_TRANSITIONS[exam.status] || [];
-  const currentStep = WORKFLOW.indexOf(exam.status as (typeof WORKFLOW)[number]);
-  const forward = transitions.filter((s) => s !== "ARCHIVED" && WORKFLOW.indexOf(s as (typeof WORKFLOW)[number]) > currentStep);
-  const backward = transitions.filter((s) => s !== "ARCHIVED" && WORKFLOW.indexOf(s as (typeof WORKFLOW)[number]) < currentStep);
-  const canArchive = transitions.includes("ARCHIVED");
+  const canComplete = exam.status === "READY" || exam.status === "GENERATED";
+  const canReopen = exam.status === "COMPLETED";
+  const canArchive = exam.status !== "ARCHIVED";
   const next = progress ? nextStep(steps) : undefined;
   const doneCount = steps.filter((st) => st.state === "done").length;
   const hasRooms = !!summary && summary.room_details.length > 0;
@@ -337,28 +328,27 @@ export default function ExamDetailPage() {
               <Badge variant={STATUS_BADGES[exam.status] || "default"}>{STEP_LABELS[exam.status] || exam.status}</Badge>
             </h2>
             <p className="mt-0.5 text-xs text-ink-3">
-              {exam.status === "ARCHIVED"
-                ? "This exam is archived and read-only."
-                : `${STATUS_HELP[exam.status] ?? ""} The status is a sign-off label for your team; the checklist above tracks the actual work.`}
+              {STATUS_HELP[exam.status] ?? ""}
+              {!canReopen && exam.status !== "ARCHIVED" && " Updates automatically as you work through the steps."}
             </p>
           </div>
-          {canEdit && transitions.length > 0 && (
+          {canEdit && canArchive && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {canArchive && (
                 <Button variant="ghost" size="sm" onClick={() => handleStatusChange("ARCHIVED")} disabled={updating}>
                   <Archive className="h-3.5 w-3.5" /> Archive
                 </Button>
               )}
-              {backward.map((s) => (
-                <Button key={s} variant="secondary" size="sm" onClick={() => handleStatusChange(s)} disabled={updating}>
-                  <Undo2 className="h-3.5 w-3.5" /> Back to {STEP_LABELS[s].toLowerCase()}
+              {canReopen && (
+                <Button variant="secondary" size="sm" onClick={() => handleStatusChange("DRAFT")} disabled={updating}>
+                  <Undo2 className="h-3.5 w-3.5" /> Reopen
                 </Button>
-              ))}
-              {forward.map((s) => (
-                <Button key={s} variant="secondary" size="sm" onClick={() => handleStatusChange(s)} loading={updating}>
-                  Mark as {STEP_LABELS[s].toLowerCase()}
+              )}
+              {canComplete && (
+                <Button variant="secondary" size="sm" onClick={() => handleStatusChange("COMPLETED")} loading={updating}>
+                  <Check className="h-3.5 w-3.5" /> Mark as completed
                 </Button>
-              ))}
+              )}
             </div>
           )}
         </div>

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.student import ExamStudentResponse, RosterImportPreview, RosterStats
 from app.services import roster_service
+from app.services.exam_status_service import sync_exam_status
 
 router = APIRouter(prefix="/api/exams/{exam_id}/roster", tags=["roster"])
 
@@ -93,7 +94,9 @@ async def confirm_import(
             detail="File must be UTF-8 encoded",
         )
 
-    return roster_service.import_roster(db, exam_id, text, user.id)
+    result = roster_service.import_roster(db, exam_id, text, user.id)
+    sync_exam_status(db, exam_id, user.id)
+    return result
 
 
 @router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -109,3 +112,4 @@ def remove_student(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found in roster",
         )
+    sync_exam_status(db, exam_id, user.id)
