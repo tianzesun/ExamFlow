@@ -68,7 +68,7 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
  * Download a protected file. Plain links can't send the bearer token, so fetch it
  * with auth headers and hand the browser a temporary object URL.
  */
-export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+async function fetchFile(url: string): Promise<Response> {
   const response = await fetch(url.startsWith("http") ? url : `${API_BASE}${url}`, {
     credentials: "include",
     headers: buildHeaders(),
@@ -77,6 +77,28 @@ export async function downloadFile(url: string, fallbackName: string): Promise<v
     const error = await response.json().catch(() => ({ detail: "Download failed" }));
     throw new ApiError(String(error.detail ?? "Download failed"), response.status, response.headers.get("X-Request-Id"));
   }
+  return response;
+}
+
+/**
+ * Open an authenticated file (e.g. a PDF) in a new tab.
+ * The tab is opened before the request so popup blockers allow it.
+ */
+export async function openFile(url: string): Promise<void> {
+  const tab = window.open("", "_blank");
+  try {
+    const href = URL.createObjectURL(await (await fetchFile(url)).blob());
+    if (tab) tab.location.href = href;
+    else window.location.href = href;
+    setTimeout(() => URL.revokeObjectURL(href), 60_000);
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
+}
+
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  const response = await fetchFile(url);
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
   const plain = /filename="([^"]+)"/i.exec(disposition)?.[1];

@@ -7,7 +7,7 @@ import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
 import { ExamTemplate } from "@/lib/api/templates";
 import {
   validateGeneration, startGenerationJob, getLatestGenerationJob, listGeneratedExams,
-  getGeneratedExamDownloadUrl, getPrintFileUrl, GeneratedExam, GenerationJob,
+  getGeneratedExamDownloadUrl, getPrintFileUrl, getPreviewUrl, GeneratedExam, GenerationJob,
 } from "@/lib/api/generated";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -22,10 +22,10 @@ import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateCard } from "@/components/exam/TemplateCard";
 import { notifyExamChanged } from "@/components/exam/workspace";
-import { errorReference } from "@/lib/api/client";
+import { errorReference, openFile } from "@/lib/api/client";
 import {
   FileText, Download, AlertCircle, CheckCircle, AlertTriangle, FileCheck2,
-  ChevronLeft, ChevronRight, Printer, Search,
+  ChevronLeft, ChevronRight, Eye, Printer, Search,
 } from "lucide-react";
 
 export default function DocumentsPage() {
@@ -49,6 +49,7 @@ export default function DocumentsPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [genResult, setGenResult] = useState<{ generated: number } | null>(null);
   const [job, setJob] = useState<GenerationJob | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [printRoom, setPrintRoom] = useState("");
   const [doubleSided, setDoubleSided] = useState(false);
   // Id of a job started or seen running on this visit; only its outcome is announced.
@@ -154,6 +155,18 @@ export default function DocumentsPage() {
       setError(`Papers could not be generated. Try again in a moment.${errorReference(err)}`);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    setPreviewing(true);
+    setError(null);
+    try {
+      await openFile(getPreviewUrl(examId));
+    } catch (err) {
+      setError(`The preview couldn't be prepared. Try again in a moment.${errorReference(err)}`);
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -265,13 +278,18 @@ export default function DocumentsPage() {
             <h3 className="text-sm font-semibold text-ink">B · Generate papers</h3>
             <p className="text-xs text-ink-3">
               {activeTemplate
-                ? "Checks everything below, then creates one PDF per seated student."
+                ? "Preview one paper with a sample student to check the layout, then generate one PDF per seated student."
                 : "Available once the template in part A is uploaded."}
             </p>
           </div>
-          <Button onClick={handleValidate} disabled={generating || jobActive || !activeTemplate} loading={generating || jobActive}>
-            <FileCheck2 className="h-4 w-4" /> Check &amp; generate papers
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={handlePreview} disabled={!activeTemplate || previewing} loading={previewing}>
+              <Eye className="h-4 w-4" /> Preview a paper
+            </Button>
+            <Button onClick={handleValidate} disabled={generating || jobActive || !activeTemplate} loading={generating || jobActive}>
+              <FileCheck2 className="h-4 w-4" /> Check &amp; generate papers
+            </Button>
+          </div>
         </div>
       )}
       {canEdit && (

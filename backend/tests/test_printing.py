@@ -128,3 +128,19 @@ def test_seating_map_fits_large_room_on_one_page():
     page = doc[0]
     drawn = [d["rect"] for d in page.get_drawings()]
     assert drawn and all(page.rect.contains(rect) for rect in drawn)
+
+
+def test_preview_paper_uses_sample_student_and_exam_room():
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    r = client.get(f"/api/exams/{exam_id}/generated/preview", headers=INSTRUCTOR_HEADERS)
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.headers["content-disposition"].startswith("inline")
+    text = pymupdf.open(stream=r.content)[0].get_text()
+    assert "Alexandra Sample-Studentname" in text and "SAMPLE" in text
+    room = client.get(f"/api/exams/{exam_id}/assignments/seat-map", headers=ADMIN_HEADERS).json()["rooms"][0]
+    assert room["building"] in text and room["seats"][0]["seat_code"] in text
+
+
+def test_preview_paper_needs_a_template():
+    exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
+    assert client.get(f"/api/exams/{exam_id}/generated/preview", headers=ADMIN_HEADERS).status_code == 400

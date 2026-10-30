@@ -62,6 +62,11 @@ export async function listGeneratedExams(
   return fetchApi(`/api/exams/${examId}/generated${qs ? "?" + qs : ""}`);
 }
 
+/** The template stamped for a sample student, watermarked SAMPLE. */
+export function getPreviewUrl(examId: string): string {
+  return `${API_BASE}/api/exams/${examId}/generated/preview`;
+}
+
 /** All current papers in one PDF, in seat order, optionally for one room. */
 export function getPrintFileUrl(examId: string, opts: { roomId?: string; doubleSided?: boolean } = {}): string {
   const params = new URLSearchParams();

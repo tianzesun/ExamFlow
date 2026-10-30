@@ -127,6 +127,23 @@ def list_generated(
     )
 
 
+# ── Preview ─────────────────────────────────────────────────
+
+@router.get("/api/exams/{exam_id}/generated/preview")
+def preview_paper(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """The template stamped for a sample student; shown inline so it opens in the browser."""
+    try:
+        data = pdf_service.preview_paper(db, exam_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="paper-preview.pdf"'})
+
+
 # ── Print file ──────────────────────────────────────────────
 
 @router.get("/api/exams/{exam_id}/generated/print")

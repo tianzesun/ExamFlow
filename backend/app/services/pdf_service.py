@@ -5,6 +5,7 @@ import os
 import secrets
 import uuid
 from collections.abc import Callable
+from types import SimpleNamespace
 from uuid import UUID
 
 import pymupdf
@@ -16,6 +17,7 @@ from app.config import get_settings
 from app.models.audit_log import AuditLog
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_room import ExamRoom
 from app.models.exam_student import ExamStudent
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
@@ -206,16 +208,7 @@ def validate_generation(db: Session, exam_id: UUID) -> list[str]:
     return errors
 
 
-def generate_all_exams(
-    db: Session,
-    exam_id: UUID,
-    user_id: UUID,
-    on_progress: Callable[[int, int], None] | None = None,
-) -> dict:
-    exam = db.query(Exam).filter(Exam.id == exam_id).first()
-    if not exam:
-        raise ValueError("Exam not found")
-
+def _load_active_template(db: Session, exam_id: UUID) -> tuple[ExamTemplate, bytes]:
     template = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
         ExamTemplate.is_active == True,  # noqa: E712
@@ -236,6 +229,57 @@ def generate_all_exams(
     template_hash = hashlib.sha256(template_bytes).hexdigest()
     if template_hash != template.file_hash:
         raise ValueError("Template file corrupted (hash mismatch)")
+    return template, template_bytes
+
+
+def preview_paper(db: Session, exam_id: UUID) -> bytes:
+    """The active template stamped for a made-up student, to check the layout before generating.
+
+    Uses the exam's first room and seat when there is one. Every page is watermarked
+    SAMPLE and the QR code doesn't verify, so a preview can't pass for a real paper.
+    """
+    from app.services.admin_service import seat_order
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise ValueError("Exam not found")
+    _, template_bytes = _load_active_template(db, exam_id)
+
+    room = (
+        db.query(Room).join(ExamRoom, ExamRoom.room_id == Room.id)
+        .filter(ExamRoom.exam_id == exam_id).order_by(Room.building, Room.room_number).first()
+    )
+    seats = db.query(Seat).filter(Seat.room_id == room.id).all() if room else []
+    seat = min(seats, key=seat_order) if seats else SimpleNamespace(seat_code="A01")
+    room = room or SimpleNamespace(building="Room", room_number="TBD")
+    # A long name shows whether the stamp has room for real ones.
+    student = SimpleNamespace(full_name="Alexandra Sample-Studentname", student_number="1000000000")
+
+    doc = pymupdf.open(stream=generate_one_student_pdf(template_bytes, exam, student, room, seat, "preview"),
+                       filetype="pdf")
+    try:
+        for page in doc:
+            centre = pymupdf.Point(page.rect.width / 2, page.rect.height / 2)
+            page.insert_text(
+                centre + (-170, 40), "SAMPLE", fontsize=120, color=(0.85, 0.2, 0.2), fill_opacity=0.18,
+                morph=(centre, pymupdf.Matrix(-35)),
+            )
+        return doc.tobytes(garbage=3, deflate=True)
+    finally:
+        doc.close()
+
+
+def generate_all_exams(
+    db: Session,
+    exam_id: UUID,
+    user_id: UUID,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> dict:
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise ValueError("Exam not found")
+
+    template, template_bytes = _load_active_template(db, exam_id)
 
     assignments = (
         db.query(ExamAssignment, Student, Seat, Room)
