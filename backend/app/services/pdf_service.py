@@ -24,6 +24,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
+from app.services import paper_state
 from app.utils import utcnow
 
 MARGIN = 36
@@ -274,7 +275,13 @@ def generate_all_exams(
     exam_id: UUID,
     user_id: UUID,
     on_progress: Callable[[int, int], None] | None = None,
+    only_changed: bool = False,
 ) -> dict:
+    """Generate personalized papers.
+
+    With only_changed, papers that are still up to date are left alone, so their
+    printed copies and QR codes stay valid; only missing and out-of-date papers are made.
+    """
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise ValueError("Exam not found")
@@ -294,6 +301,11 @@ def generate_all_exams(
 
     if not assignments:
         raise ValueError("No assignments found")
+    if only_changed:
+        current = paper_state.up_to_date_student_ids(db, exam_id)
+        assignments = [row for row in assignments if row[0].exam_student_id not in current]
+        if not assignments:
+            raise ValueError("Every paper is already up to date")
 
     # Determine generation version
     max_version = db.query(func.max(GeneratedExam.generation_version)).filter(
@@ -328,6 +340,7 @@ def generate_all_exams(
                 exam_student_id=assignment.exam_student_id,
                 exam_assignment_id=assignment.id,
                 exam_template_id=template.id,
+                seat_id=seat.id,
                 file_name=file_name,
                 storage_key=filepath,
                 file_size=len(pdf_bytes),
@@ -358,11 +371,16 @@ def generate_all_exams(
             f"First failure near student: {failed_student}"
         )
 
-    # All succeeded — retire earlier versions so counts, packages and QR checks only see this set.
-    db.query(GeneratedExam).filter(
+    # All succeeded — retire the papers these replace so counts, packages and QR checks see one
+    # current paper per student. A full run replaces every paper, including those of students
+    # who no longer have a seat.
+    replaced = db.query(GeneratedExam).filter(
         GeneratedExam.exam_id == exam_id,
         GeneratedExam.status == "GENERATED",
-    ).update({"status": "SUPERSEDED"}, synchronize_session=False)
+    )
+    if only_changed:
+        replaced = replaced.filter(GeneratedExam.exam_student_id.in_([a.exam_student_id for a, *_ in assignments]))
+    replaced.update({"status": "SUPERSEDED"}, synchronize_session=False)
     db.add_all(generated_objects)
     db.add(AuditLog(
         user_id=user_id,
@@ -374,6 +392,7 @@ def generate_all_exams(
             "assignment_version": assignments[0][0].version if assignments else 0,
             "generation_version": new_version,
             "count": len(generated_objects),
+            "only_changed": only_changed,
         },
     ))
     db.commit()
@@ -391,12 +410,15 @@ def get_generated_exams(
     query: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    outdated_only: bool = False,
 ) -> tuple[list[dict], int]:
     q = (
-        db.query(GeneratedExam, Student, ExamTemplate)
+        db.query(GeneratedExam, Student, ExamTemplate, Seat, Room)
         .join(ExamStudent, GeneratedExam.exam_student_id == ExamStudent.id)
         .join(Student, ExamStudent.student_id == Student.id)
         .outerjoin(ExamTemplate, GeneratedExam.exam_template_id == ExamTemplate.id)
+        .outerjoin(Seat, GeneratedExam.seat_id == Seat.id)
+        .outerjoin(Room, Seat.room_id == Room.id)
         .filter(GeneratedExam.exam_id == exam_id, GeneratedExam.status == "GENERATED")
     )
 
@@ -407,7 +429,11 @@ def get_generated_exams(
             (Student.full_name.ilike(pattern))
         )
 
+    if outdated_only:
+        q = q.filter(*paper_state.OUTDATED)
+
     total = q.count()
+    current = paper_state.up_to_date_student_ids(db, exam_id)
     results = (
         q.order_by(Student.student_number)
         .offset((page - 1) * page_size)
@@ -429,8 +455,12 @@ def get_generated_exams(
             "has_qr": ge.qr_token is not None,
             "template_version": tmpl.version if tmpl else None,
             "created_at": ge.created_at.isoformat() if ge.created_at else None,
+            "room": f"{room.building} {room.room_number}" if room else None,
+            "seat_code": seat.seat_code if seat else None,
+            "up_to_date": ge.exam_student_id in current,
+            "printed_at": ge.printed_at.isoformat() if ge.printed_at else None,
         }
-        for ge, s, tmpl in results
+        for ge, s, tmpl, seat, room in results
     ], total
 
 
@@ -444,12 +474,14 @@ def build_print_file(
     user_id: UUID,
     room_id: UUID | None = None,
     double_sided: bool = False,
+    only_new: bool = False,
 ) -> tuple[bytes, str]:
     """All current papers in one PDF, room by room in seat order, ready to send to a printer.
 
     Each room opens with a divider sheet so the stack can be split for proctors. When
     printing double-sided, a blank page is added after any paper with an odd page count
-    so the next student's paper starts on a fresh sheet.
+    so the next student's paper starts on a fresh sheet. Out-of-date papers are left out;
+    with only_new, so are papers already sent to print.
     """
     from app.services.admin_service import seat_order
 
@@ -459,18 +491,20 @@ def build_print_file(
 
     q = (
         db.query(GeneratedExam, Student, Seat, Room)
-        .join(ExamAssignment, GeneratedExam.exam_assignment_id == ExamAssignment.id)
         .join(ExamStudent, GeneratedExam.exam_student_id == ExamStudent.id)
         .join(Student, ExamStudent.student_id == Student.id)
-        .join(Seat, ExamAssignment.seat_id == Seat.id)
+        .join(Seat, GeneratedExam.seat_id == Seat.id)
         .join(Room, Seat.room_id == Room.id)
-        .filter(GeneratedExam.exam_id == exam_id, GeneratedExam.status == "GENERATED")
+        .filter(GeneratedExam.exam_id == exam_id, *paper_state.UP_TO_DATE)
     )
+    if only_new:
+        q = q.filter(GeneratedExam.printed_at.is_(None))
     if room_id:
         q = q.filter(Seat.room_id == room_id)
     papers = sorted(q.all(), key=lambda r: (r[3].building, r[3].room_number, seat_order(r[2])))
     if not papers:
-        raise ValueError("No papers have been generated for this selection. Generate papers first.")
+        raise ValueError("No papers to print for this selection." if only_new
+                         else "No up-to-date papers for this selection. Generate papers first.")
 
     out = pymupdf.open()
 
@@ -502,15 +536,21 @@ def build_print_file(
     data = out.tobytes(garbage=1, deflate=True)
     out.close()
 
+    now = utcnow()
+    for ge, *_ in papers:
+        ge.printed_at = ge.printed_at or now
+
     db.add(AuditLog(
         user_id=user_id,
         action="PRINT_FILE_DOWNLOADED",
         entity_type="exam",
         entity_id=exam_id,
         new_values={"room_id": str(room_id) if room_id else None, "papers": len(papers),
-                    "double_sided": double_sided},
+                    "double_sided": double_sided, "only_new": only_new},
     ))
     db.commit()
 
     scope = f"{papers[0][3].building}{papers[0][3].room_number}" if room_id else "all-rooms"
+    if only_new:
+        scope += "-new"
     return data, f"{exam.course_code}-{exam.exam_name}-papers-{scope}.pdf"

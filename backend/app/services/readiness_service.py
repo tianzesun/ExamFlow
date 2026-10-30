@@ -9,6 +9,7 @@ from app.models.exam_room import ExamRoom
 from app.models.exam_student import ExamStudent
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
+from app.services import paper_state
 
 
 @dataclass
@@ -78,20 +79,29 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
     # 5. Generated exams check
     generated_count = db.query(func.count(GeneratedExam.id)).filter(
         GeneratedExam.exam_id == exam_id,
-        GeneratedExam.status == "GENERATED",
+        *paper_state.UP_TO_DATE,
     ).scalar() or 0
+    # Only up-to-date papers count: a seating change or new template makes the affected ones stale.
+    to_update = max(0, assigned_count - generated_count)
+    if generated_count == 0:
+        documents_message = "No exams generated"
+    elif to_update:
+        documents_message = f"{generated_count} up to date, {to_update} to generate"
+    else:
+        documents_message = f"{generated_count} personalized exams generated"
     checks.append(CheckResult(
         name="documents",
-        status="PASS" if generated_count > 0 else "FAIL",
-        message=f"{generated_count} personalized exams generated" if generated_count > 0 else "No exams generated",
+        status="PASS" if generated_count > 0 and to_update == 0 else "FAIL",
+        message=documents_message,
         count=generated_count,
+        required=assigned_count,
     ))
 
     # 6. QR check
     qr_count = db.query(func.count(GeneratedExam.id)).filter(
         GeneratedExam.exam_id == exam_id,
         GeneratedExam.qr_token.isnot(None),
-        GeneratedExam.status == "GENERATED",
+        *paper_state.UP_TO_DATE,
     ).scalar() or 0
 
     if generated_count == 0:
@@ -129,13 +139,13 @@ def get_exam_summary(db: Session, exam_id: UUID) -> dict:
 
     generated_count = db.query(func.count(GeneratedExam.id)).filter(
         GeneratedExam.exam_id == exam_id,
-        GeneratedExam.status == "GENERATED",
+        *paper_state.UP_TO_DATE,
     ).scalar() or 0
 
     qr_count = db.query(func.count(GeneratedExam.id)).filter(
         GeneratedExam.exam_id == exam_id,
         GeneratedExam.qr_token.isnot(None),
-        GeneratedExam.status == "GENERATED",
+        *paper_state.UP_TO_DATE,
     ).scalar() or 0
 
     active_template = db.query(ExamTemplate).filter(
@@ -171,8 +181,8 @@ def get_exam_summaries(db: Session, exam_ids: list[UUID]) -> dict[str, dict]:
     roster = counts(ExamStudent.exam_id)
     assigned = counts(ExamAssignment.exam_id)
     rooms = counts(ExamRoom.exam_id)
-    generated = counts(GeneratedExam.exam_id, GeneratedExam.status == "GENERATED")
-    qr = counts(GeneratedExam.exam_id, GeneratedExam.status == "GENERATED", GeneratedExam.qr_token.isnot(None))
+    generated = counts(GeneratedExam.exam_id, *paper_state.UP_TO_DATE)
+    qr = counts(GeneratedExam.exam_id, *paper_state.UP_TO_DATE, GeneratedExam.qr_token.isnot(None))
     templates = dict(
         db.query(ExamTemplate.exam_id, ExamTemplate.version)
         .filter(ExamTemplate.exam_id.in_(exam_ids), ExamTemplate.is_active == True)  # noqa: E712

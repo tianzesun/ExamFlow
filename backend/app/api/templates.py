@@ -11,7 +11,7 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
 from app.services import template_service
-from app.services.exam_status_service import block_writes_to_archived_exam
+from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 
 router = APIRouter(tags=["templates"], dependencies=[Depends(block_writes_to_archived_exam)])
 
@@ -67,6 +67,8 @@ async def upload_template(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # Papers made from another template are now out of date.
+    sync_exam_status(db, exam_id, user.id)
 
     return TemplateResponse(
         id=str(template.id),
@@ -154,6 +156,8 @@ def activate_template(
         template = template_service.activate_template(db, template_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # Papers made from another template are now out of date.
+    sync_exam_status(db, exam_id, user.id)
 
     return TemplateResponse(
         id=str(template.id),
@@ -186,6 +190,8 @@ def archive_template(
         template = template_service.archive_template(db, template_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # Papers made from another template are now out of date.
+    sync_exam_status(db, exam_id, user.id)
 
     return TemplateResponse(
         id=str(template.id),

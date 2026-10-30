@@ -11,6 +11,21 @@ export interface GeneratedExam {
   template_version: number | null;
   qr_token: string | null;
   created_at: string | null;
+  room: string | null;
+  seat_code: string | null;
+  /** False once the student moved seat or a new template was activated */
+  up_to_date: boolean;
+  printed_at: string | null;
+}
+
+export interface PaperStatus {
+  seated: number;
+  up_to_date: number;
+  outdated: number;
+  /** Seated students whose paper is missing or out of date */
+  to_generate: number;
+  /** Up-to-date papers not yet included in a print file */
+  not_printed: number;
 }
 
 export interface GeneratedExamListResponse {
@@ -33,6 +48,7 @@ export interface GenerationJob {
   generated: number;
   generation_version: number | null;
   error: string | null;
+  only_changed: boolean;
   created_at: string;
   finished_at: string | null;
 }
@@ -41,9 +57,16 @@ export async function validateGeneration(examId: string): Promise<ValidationResu
   return fetchApi(`/api/exams/${examId}/generated/validate`);
 }
 
-/** Starts generation in the background; poll getLatestGenerationJob for progress. */
-export async function startGenerationJob(examId: string): Promise<GenerationJob> {
-  return fetchApi(`/api/exams/${examId}/generated/jobs`, { method: "POST" });
+/**
+ * Starts generation in the background; poll getLatestGenerationJob for progress.
+ * By default only missing and out-of-date papers are made, so printed copies stay valid.
+ */
+export async function startGenerationJob(examId: string, onlyChanged = true): Promise<GenerationJob> {
+  return fetchApi(`/api/exams/${examId}/generated/jobs?only_changed=${onlyChanged}`, { method: "POST" });
+}
+
+export async function getPaperStatus(examId: string): Promise<PaperStatus> {
+  return fetchApi(`/api/exams/${examId}/generated/status`);
 }
 
 export async function getLatestGenerationJob(examId: string): Promise<{ job: GenerationJob | null }> {
@@ -52,9 +75,10 @@ export async function getLatestGenerationJob(examId: string): Promise<{ job: Gen
 
 export async function listGeneratedExams(
   examId: string,
-  opts?: { query?: string; page?: number; page_size?: number }
+  opts?: { query?: string; page?: number; page_size?: number; outdated_only?: boolean }
 ): Promise<GeneratedExamListResponse> {
   const params = new URLSearchParams();
+  if (opts?.outdated_only) params.set("outdated_only", "true");
   if (opts?.query) params.set("query", opts.query);
   if (opts?.page) params.set("page", String(opts.page));
   if (opts?.page_size) params.set("page_size", String(opts.page_size));
@@ -67,9 +91,13 @@ export function getPreviewUrl(examId: string): string {
   return `${API_BASE}/api/exams/${examId}/generated/preview`;
 }
 
-/** All current papers in one PDF, in seat order, optionally for one room. */
-export function getPrintFileUrl(examId: string, opts: { roomId?: string; doubleSided?: boolean } = {}): string {
+/** Up-to-date papers in one PDF, in seat order, optionally for one room or only those not yet printed. */
+export function getPrintFileUrl(
+  examId: string,
+  opts: { roomId?: string; doubleSided?: boolean; onlyNew?: boolean } = {},
+): string {
   const params = new URLSearchParams();
+  if (opts.onlyNew) params.set("only_new", "true");
   if (opts.roomId) params.set("room_id", opts.roomId);
   if (opts.doubleSided) params.set("double_sided", "true");
   const qs = params.toString();

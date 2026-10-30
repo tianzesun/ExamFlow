@@ -11,7 +11,7 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
-from app.services import generation_job_service, pdf_service
+from app.services import generation_job_service, paper_state, pdf_service
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 from app.utils import attachment_headers
 
@@ -85,11 +85,12 @@ def generate_exams(
 def start_generation_job(
     exam_id: UUID,
     background_tasks: BackgroundTasks,
+    only_changed: bool = Query(True, description="Only make papers that are missing or out of date"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        job = generation_job_service.start_job(db, exam_id, user.id)
+        job = generation_job_service.start_job(db, exam_id, user.id, only_changed=only_changed)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except LookupError as e:
@@ -116,15 +117,26 @@ def list_generated(
     query: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    outdated_only: bool = Query(False),
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
     exams, total = pdf_service.get_generated_exams(
-        db, exam_id, query=query, page=page, page_size=page_size
+        db, exam_id, query=query, page=page, page_size=page_size, outdated_only=outdated_only
     )
     return GeneratedExamListResponse(
         exams=exams, total=total, page=page, page_size=page_size
     )
+
+
+@router.get("/api/exams/{exam_id}/generated/status")
+def get_paper_status(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """How many papers are up to date, need generating again, or haven't been printed yet."""
+    return paper_state.paper_counts(db, exam_id)
 
 
 # ── Preview ─────────────────────────────────────────────────
@@ -151,12 +163,13 @@ def download_print_file(
     exam_id: UUID,
     room_id: UUID | None = Query(None),
     double_sided: bool = Query(False),
+    only_new: bool = Query(False, description="Leave out papers already sent to print"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
-    """Every current paper in one PDF, in seat order, for printing."""
+    """Every up-to-date paper in one PDF, in seat order, for printing."""
     try:
-        data, filename = pdf_service.build_print_file(db, exam_id, user.id, room_id, double_sided)
+        data, filename = pdf_service.build_print_file(db, exam_id, user.id, room_id, double_sided, only_new)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return Response(content=data, media_type="application/pdf", headers=attachment_headers(filename))

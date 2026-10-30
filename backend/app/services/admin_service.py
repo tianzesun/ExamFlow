@@ -20,6 +20,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
+from app.services import paper_state
 from app.utils import utcnow
 
 # ── QR Code Generation ──────────────────────────────────────
@@ -312,7 +313,7 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
     assignment_count = db.query(func.count(ExamAssignment.id)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0
     room_count = db.query(func.count(ExamRoom.id)).filter(ExamRoom.exam_id == exam_id).scalar() or 0
     doc_count = db.query(func.count(GeneratedExam.id)).filter(
-        GeneratedExam.exam_id == exam_id, GeneratedExam.status == "GENERATED"
+        GeneratedExam.exam_id == exam_id, *paper_state.UP_TO_DATE
     ).scalar() or 0
 
     page_width, page_height = 612, 792
@@ -380,9 +381,10 @@ def generate_exam_package(
     )
 
     # Get generated exams
+    # Out-of-date papers show the wrong seat or template, so they stay out of the package.
     generated = db.query(GeneratedExam).filter(
         GeneratedExam.exam_id == exam_id,
-        GeneratedExam.status == "GENERATED",
+        *paper_state.UP_TO_DATE,
     ).all()
 
     if not generated:

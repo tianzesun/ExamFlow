@@ -81,17 +81,22 @@ export function computeSteps(exam: Exam | null, p: ExamSummary | null): Workspac
       number: 3,
       label: "Exam papers",
       segment: "documents",
+      // generated counts up-to-date papers only, so after late changes some are left to update.
       status: papersDone
         ? plural(generated, "paper")
-        : hasTemplate
-          ? "Ready to generate"
-          : "No template",
+        : generated > 0
+          ? `${formatNumber(assigned - generated)} to update`
+          : hasTemplate
+            ? "Ready to generate"
+            : "No template",
       description: papersDone
         ? `${plural(generated, "personalized paper")} generated.`
-        : hasTemplate
-          ? "The template is uploaded. Generate a personalized paper for each seated student."
-          : "Upload the Crowdmark exam PDF, then generate a personalized paper for each student.",
-      action: hasTemplate ? "Generate papers" : "Upload exam paper",
+        : generated > 0
+          ? `${plural(assigned - generated, "paper")} must be made again after seating or template changes; the rest stay valid.`
+          : hasTemplate
+            ? "The template is uploaded. Generate a personalized paper for each seated student."
+            : "Upload the Crowdmark exam PDF, then generate a personalized paper for each student.",
+      action: generated > 0 && !papersDone ? "Update papers" : hasTemplate ? "Generate papers" : "Upload exam paper",
     },
     {
       key: "day",

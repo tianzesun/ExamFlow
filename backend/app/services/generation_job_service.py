@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.generation_job import GenerationJob
-from app.services import pdf_service
+from app.services import paper_state, pdf_service
 from app.services.exam_status_service import sync_exam_status
 from app.utils import utcnow
 
@@ -51,13 +51,19 @@ def get_latest_job(db: Session, exam_id: UUID) -> GenerationJob | None:
     )
 
 
-def start_job(db: Session, exam_id: UUID, user_id: UUID) -> GenerationJob:
-    """Create a queued job. Raises ValueError if the exam isn't ready or a job is already running."""
+def start_job(db: Session, exam_id: UUID, user_id: UUID, only_changed: bool = True) -> GenerationJob:
+    """Create a queued job.
+
+    Raises ValueError if the exam isn't ready or there is nothing to update, and
+    LookupError if a job is already running.
+    """
     errors = pdf_service.validate_generation(db, exam_id)
     if errors:
         raise ValueError(errors[0])
+    if only_changed and paper_state.paper_counts(db, exam_id)["to_generate"] == 0:
+        raise ValueError("Every paper is already up to date")
     _expire_stale(db, exam_id)
-    job = GenerationJob(exam_id=exam_id, status="QUEUED", created_by=user_id)
+    job = GenerationJob(exam_id=exam_id, status="QUEUED", created_by=user_id, only_changed=only_changed)
     db.add(job)
     try:
         db.commit()
@@ -93,7 +99,9 @@ def run_job(job_id: UUID) -> None:
             last_write = now
 
         try:
-            result = pdf_service.generate_all_exams(db, job.exam_id, job.created_by, on_progress=on_progress)
+            result = pdf_service.generate_all_exams(
+                db, job.exam_id, job.created_by, on_progress=on_progress, only_changed=job.only_changed
+            )
         except ValueError as e:
             db.rollback()
             job = db.get(GenerationJob, job_id)
@@ -125,6 +133,7 @@ def to_dict(job: GenerationJob) -> dict:
         "generated": job.generated,
         "generation_version": job.generation_version,
         "error": job.error,
+        "only_changed": job.only_changed,
         "created_at": job.created_at.isoformat(),
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
     }

@@ -9,10 +9,12 @@ interface DownloadButtonProps extends Omit<ComponentProps<typeof Button>, "onCli
   url: string;
   /** Used when the server doesn't name the file */
   filename: string;
+  /** Called after a successful download */
+  onDownloaded?: () => void;
 }
 
 /** A button that downloads an authenticated file (PDFs, packages). */
-export function DownloadButton({ url, filename, children, ...props }: DownloadButtonProps) {
+export function DownloadButton({ url, filename, onDownloaded, children, ...props }: DownloadButtonProps) {
   const [busy, setBusy] = useState(false);
   return (
     <Button
@@ -22,6 +24,7 @@ export function DownloadButton({ url, filename, children, ...props }: DownloadBu
         setBusy(true);
         try {
           await downloadFile(url, filename);
+          onDownloaded?.();
         } catch (err) {
           toast.error(`The download couldn't be prepared. Try again.${errorReference(err)}`);
         } finally {

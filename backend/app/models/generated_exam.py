@@ -25,6 +25,10 @@ class GeneratedExam(Base):
     exam_student_id = Column(UUID(as_uuid=True), ForeignKey("exam_students.id", ondelete="CASCADE"), nullable=False)
     exam_assignment_id = Column(UUID(as_uuid=True), ForeignKey("exam_assignments.id", ondelete="SET NULL"))
     exam_template_id = Column(UUID(as_uuid=True), ForeignKey("exam_templates.id", ondelete="SET NULL"))
+    # The seat printed on the paper; once the student moves, the paper is out of date.
+    seat_id = Column(UUID(as_uuid=True), ForeignKey("seats.id", ondelete="SET NULL"))
+    # When the paper was first included in a print file.
+    printed_at = Column(DateTime(timezone=True), nullable=True)
     file_name = Column(String(500), nullable=False)
     storage_key = Column(String(1000), nullable=False)
     file_size = Column(BigInteger, nullable=False)
@@ -45,4 +49,5 @@ class GeneratedExam(Base):
         Index("ix_generated_exams_exam_student_id", "exam_student_id"),
         Index("ix_generated_exams_exam_assignment_id", "exam_assignment_id"),
         Index("ix_generated_exams_exam_template_id", "exam_template_id"),
+        Index("ix_generated_exams_seat_id", "seat_id"),
     )

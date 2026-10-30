@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
@@ -20,6 +20,8 @@ class GenerationJob(Base):
     generated = Column(Integer, nullable=False, default=0)
     generation_version = Column(Integer, nullable=True)
     error = Column(String(500), nullable=True)
+    # False regenerates every paper; True only those missing or out of date.
+    only_changed = Column(Boolean, nullable=False, default=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
