@@ -16,6 +16,7 @@ from app.models.exam_student import ExamStudent
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
+from app.services import room_service
 
 
 @dataclass
@@ -639,7 +640,9 @@ def get_seat_map(db: Session, exam_id: UUID) -> list[dict]:
     )
 
     seats_by_room: dict[UUID, list[dict]] = {r.id: [] for r in rooms}
+    room_seats: dict[UUID, list[Seat]] = {r.id: [] for r in rooms}
     for seat, assignment, student in rows:
+        room_seats[seat.room_id].append(seat)
         seats_by_room[seat.room_id].append({
             "id": str(seat.id),
             "seat_code": seat.seat_code,
@@ -664,8 +667,7 @@ def get_seat_map(db: Session, exam_id: UUID) -> list[dict]:
             "building": room.building,
             "room_number": room.room_number,
             "capacity": room.capacity,
-            "rows": max((s["row_number"] or 0 for s in seats), default=0),
-            "columns": max((s["column_number"] or 0 for s in seats), default=0),
+            **room_service.room_layout(room, room_seats[room.id]),
             "usable_seats": sum(1 for s in seats if s["is_usable"]),
             "occupied_seats": sum(1 for s in seats if s["occupant"]),
             "seats": seats,

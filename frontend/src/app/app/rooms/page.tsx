@@ -165,7 +165,7 @@ export default function RoomsPage() {
               </span>
             ) : undefined
           }
-          description="Examination rooms, their capacity and current seat assignments."
+          description="Examination rooms and their seating layout. Open a room to change its rows, seats and aisles."
           actions={createButton}
         />
 
@@ -321,9 +321,9 @@ export default function RoomsPage() {
                       return (
                         <tr key={room.id}>
                           <Td>
-                            <span className="font-mono text-xs font-medium text-ink">
+                            <Link href={`/app/rooms/${room.id}`} className="font-mono text-xs font-medium text-ink hover:text-accent hover:underline">
                               {room.room_number}
-                            </span>
+                            </Link>
                           </Td>
                           <Td>
                             <span className="text-ink-2">{room.building}</span>
@@ -434,7 +434,8 @@ function UtilisationBar({ occ, className }: { occ?: Occupancy; className?: strin
 function RoomGridCard({ room, occ, onDelete }: { room: Room; occ?: Occupancy; onDelete?: () => void }) {
   const booked = !!occ && occ.upcoming > 0;
   return (
-    <div className={cn("surface-card card hoverable group flex flex-col p-4", !room.is_active && "opacity-70")}>
+    <div className={cn("surface-card card hoverable group relative flex flex-col p-4", !room.is_active && "opacity-70")}>
+      <Link href={`/app/rooms/${room.id}`} className="absolute inset-0 rounded-xl" aria-label={`Open ${room.building} ${room.room_number}`} />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-mono text-sm font-semibold text-ink">{room.room_number}</p>
@@ -443,7 +444,7 @@ function RoomGridCard({ room, occ, onDelete }: { room: Room; occ?: Occupancy; on
             <span className="truncate">{room.building}</span>
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="relative flex shrink-0 items-center gap-1">
           {room.is_active ? (
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-2">
               <span className="h-1.5 w-1.5 rounded-full bg-success" />

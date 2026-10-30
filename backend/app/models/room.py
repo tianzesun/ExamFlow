@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.database import Base
 from app.utils import utcnow
@@ -15,6 +15,8 @@ class Room(Base):
     room_number = Column(String(50), nullable=False)
     capacity = Column(Integer, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    # rows, columns and aisles_after; seats that don't exist in the grid simply have no Seat row.
+    layout = Column(JSONB)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 

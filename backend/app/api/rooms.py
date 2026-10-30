@@ -15,7 +15,19 @@ router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 class RoomCreate(BaseModel):
     building: str
     room_number: str
-    capacity: int = Field(..., gt=0, le=2000)
+    capacity: int | None = Field(None, gt=0, le=2000)
+    # Or lay the room out as rows × seats per row.
+    rows: int | None = Field(None, ge=1, le=room_service.MAX_ROWS)
+    columns: int | None = Field(None, ge=1, le=room_service.MAX_COLUMNS)
+    aisles_after: list[int] = Field(default_factory=list, max_length=room_service.MAX_COLUMNS)
+
+
+class LayoutUpdate(BaseModel):
+    rows: int = Field(..., ge=1, le=room_service.MAX_ROWS)
+    columns: int = Field(..., ge=1, le=room_service.MAX_COLUMNS)
+    aisles_after: list[int] = Field(default_factory=list, max_length=room_service.MAX_COLUMNS)
+    missing: list[tuple[int, int]] = Field(default_factory=list, max_length=5000)
+    blocked: list[tuple[int, int]] = Field(default_factory=list, max_length=5000)
 
 
 class RoomUpdate(BaseModel):
@@ -71,10 +83,14 @@ def create_room(
     user: User = Depends(require_role("ADMIN")),
 ):
     try:
-        room = room_service.create_room(db, data.building, data.room_number, data.capacity, user.id)
+        room = room_service.create_room(
+            db, data.building, data.room_number, data.capacity, user.id,
+            rows=data.rows, columns=data.columns, aisles_after=data.aisles_after,
+        )
         return room
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        code = status.HTTP_409_CONFLICT if "already exists" in str(e) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(e))
 
 
 @router.get("/{room_id}", response_model=RoomResponse)
@@ -110,6 +126,36 @@ def update_room(
     if not room:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
     return room
+
+
+@router.get("/{room_id}/layout", response_model=dict)
+def get_room_layout(
+    room_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    layout = room_service.get_layout(db, room_id)
+    if layout is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    return layout
+
+
+@router.put("/{room_id}/layout", response_model=dict)
+def save_room_layout(
+    room_id: UUID,
+    data: LayoutUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN")),
+):
+    try:
+        layout = room_service.save_layout(
+            db, room_id, data.rows, data.columns, data.aisles_after, data.missing, data.blocked, user.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    if layout is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    return layout
 
 
 @router.get("/{room_id}/seats", response_model=list[SeatResponse])

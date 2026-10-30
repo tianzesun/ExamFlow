@@ -20,7 +20,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
-from app.services import paper_state
+from app.services import paper_state, room_service
 from app.utils import utcnow
 
 # ── QR Code Generation ──────────────────────────────────────
@@ -255,8 +255,9 @@ def generate_seating_map_pdf(
     ):
         assignments[str(a.seat_id)] = s
 
-    max_row = max((s.row_number or 1) for s in seats) if seats else 1
-    max_col = max((s.column_number or 1) for s in seats) if seats else 1
+    layout = room_service.room_layout(room, seats)
+    max_row, max_col = max(1, layout["rows"]), max(1, layout["columns"])
+    aisles = layout["aisles_after"]
     # Wide rooms print in landscape; the grid is scaled so every row fits one page.
     page_width, page_height = (LETTER[1], LETTER[0]) if max_col > max_row else LETTER
     margin = PAGE_MARGIN
@@ -280,13 +281,16 @@ def generate_seating_map_pdf(
 
     avail_w = page_width - margin * 2
     avail_h = page_height - margin - y
-    seat_width = min(90, avail_w / max_col)
+    # An aisle is drawn as a third of a seat's width.
+    seat_width = min(90, avail_w / (max_col + len(aisles) / 3))
     seat_height = min(60, avail_h / max_row)
-    start_x = margin + (avail_w - seat_width * max_col) / 2
+    aisle_w = seat_width / 3
+    start_x = margin + (avail_w - seat_width * max_col - aisle_w * len(aisles)) / 2
     font = max(5.0, min(8.0, seat_height / 6))
 
     for seat in seats:
-        x = start_x + ((seat.column_number or 1) - 1) * seat_width
+        col = seat.column_number or 1
+        x = start_x + (col - 1) * seat_width + aisle_w * sum(1 for a in aisles if a < col)
         sy = y + ((seat.row_number or 1) - 1) * seat_height
         student = assignments.get(str(seat.id))
 

@@ -611,8 +611,8 @@ function RoomCanvas({
       });
   }, [room]);
 
-  // A centre aisle keeps wide rooms readable, like the real floor.
-  const aisleAfter = room.columns >= 8 ? Math.ceil(room.columns / 2) : null;
+  // Aisles come from the room's layout, so the map matches the real floor.
+  const aisles = new Set(room.aisles_after ?? []);
   const pct = room.usable_seats ? Math.round((room.occupied_seats / room.usable_seats) * 100) : 0;
 
   return (
@@ -661,7 +661,7 @@ function RoomCanvas({
                 <span className="tnum w-5 shrink-0 text-right text-[11px] font-semibold text-ink-3">{label}</span>
                 <div className="flex gap-1">
                   {cells.map((seat, i) => (
-                    <div key={seat?.id ?? `gap-${row}-${i}`} className={cn("flex", aisleAfter === i && "ml-4")}>
+                    <div key={seat?.id ?? `gap-${row}-${i}`} className={cn("flex", aisles.has(i) && "ml-4")}>
                       {seat ? (
                         <SeatTile
                           seat={seat}

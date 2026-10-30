@@ -31,7 +31,10 @@ export async function getAllRooms(): Promise<{ rooms: Room[]; total: number }> {
 export async function createRoom(data: {
   building: string;
   room_number: string;
-  capacity: number;
+  capacity?: number;
+  rows?: number;
+  columns?: number;
+  aisles_after?: number[];
 }): Promise<Room> {
   return fetchApi("/api/rooms", {
     method: "POST",
@@ -59,4 +62,72 @@ export interface RoomUsage {
 
 export async function getRoomUsage(): Promise<Record<string, RoomUsage>> {
   return fetchApi(`/api/rooms/usage`);
+}
+
+export async function getRoom(roomId: string): Promise<Room> {
+  return fetchApi(`/api/rooms/${roomId}`);
+}
+
+export async function updateRoom(
+  roomId: string,
+  data: Partial<Pick<Room, "building" | "room_number" | "is_active">>,
+): Promise<Room> {
+  return fetchApi(`/api/rooms/${roomId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export interface LayoutSeat {
+  seat_code: string;
+  row: number;
+  column: number;
+  is_usable: boolean;
+  /** Exams with a student seated here, past or upcoming */
+  exams: number;
+  /** Upcoming exams with a student seated here */
+  upcoming: number;
+}
+
+export interface RoomLayout {
+  rows: number;
+  columns: number;
+  /** An aisle follows each of these seat numbers */
+  aisles_after: number[];
+  seats: LayoutSeat[];
+}
+
+export async function getRoomLayout(roomId: string): Promise<RoomLayout> {
+  return fetchApi(`/api/rooms/${roomId}/layout`);
+}
+
+export async function saveRoomLayout(
+  roomId: string,
+  data: {
+    rows: number;
+    columns: number;
+    aisles_after: number[];
+    /** [row, seat] positions with no seat */
+    missing: [number, number][];
+    /** [row, seat] positions with a seat that isn't used for exams */
+    blocked: [number, number][];
+  },
+): Promise<RoomLayout> {
+  return fetchApi(`/api/rooms/${roomId}/layout`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** 1 → A, 27 → AA, matching the seat codes the server gives out. */
+export function rowLabel(row: number): string {
+  let label = "";
+  while (row > 0) {
+    const rem = (row - 1) % 26;
+    label = String.fromCharCode(65 + rem) + label;
+    row = Math.floor((row - 1) / 26);
+  }
+  return label;
 }

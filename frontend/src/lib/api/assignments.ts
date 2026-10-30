@@ -156,6 +156,8 @@ export interface SeatMapRoom {
   capacity: number;
   rows: number;
   columns: number;
+  /** An aisle follows each of these seat numbers */
+  aisles_after: number[];
   usable_seats: number;
   occupied_seats: number;
   seats: SeatMapSeat[];

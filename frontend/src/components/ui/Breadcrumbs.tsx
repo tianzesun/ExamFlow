@@ -24,6 +24,13 @@ const LABEL: Record<string, string> = {
   administration: "Exam day",
 };
 
+// Id segments are labelled after their parent collection too: /rooms/<id> → "Room".
+const ITEM_LABEL: Record<string, string> = {
+  courses: "Course",
+  exams: "Exam",
+  rooms: "Room",
+};
+
 // "new" is labelled after its parent collection: /rooms/new → "New room".
 const NEW_LABEL: Record<string, string> = {
   courses: "New course",
@@ -33,8 +40,7 @@ const NEW_LABEL: Record<string, string> = {
 
 function resolveCrumb(seg: string, parent?: string): string {
   if (seg === "new") return (parent && NEW_LABEL[parent]) ?? "New";
-  // UUID / id segments → generic "Details"
-  if (/^[0-9a-f-]{8,}$/i.test(seg)) return "Exam";
+  if (/^[0-9a-f-]{8,}$/i.test(seg)) return (parent && ITEM_LABEL[parent]) ?? "Details";
   return LABEL[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1);
 }
 
