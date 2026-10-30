@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { getExam } from "@/lib/api/exams";
 import { getAllRooms, Room } from "@/lib/api/rooms";
 import {
@@ -20,9 +21,12 @@ import { Select } from "@/components/select";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
+import { DownloadButton } from "@/components/download-button";
+import { getSeatingListUrl } from "@/lib/api/administration";
 import {
   AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, Armchair,
   ChevronLeft, ChevronRight, DoorOpen, RefreshCw, Search, Sparkles, Users, UserX,
+  FileSpreadsheet, FileText, LayoutGrid, Printer,
 } from "lucide-react";
 
 import { notifyExamChanged } from "@/components/exam/workspace";
@@ -268,6 +272,37 @@ export default function SeatingPage() {
             hint={`across ${plural(examRooms.length, "room")}`} />
           <StatCard icon={UserX} label="Unused seats" value={summary.unused_seats} color="neutral"
             hint={summary.unassigned_students > 0 ? `${plural(summary.unassigned_students, "student")} unassigned` : "everyone has a seat"} />
+        </div>
+      )}
+
+      {/* Print */}
+      {hasAssignments && (
+        <div className="surface-card flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <Printer className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Print the seating</h3>
+              <p className="mt-0.5 text-sm text-ink-2">
+                The seating list shows every student by name with their room and seat, for posting at the door.
+                {unseated > 0 && <span className="text-warning"> {plural(unseated, "student")} without a seat won&apos;t appear.</span>}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <DownloadButton url={getSeatingListUrl(examId)} filename="Seating-List.pdf">
+              <FileText className="h-4 w-4" /> Seating list (PDF)
+            </DownloadButton>
+            <DownloadButton url={getSeatingListUrl(examId, "csv")} filename="Seating-List.csv" variant="secondary">
+              <FileSpreadsheet className="h-4 w-4" /> Spreadsheet (CSV)
+            </DownloadButton>
+            <Link href={`/app/exams/${examId}/administration`}>
+              <Button variant="secondary">
+                <LayoutGrid className="h-4 w-4" /> Room maps &amp; sign-in sheets
+              </Button>
+            </Link>
+          </div>
         </div>
       )}
 

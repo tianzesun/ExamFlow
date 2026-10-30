@@ -1,4 +1,5 @@
 import hashlib
+import html
 import io
 import os
 import secrets
@@ -23,61 +24,116 @@ from app.models.seat import Seat
 from app.models.student import Student
 from app.utils import utcnow
 
-MARGIN_TOP = 50
-MARGIN_LEFT = 50
+MARGIN = 36
+# Band reserved at the top of each page for the student's details.
+FIRST_BAND = 78
+OTHER_BAND = 22
+QR_SIZE = 58
+# Clearance kept between the stamp and the paper's own content.
+CONTENT_GAP = 4
+
+_CSS = "* {font-family: sans-serif; margin: 0; padding: 0; color: #000;} b {font-weight: bold;}"
 
 
-def _draw_header(
-    page: pymupdf.Page,
-    exam: Exam,
-    student: Student,
-    room: Room,
-    seat: Seat,
-) -> None:
-    rect = page.rect
-    y = MARGIN_TOP
+def write_text(page: pymupdf.Page, rect: pymupdf.Rect, text: str, size: float = 10,
+               bold: bool = False, align: str = "left", grey: bool = False) -> None:
+    """Write one line of text, falling back to other fonts for accents and non-Latin names.
 
-    # Exam title line
-    title = f"{exam.course_code} — {exam.exam_name}"
-    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), title, fontsize=14, color=(0, 0, 0))
-    y += 20
-
-    # Student name
-    name_text = f"Student Name: {student.full_name}"
-    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), name_text, fontsize=11, color=(0, 0, 0))
-    y += 16
-
-    # Student ID
-    id_text = f"Student ID: {student.student_number}"
-    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), id_text, fontsize=11, color=(0, 0, 0))
-    y += 16
-
-    # Room and Seat on same line
-    room_seat = f"Room: {room.building} {room.room_number}    Seat: {seat.seat_code}"
-    page.insert_text(pymupdf.Point(MARGIN_LEFT, y), room_seat, fontsize=11, color=(0, 0, 0))
-
-    # Horizontal separator line
-    y += 20
-    page.draw_line(
-        pymupdf.Point(MARGIN_LEFT, y), pymupdf.Point(rect.width - MARGIN_LEFT, y), color=(0, 0, 0), width=0.5
+    The base-14 fonts used by insert_text can't show names like Nguyễn or 李华.
+    """
+    content = html.escape(text)
+    if bold:
+        content = f"<b>{content}</b>"
+    colour = "#555" if grey else "#000"
+    page.insert_htmlbox(
+        rect, f'<p style="font-size:{size}pt; text-align:{align}; color:{colour}">{content}</p>',
+        css=_CSS, scale_low=0.5,
     )
-
-
-QR_SIZE = 64
 
 
 def verify_url(token: str) -> str:
     return f"{get_settings().PUBLIC_APP_URL.rstrip('/')}/verify/{token}"
 
 
-def _draw_qr(page: pymupdf.Page, token: str) -> None:
-    """Stamp a verification QR code in the top-right corner of the first page."""
+def _qr_png(token: str) -> bytes:
     img = qrcode.make(verify_url(token), box_size=4, border=1)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    right = page.rect.width - MARGIN_LEFT
-    top = MARGIN_TOP - 30
-    page.insert_image(pymupdf.Rect(right - QR_SIZE, top, right, top + QR_SIZE), stream=buf.getvalue())
+    return buf.getvalue()
+
+
+def _content_top(page: pymupdf.Page) -> float:
+    """Top edge of the highest thing printed on the page, ignoring full-page backgrounds."""
+    area = abs(page.rect)
+    tops = [
+        (pymupdf.Rect(r) * page.rotation_matrix).y0
+        for _, r in page.get_bboxlog()
+        if not pymupdf.Rect(r).is_empty and abs(pymupdf.Rect(r)) < 0.9 * area
+    ]
+    return min(tops, default=page.rect.height)
+
+
+def _place_pages(template: pymupdf.Document) -> pymupdf.Document:
+    """Copy the paper, keeping room for the stamp at the top of every page.
+
+    A page with an empty top margin is copied as is; otherwise its content is
+    scaled down just enough to clear the band, so nothing is ever printed over.
+    """
+    out = pymupdf.open()
+    for i, page in enumerate(template):
+        band = FIRST_BAND if i == 0 else OTHER_BAND
+        if _content_top(page) >= band + CONTENT_GAP:
+            out.insert_pdf(template, from_page=i, to_page=i)
+        else:
+            w, h = page.rect.width, page.rect.height
+            target = out.new_page(width=w, height=h)
+            target.show_pdf_page(pymupdf.Rect(0, band + CONTENT_GAP, w, h), template, i)
+    return out
+
+
+def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Room, seat: Seat,
+                      qr_token: str | None) -> None:
+    w = page.rect.width
+    right = w - MARGIN
+    top = 14
+    if qr_token:
+        page.insert_image(pymupdf.Rect(right - QR_SIZE, top, right, top + QR_SIZE), stream=_qr_png(qr_token))
+        right -= QR_SIZE + 10
+
+    # Room and seat sit in a box so proctors can check them at a glance.
+    box = pymupdf.Rect(right - 150, top + 2, right, top + 56)
+    page.draw_rect(box, color=(0, 0, 0), width=1)
+    page.draw_line(pymupdf.Point(box.x0, box.y0 + 27), pymupdf.Point(box.x1, box.y0 + 27), color=(0, 0, 0), width=0.5)
+    write_text(page, pymupdf.Rect(box.x0 + 6, box.y0 + 10, box.x0 + 40, box.y0 + 24), "ROOM", 7, grey=True)
+    write_text(page, pymupdf.Rect(box.x0 + 40, box.y0 + 3, box.x1 - 6, box.y0 + 25),
+               f"{room.building} {room.room_number}", 12, bold=True, align="right")
+    write_text(page, pymupdf.Rect(box.x0 + 6, box.y0 + 40, box.x0 + 40, box.y0 + 52), "SEAT", 7, grey=True)
+    write_text(page, pymupdf.Rect(box.x0 + 40, box.y0 + 29, box.x1 - 6, box.y0 + 53),
+               seat.seat_code, 15, bold=True, align="right")
+
+    text_right = box.x0 - 12
+    write_text(page, pymupdf.Rect(MARGIN, top, text_right, top + 16), f"{exam.course_code} — {exam.exam_name}", 9,
+               grey=True)
+    write_text(page, pymupdf.Rect(MARGIN, top + 14, text_right, top + 40), student.full_name, 15, bold=True)
+    write_text(page, pymupdf.Rect(MARGIN, top + 40, text_right, top + 56), f"Student number: {student.student_number}",
+               10)
+
+    y = FIRST_BAND - 2
+    page.draw_line(pymupdf.Point(MARGIN, y), pymupdf.Point(w - MARGIN, y), color=(0, 0, 0), width=0.75)
+
+
+def _stamp_other_page(page: pymupdf.Page, student: Student, room: Room, seat: Seat, number: int, total: int) -> None:
+    """A slim line so a page that comes loose can be matched to its student."""
+    w = page.rect.width
+    write_text(
+        page, pymupdf.Rect(MARGIN, 6, w - MARGIN - 80, 18),
+        f"{student.full_name} · {student.student_number} · {room.building} {room.room_number} · Seat {seat.seat_code}",
+        8,
+    )
+    write_text(page, pymupdf.Rect(w - MARGIN - 80, 6, w - MARGIN, 18), f"Page {number} of {total}", 8,
+               align="right", grey=True)
+    page.draw_line(pymupdf.Point(MARGIN, OTHER_BAND - 2), pymupdf.Point(w - MARGIN, OTHER_BAND - 2),
+                   color=(0.6, 0.6, 0.6), width=0.5)
 
 
 def generate_one_student_pdf(
@@ -88,22 +144,23 @@ def generate_one_student_pdf(
     seat: Seat,
     qr_token: str | None = None,
 ) -> bytes:
-    doc = pymupdf.open(stream=template_bytes, filetype="pdf")
+    template = pymupdf.open(stream=template_bytes, filetype="pdf")
+    try:
+        if len(template) == 0:
+            raise ValueError("Template PDF has no pages")
+        doc = _place_pages(template)
+    finally:
+        template.close()
 
-    if len(doc) == 0:
+    try:
+        _stamp_first_page(doc[0], exam, student, room, seat, qr_token)
+        for i in range(1, len(doc)):
+            _stamp_other_page(doc[i], student, room, seat, i + 1, len(doc))
+        # Only embed the glyphs used; whole fallback fonts add megabytes per paper.
+        doc.subset_fonts()
+        return doc.tobytes(garbage=4, deflate=True)
+    finally:
         doc.close()
-        raise ValueError("Template PDF has no pages")
-
-    page = doc[0]
-    _draw_header(page, exam, student, room, seat)
-    if qr_token:
-        _draw_qr(page, qr_token)
-
-    output = io.BytesIO()
-    doc.save(output)
-    doc.close()
-    output.seek(0)
-    return output.read()
 
 
 def validate_generation(db: Session, exam_id: UUID) -> list[str]:
@@ -335,3 +392,81 @@ def get_generated_exams(
 
 def get_generated_exam(db: Session, generated_exam_id: UUID) -> GeneratedExam | None:
     return db.query(GeneratedExam).filter(GeneratedExam.id == generated_exam_id).first()
+
+
+def build_print_file(
+    db: Session,
+    exam_id: UUID,
+    user_id: UUID,
+    room_id: UUID | None = None,
+    double_sided: bool = False,
+) -> tuple[bytes, str]:
+    """All current papers in one PDF, room by room in seat order, ready to send to a printer.
+
+    Each room opens with a divider sheet so the stack can be split for proctors. When
+    printing double-sided, a blank page is added after any paper with an odd page count
+    so the next student's paper starts on a fresh sheet.
+    """
+    from app.services.admin_service import seat_order
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise ValueError("Exam not found")
+
+    q = (
+        db.query(GeneratedExam, Student, Seat, Room)
+        .join(ExamAssignment, GeneratedExam.exam_assignment_id == ExamAssignment.id)
+        .join(ExamStudent, GeneratedExam.exam_student_id == ExamStudent.id)
+        .join(Student, ExamStudent.student_id == Student.id)
+        .join(Seat, ExamAssignment.seat_id == Seat.id)
+        .join(Room, Seat.room_id == Room.id)
+        .filter(GeneratedExam.exam_id == exam_id, GeneratedExam.status == "GENERATED")
+    )
+    if room_id:
+        q = q.filter(Seat.room_id == room_id)
+    papers = sorted(q.all(), key=lambda r: (r[3].building, r[3].room_number, seat_order(r[2])))
+    if not papers:
+        raise ValueError("No papers have been generated for this selection. Generate papers first.")
+
+    out = pymupdf.open()
+
+    def pad_to_sheet() -> None:
+        if double_sided and len(out) % 2:
+            out.new_page(width=out[-1].rect.width, height=out[-1].rect.height)
+
+    current_room = None
+    for ge, _student, seat, room in papers:
+        if room.id != current_room:
+            current_room = room.id
+            in_room = [p for p in papers if p[3].id == room.id]
+            pad_to_sheet()
+            divider = out.new_page(width=612, height=792)
+            write_text(divider, pymupdf.Rect(72, 260, 540, 300), f"{exam.course_code} — {exam.exam_name}", 16,
+                       bold=True, align="center")
+            write_text(divider, pymupdf.Rect(72, 310, 540, 370), f"{room.building} {room.room_number}", 36,
+                       bold=True, align="center")
+            write_text(divider, pymupdf.Rect(72, 380, 540, 400),
+                       f"{len(in_room)} papers · seats {in_room[0][2].seat_code} to {in_room[-1][2].seat_code}"
+                       " · in seat order", 12, align="center", grey=True)
+            pad_to_sheet()
+        if not os.path.exists(ge.storage_key):
+            raise ValueError(f"The paper for seat {seat.seat_code} is missing. Generate papers again.")
+        with pymupdf.open(ge.storage_key) as paper:
+            out.insert_pdf(paper)
+        pad_to_sheet()
+
+    data = out.tobytes(garbage=1, deflate=True)
+    out.close()
+
+    db.add(AuditLog(
+        user_id=user_id,
+        action="PRINT_FILE_DOWNLOADED",
+        entity_type="exam",
+        entity_id=exam_id,
+        new_values={"room_id": str(room_id) if room_id else None, "papers": len(papers),
+                    "double_sided": double_sided},
+    ))
+    db.commit()
+
+    scope = f"{papers[0][3].building}{papers[0][3].room_number}" if room_id else "all-rooms"
+    return data, f"{exam.course_code}-{exam.exam_name}-papers-{scope}.pdf"

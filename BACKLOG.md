@@ -49,7 +49,7 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Log all file download events
 - **Impact:** Track document access
 - **Scope:** PDF/template endpoints
-- **Status:** Not started
+- **Status:** Partly done. The all-papers print file and the exam package are audited; single-paper, template and room-document downloads are not
 
 ### P1-003: Background Workers
 - **Description:** Move document generation to background workers
@@ -101,7 +101,7 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Export roster/assignments to CSV
 - **Impact:** Interoperability
 - **Scope:** New API endpoints
-- **Status:** Not started
+- **Status:** Partly done. The seating list (name, student number, UTORid, room, seat) downloads as CSV; a roster-only export is still open
 
 ### P2-006: Bulk Operations
 - **Description:** Bulk import, bulk assign, bulk generate

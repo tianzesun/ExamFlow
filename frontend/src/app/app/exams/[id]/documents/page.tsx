@@ -7,7 +7,7 @@ import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
 import { ExamTemplate } from "@/lib/api/templates";
 import {
   validateGeneration, startGenerationJob, getLatestGenerationJob, listGeneratedExams,
-  getGeneratedExamDownloadUrl, GeneratedExam, GenerationJob,
+  getGeneratedExamDownloadUrl, getPrintFileUrl, GeneratedExam, GenerationJob,
 } from "@/lib/api/generated";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -16,6 +16,7 @@ import { formatDate, formatNumber, plural } from "@/lib/format";
 import { Button } from "@/components/button";
 import { DownloadButton } from "@/components/download-button";
 import { Input } from "@/components/input";
+import { Select } from "@/components/select";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
@@ -24,7 +25,7 @@ import { notifyExamChanged } from "@/components/exam/workspace";
 import { errorReference } from "@/lib/api/client";
 import {
   FileText, Download, AlertCircle, CheckCircle, AlertTriangle, FileCheck2,
-  ChevronLeft, ChevronRight, Search,
+  ChevronLeft, ChevronRight, Printer, Search,
 } from "lucide-react";
 
 export default function DocumentsPage() {
@@ -48,6 +49,8 @@ export default function DocumentsPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [genResult, setGenResult] = useState<{ generated: number } | null>(null);
   const [job, setJob] = useState<GenerationJob | null>(null);
+  const [printRoom, setPrintRoom] = useState("");
+  const [doubleSided, setDoubleSided] = useState(false);
   // Id of a job started or seen running on this visit; only its outcome is announced.
   const watchedJobId = useRef<string | null>(null);
 
@@ -171,7 +174,12 @@ export default function DocumentsPage() {
       <div>
         <h2 className="text-lg font-semibold tracking-tight text-ink">Exam papers</h2>
         <p className="text-sm text-ink-2">
-          Upload the exam template (A), then generate a personalized paper for every seated student (B).
+          Upload the exam paper (A), generate a copy for every seated student (B), then print them (C).
+          Each copy shows the student&apos;s name, student number, room and seat at the top of every page.
+        </p>
+        <p className="mt-1 text-xs text-ink-3">
+          Tip: leave about 3 cm free at the top of the first page. If something is printed there, the page is
+          shrunk slightly so the student&apos;s details never cover your content.
         </p>
       </div>
 
@@ -285,6 +293,52 @@ export default function DocumentsPage() {
               <p className="text-sm font-medium text-ink">Generated</p>
               <p className="tnum text-xs text-ink-3">{formatNumber(totalGenerated)} of {formatNumber(assigned)} seated students</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print */}
+      {canEdit && totalGenerated > 0 && (
+        <div className="surface-card flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <Printer className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">C · Print papers</h3>
+              <p className="mt-0.5 text-sm text-ink-2">
+                One PDF with every paper in seat order, room by room. Each room starts with a cover sheet,
+                so the printed stack can be handed straight to the proctors.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Select
+              value={printRoom}
+              onChange={(e) => setPrintRoom(e.target.value)}
+              options={[
+                { value: "", label: "All rooms" },
+                ...(summary?.room_details ?? []).map((r) => ({ value: r.room_id, label: `${r.building} ${r.room_number}` })),
+              ]}
+              aria-label="Room to print"
+              className="w-44"
+            />
+            <label className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink-2 shadow-[var(--shadow-sm)] hover:bg-surface-hover">
+              <input
+                type="checkbox"
+                checked={doubleSided}
+                onChange={(e) => setDoubleSided(e.target.checked)}
+                className="h-3.5 w-3.5 accent-[var(--accent)]"
+              />
+              Double-sided
+            </label>
+            <DownloadButton
+              url={getPrintFileUrl(examId, { roomId: printRoom || undefined, doubleSided })}
+              filename="exam-papers.pdf"
+              disabled={jobActive}
+            >
+              <Download className="h-4 w-4" /> Download for printing
+            </DownloadButton>
           </div>
         </div>
       )}

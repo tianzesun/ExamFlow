@@ -1,3 +1,5 @@
+import csv
+import html
 import io
 import os
 import secrets
@@ -57,6 +59,96 @@ def get_qr_token_for_exam(db: Session, generated_exam_id: UUID) -> str | None:
     return ge.qr_token if ge else None
 
 
+# ── Printable tables ────────────────────────────────────────
+
+LETTER = (612, 792)
+PAGE_MARGIN = 40
+
+_TABLE_CSS = """
+* {font-family: sans-serif; font-size: 9pt; color: #000;}
+h1 {font-size: 14pt; margin: 0 0 2pt 0;}
+p.sub {font-size: 9.5pt; color: #333; margin: 0 0 8pt 0;}
+table {border-collapse: collapse; width: 100%;}
+th {background-color: #e8e8e8; font-weight: bold; text-align: left; border: 0.6pt solid #666; padding: 4pt 5pt;}
+td {border: 0.5pt solid #999; padding: 4pt 5pt;}
+table.tall td {padding: 8pt 5pt;}
+"""
+
+
+def _room_label(room: Room) -> str:
+    return f"{room.building} {room.room_number}"
+
+
+def _exam_when(exam: Exam) -> str:
+    when = exam.exam_date.strftime("%A, %B %-d, %Y") if exam.exam_date else ""
+    if exam.start_time:
+        when += f" at {exam.start_time.strftime('%-I:%M %p')}"
+    return when
+
+
+def table_pdf(
+    title: str,
+    subtitle: str,
+    columns: list[tuple[str, int]],
+    rows: list[list[str]],
+    rows_per_page: int = 32,
+    tall_rows: bool = False,
+    pad_last_page: bool = False,
+) -> bytes:
+    """Lay rows out as a paginated table, repeating the heading on every page.
+
+    columns are (heading, width in percent). Text goes through HTML so names in
+    any script print correctly.
+    """
+    pages = [rows[i:i + rows_per_page] for i in range(0, len(rows), rows_per_page)] or [[]]
+    if pad_last_page:
+        pages[-1] = pages[-1] + [[""] * len(columns)] * (rows_per_page - len(pages[-1]))
+
+    width, height = LETTER
+    # MuPDF ignores percentage column widths, so convert them to points.
+    usable = width - PAGE_MARGIN * 2 - 14 * len(columns)
+    head = "".join(f'<th style="width:{usable * w / 100:.0f}pt">{html.escape(h)}</th>' for h, w in columns)
+    doc = pymupdf.open()
+    for number, chunk in enumerate(pages, start=1):
+        page = doc.new_page(width=width, height=height)
+        body = "".join(
+            "<tr>" + "".join(f"<td>{html.escape(cell) or '&nbsp;'}</td>" for cell in row) + "</tr>"
+            for row in chunk
+        )
+        page.insert_htmlbox(
+            pymupdf.Rect(PAGE_MARGIN, PAGE_MARGIN, width - PAGE_MARGIN, height - PAGE_MARGIN - 20),
+            f'<h1>{html.escape(title)}</h1><p class="sub">{html.escape(subtitle)}</p>'
+            f'<table class="{"tall" if tall_rows else ""}"><tr>{head}</tr>{body}</table>',
+            css=_TABLE_CSS, scale_low=0.6,
+        )
+        page.insert_text(
+            pymupdf.Point(PAGE_MARGIN, height - PAGE_MARGIN + 4),
+            f"Page {number} of {len(pages)}", fontsize=8, color=(0.4, 0.4, 0.4),
+        )
+    doc.subset_fonts()
+    data = doc.tobytes(garbage=4, deflate=True)
+    doc.close()
+    return data
+
+
+def _seated_students(db: Session, exam_id: UUID, room_id: UUID | None = None) -> list[tuple[Student, Seat, Room]]:
+    q = (
+        db.query(Student, Seat, Room)
+        .join(ExamStudent, ExamStudent.student_id == Student.id)
+        .join(ExamAssignment, ExamAssignment.exam_student_id == ExamStudent.id)
+        .join(Seat, ExamAssignment.seat_id == Seat.id)
+        .join(Room, Seat.room_id == Room.id)
+        .filter(ExamAssignment.exam_id == exam_id)
+    )
+    if room_id:
+        q = q.filter(Seat.room_id == room_id)
+    return q.all()
+
+
+def seat_order(seat: Seat) -> tuple:
+    return (seat.row_number or 0, seat.column_number or 0, seat.seat_code)
+
+
 # ── Signature List PDF ──────────────────────────────────────
 
 def generate_signature_list_pdf(
@@ -69,86 +161,54 @@ def generate_signature_list_pdf(
     if not exam or not room:
         raise ValueError("Exam or room not found")
 
-    assignments = (
-        db.query(ExamAssignment, Student, Seat)
-        .join(ExamStudent, ExamAssignment.exam_student_id == ExamStudent.id)
-        .join(Student, ExamStudent.student_id == Student.id)
-        .join(Seat, ExamAssignment.seat_id == Seat.id)
-        .filter(ExamAssignment.exam_id == exam_id, Seat.room_id == room_id)
-        .order_by(Seat.row_number, Seat.column_number)
-        .all()
+    seated = sorted(_seated_students(db, exam_id, room_id), key=lambda r: seat_order(r[1]))
+    return table_pdf(
+        f"{exam.course_code} — {exam.exam_name}",
+        f"Signature list · {_room_label(room)} · {_exam_when(exam)}",
+        [("Seat", 9), ("Student number", 17), ("Name", 36), ("Signature", 28), ("Time", 10)],
+        [[seat.seat_code, student.student_number, student.full_name, "", ""] for student, seat, _ in seated],
+        rows_per_page=24, tall_rows=True, pad_last_page=True,
     )
 
-    doc = pymupdf.open()
-    page_width, page_height = 612, 792  # Letter
-    margin = 50
-    row_height = 28
-    header_height = 120
-    students_per_page = int((page_height - margin * 2 - header_height) / row_height)
 
-    page_num = 0
-    total_pages = max(1, -(-len(assignments) // students_per_page))  # ceil div
+# ── Seating List (whole exam, by name) ──────────────────────
 
-    for i in range(0, max(1, len(assignments)), students_per_page):
-        page = doc.new_page(width=page_width, height=page_height)
-        y = margin
+def seating_list_rows(db: Session, exam_id: UUID) -> list[tuple[Student, Seat, Room]]:
+    """Every seated student, by name, so a student can find their room and seat."""
+    return sorted(_seated_students(db, exam_id), key=lambda r: (r[0].full_name.casefold(), r[0].student_number))
 
-        # Header
-        page.insert_text(
-            pymupdf.Point(margin, y), f"{exam.course_code} — {exam.exam_name}", fontsize=14, color=(0, 0, 0)
-        )
-        y += 20
-        page.insert_text(
-            pymupdf.Point(margin, y),
-            f"Room: {room.building} {room.room_number}",
-            fontsize=11, color=(0, 0, 0),
-        )
-        y += 16
-        page.insert_text(
-            pymupdf.Point(margin, y),
-            f"Date: {exam.exam_date}    Time: {exam.start_time}",
-            fontsize=11, color=(0, 0, 0),
-        )
-        y += 16
-        page_num += 1
-        page.insert_text(
-            pymupdf.Point(margin, y),
-            f"Signature List — Page {page_num} of {total_pages}",
-            fontsize=10, color=(0.5, 0.5, 0.5),
-        )
-        y += 20
 
-        # Table header
-        rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + row_height)
-        page.draw_rect(rect, color=(0, 0, 0), fill=(0.9, 0.9, 0.9))
-        cols = [margin + 5, margin + 60, margin + 200, margin + 310, margin + 430]
-        headers = ["Seat", "Student ID", "Name", "Signature", "Time"]
-        for col, header in zip(cols, headers):
-            page.insert_text(pymupdf.Point(col, y + 18), header, fontsize=9, color=(0, 0, 0))
-        y += row_height
+def generate_seating_list_pdf(db: Session, exam_id: UUID) -> bytes:
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise ValueError("Exam not found")
+    rows = seating_list_rows(db, exam_id)
+    if not rows:
+        raise ValueError("No students have seats yet")
+    return table_pdf(
+        f"{exam.course_code} — {exam.exam_name}",
+        f"Seating list · {_exam_when(exam)} · {len(rows)} students",
+        [("Name", 44), ("Student number", 22), ("Room", 20), ("Seat", 14)],
+        [[student.full_name, student.student_number, _room_label(room), seat.seat_code]
+         for student, seat, room in rows],
+    )
 
-        # Rows
-        chunk = assignments[i:i + students_per_page]
-        for assignment, student, seat in chunk:
-            rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + row_height)
-            page.draw_rect(rect, color=(0.8, 0.8, 0.8))
-            page.insert_text(pymupdf.Point(cols[0], y + 18), seat.seat_code, fontsize=9, color=(0, 0, 0))
-            page.insert_text(pymupdf.Point(cols[1], y + 18), student.student_number, fontsize=9, color=(0, 0, 0))
-            name = student.full_name[:30]
-            page.insert_text(pymupdf.Point(cols[2], y + 18), name, fontsize=9, color=(0, 0, 0))
-            y += row_height
 
-        # Empty rows to fill page
-        for _ in range(students_per_page - len(chunk)):
-            rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + row_height)
-            page.draw_rect(rect, color=(0.8, 0.8, 0.8))
-            y += row_height
+def _csv_cell(value: str) -> str:
+    # Spreadsheets run cells starting with these as formulas.
+    return "'" + value if value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
 
-    output = io.BytesIO()
-    doc.save(output)
-    doc.close()
-    output.seek(0)
-    return output.read()
+
+def generate_seating_list_csv(db: Session, exam_id: UUID) -> str:
+    rows = seating_list_rows(db, exam_id)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Name", "Student number", "UTORid", "Room", "Seat"])
+    for student, seat, room in rows:
+        writer.writerow([_csv_cell(v) for v in (
+            student.full_name, student.student_number, student.utorid or "", _room_label(room), seat.seat_code,
+        )])
+    return buf.getvalue()
 
 
 # ── Seating Map PDF ─────────────────────────────────────────
@@ -176,77 +236,64 @@ def generate_seating_map_pdf(
     ):
         assignments[str(a.seat_id)] = s
 
+    max_row = max((s.row_number or 1) for s in seats) if seats else 1
+    max_col = max((s.column_number or 1) for s in seats) if seats else 1
+    # Wide rooms print in landscape; the grid is scaled so every row fits one page.
+    page_width, page_height = (LETTER[1], LETTER[0]) if max_col > max_row else LETTER
+    margin = PAGE_MARGIN
+
     doc = pymupdf.open()
-    page_width, page_height = 612, 792  # Letter
-    margin = 50
-
     page = doc.new_page(width=page_width, height=page_height)
-    y = margin
-
-    # Header
-    page.insert_text(
-        pymupdf.Point(margin, y),
-        f"{exam.course_code} — {exam.exam_name}",
-        fontsize=14, color=(0, 0, 0),
+    page.insert_htmlbox(
+        pymupdf.Rect(margin, margin, page_width - margin, margin + 44),
+        f"<h1>{html.escape(exam.course_code)} — {html.escape(exam.exam_name)}</h1>"
+        f'<p class="sub">Seating map · {html.escape(_room_label(room))} · {html.escape(_exam_when(exam))}'
+        f" · {len(assignments)} seated</p>",
+        css=_TABLE_CSS,
     )
-    y += 20
-    page.insert_text(
-        pymupdf.Point(margin, y),
-        f"Seating Map — {room.building} {room.room_number}",
-        fontsize=11, color=(0, 0, 0),
-    )
-    y += 16
-    page.insert_text(pymupdf.Point(margin, y), f"Date: {exam.exam_date}", fontsize=11, color=(0, 0, 0))
-    y += 25
+    y = margin + 50
 
     # FRONT indicator
-    rect = pymupdf.Point(margin, y), pymupdf.Point(page_width - margin, y + 25)
-    page.draw_rect(rect, color=(0, 0, 0), fill=(0.85, 0.85, 0.85))
-    page.insert_text(pymupdf.Point(page_width / 2 - 15, y + 17), "FRONT", fontsize=10, color=(0, 0, 0))
-    y += 40
+    front = pymupdf.Rect(margin, y, page_width - margin, y + 18)
+    page.draw_rect(front, color=(0, 0, 0), fill=(0.85, 0.85, 0.85))
+    page.insert_htmlbox(front, "<b>FRONT</b>", css="* {font-family: sans-serif; font-size: 9pt; text-align: center;}")
+    y += 26
 
-    # Calculate grid
-    max_col = max((s.column_number or 1) for s in seats) if seats else 1
-
-    seat_width = min(80, (page_width - margin * 2 - 20) / max_col)
-    seat_height = 55
-    start_x = margin + (page_width - margin * 2 - seat_width * max_col) / 2
+    avail_w = page_width - margin * 2
+    avail_h = page_height - margin - y
+    seat_width = min(90, avail_w / max_col)
+    seat_height = min(60, avail_h / max_row)
+    start_x = margin + (avail_w - seat_width * max_col) / 2
+    font = max(5.0, min(8.0, seat_height / 6))
 
     for seat in seats:
-        row = (seat.row_number or 1) - 1
-        col = (seat.column_number or 1) - 1
-        x = start_x + col * seat_width
-        sy = y + row * seat_height
-
+        x = start_x + ((seat.column_number or 1) - 1) * seat_width
+        sy = y + ((seat.row_number or 1) - 1) * seat_height
         student = assignments.get(str(seat.id))
 
-        if seat.status != "AVAILABLE":
-            color = (0.9, 0.9, 0.9)
+        if seat.status != "AVAILABLE" or not seat.is_usable:
+            fill, label = (0.9, 0.9, 0.9), "Not in use"
         elif student:
-            color = (0.85, 0.95, 0.85)
+            fill, label = (0.88, 0.95, 0.88), None
         else:
-            color = (1, 1, 1)
+            fill, label = (1, 1, 1), "Empty"
 
-        rect = pymupdf.Point(x, sy), pymupdf.Point(x + seat_width - 4, sy + seat_height - 4)
-        page.draw_rect(rect, color=(0, 0, 0), fill=color)
-        page.insert_text(pymupdf.Point(x + 3, sy + 15), seat.seat_code, fontsize=8, color=(0, 0, 0))
-
+        box = pymupdf.Rect(x + 1.5, sy + 1.5, x + seat_width - 1.5, sy + seat_height - 1.5)
+        page.draw_rect(box, color=(0, 0, 0), fill=fill, width=0.6)
         if student:
-            name_short = student.full_name[:15]
-            page.insert_text(pymupdf.Point(x + 3, sy + 28), name_short, fontsize=7, color=(0, 0, 0))
-            page.insert_text(
-                pymupdf.Point(x + 3, sy + 38), student.student_number[:10], fontsize=6, color=(0.4, 0.4, 0.4)
-            )
-        elif seat.status != "AVAILABLE":
-            page.insert_text(pymupdf.Point(x + 3, sy + 28), "N/A", fontsize=7, color=(0.6, 0.6, 0.6))
+            body = (f"<b>{html.escape(seat.seat_code)}</b><br>{html.escape(student.full_name)}"
+                    f'<br><span style="color:#555">{html.escape(student.student_number)}</span>')
         else:
-            page.insert_text(pymupdf.Point(x + 3, sy + 28), "EMPTY", fontsize=7, color=(0.6, 0.6, 0.6))
+            body = f'<b>{html.escape(seat.seat_code)}</b><br><span style="color:#777">{label}</span>'
+        page.insert_htmlbox(
+            box + (3, 2, -2, -1), body,
+            css=f"* {{font-family: sans-serif; font-size: {font}pt; line-height: 1.15;}}", scale_low=0.5,
+        )
 
-    output = io.BytesIO()
-    doc.save(output)
+    doc.subset_fonts()
+    data = doc.tobytes(garbage=4, deflate=True)
     doc.close()
-    output.seek(0)
-    return output.read()
+    return data
 
 
 # ── Exam Summary PDF ────────────────────────────────────────

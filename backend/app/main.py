@@ -62,7 +62,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
-    expose_headers=["X-Request-Id"],
+    # Content-Disposition carries the download file name the browser should save as.
+    expose_headers=["X-Request-Id", "Content-Disposition"],
 )
 
 

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -87,6 +87,30 @@ def download_signature_list(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers("Signature-List.pdf"))
+
+
+# ── Seating List (whole exam) ────────────────────────────────
+
+@router.get("/api/exams/{exam_id}/seating-list")
+def download_seating_list(
+    exam_id: UUID,
+    format: str = Query("pdf", pattern="^(pdf|csv)$"),
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+    name = f"{exam.course_code}-Seating-List"
+    if format == "csv":
+        # BOM so Excel opens accented names correctly.
+        data = "\ufeff" + admin_service.generate_seating_list_csv(db, exam_id)
+        return Response(content=data, media_type="text/csv; charset=utf-8", headers=attachment_headers(f"{name}.csv"))
+    try:
+        pdf_bytes = admin_service.generate_seating_list_pdf(db, exam_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers(f"{name}.pdf"))
 
 
 # ── Seating Map ─────────────────────────────────────────────

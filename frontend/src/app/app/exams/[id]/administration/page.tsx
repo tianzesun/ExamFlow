@@ -8,7 +8,7 @@ import { getReadiness, ReadinessResult, CheckResult } from "@/lib/api/readiness"
 import { getExamRooms } from "@/lib/api/assignments";
 import {
   generatePackage, getPackageDownloadUrl,
-  getSignatureListUrl, getSeatingMapUrl,
+  getSignatureListUrl, getSeatingMapUrl, getSeatingListUrl,
 } from "@/lib/api/administration";
 import { errorReference } from "@/lib/api/client";
 import { AttendanceCard } from "@/components/exam/AttendanceCard";
@@ -268,9 +268,16 @@ export default function AdministrationPage() {
 
       {/* Room documents */}
       <div className="surface-card overflow-hidden">
-        <div className="border-b border-line px-5 py-3.5">
-          <h3 className="text-sm font-semibold text-ink">Room documents</h3>
-          <p className="text-xs text-ink-3">Signature lists and seating maps for proctors, per room</p>
+        <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Room documents</h3>
+            <p className="text-xs text-ink-3">Signature lists and seating maps for proctors, per room</p>
+          </div>
+          {examRooms.length > 0 && (
+            <DownloadButton url={getSeatingListUrl(examId)} filename="Seating-List.pdf" variant="secondary" size="sm" className="shrink-0">
+              <FileText className="h-3.5 w-3.5" /> Seating list, all rooms
+            </DownloadButton>
+          )}
         </div>
         {examRooms.length === 0 ? (
           <EmptyState

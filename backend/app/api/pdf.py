@@ -3,7 +3,7 @@ import re
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import generation_job_service, pdf_service
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
+from app.utils import attachment_headers
 
 router = APIRouter(tags=["generated-exams"], dependencies=[Depends(block_writes_to_archived_exam)])
 
@@ -124,6 +125,24 @@ def list_generated(
     return GeneratedExamListResponse(
         exams=exams, total=total, page=page, page_size=page_size
     )
+
+
+# ── Print file ──────────────────────────────────────────────
+
+@router.get("/api/exams/{exam_id}/generated/print")
+def download_print_file(
+    exam_id: UUID,
+    room_id: UUID | None = Query(None),
+    double_sided: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Every current paper in one PDF, in seat order, for printing."""
+    try:
+        data, filename = pdf_service.build_print_file(db, exam_id, user.id, room_id, double_sided)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return Response(content=data, media_type="application/pdf", headers=attachment_headers(filename))
 
 
 # ── Download ────────────────────────────────────────────────

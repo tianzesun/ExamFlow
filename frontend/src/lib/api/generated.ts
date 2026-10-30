@@ -62,6 +62,15 @@ export async function listGeneratedExams(
   return fetchApi(`/api/exams/${examId}/generated${qs ? "?" + qs : ""}`);
 }
 
+/** All current papers in one PDF, in seat order, optionally for one room. */
+export function getPrintFileUrl(examId: string, opts: { roomId?: string; doubleSided?: boolean } = {}): string {
+  const params = new URLSearchParams();
+  if (opts.roomId) params.set("room_id", opts.roomId);
+  if (opts.doubleSided) params.set("double_sided", "true");
+  const qs = params.toString();
+  return `${API_BASE}/api/exams/${examId}/generated/print${qs ? "?" + qs : ""}`;
+}
+
 export function getGeneratedExamDownloadUrl(examId: string, generatedExamId: string): string {
   return `${API_BASE}/api/exams/${examId}/generated/${generatedExamId}/download`;
 }
