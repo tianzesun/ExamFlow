@@ -3,6 +3,7 @@ import io
 import os
 import secrets
 import uuid
+from collections.abc import Callable
 from uuid import UUID
 
 import pymupdf
@@ -152,6 +153,7 @@ def generate_all_exams(
     db: Session,
     exam_id: UUID,
     user_id: UUID,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict:
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
@@ -207,7 +209,7 @@ def generate_all_exams(
     failed_student = None
     generated_objects: list[GeneratedExam] = []
 
-    for assignment, student, seat, room in assignments:
+    for done, (assignment, student, seat, room) in enumerate(assignments, start=1):
         try:
             qr_token = secrets.token_urlsafe(32)
             pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat, qr_token)
@@ -241,6 +243,8 @@ def generate_all_exams(
             failed_count += 1
             if not failed_student:
                 failed_student = student.student_number
+        if on_progress:
+            on_progress(done, len(assignments))
 
     # Check for failures
     if failed_count > 0:

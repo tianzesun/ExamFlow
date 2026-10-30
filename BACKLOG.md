@@ -55,13 +55,13 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Move document generation to background workers
 - **Impact:** Better UX for large exams
 - **Scope:** Worker infrastructure, task queue
-- **Status:** Not started
+- **Status:** Done — generation runs as a background job (`generation_jobs` table, `POST /api/exams/{id}/generated/jobs`). It runs in the API process, not a separate worker queue; revisit if generation load grows.
 
 ### P1-004: Progress Indication
 - **Description:** Show progress during document generation
 - **Impact:** Better user experience
 - **Scope:** Frontend, backend streaming
-- **Status:** Not started
+- **Status:** Done — the Exam papers page polls `.../generated/jobs/latest` and shows a progress bar; it resumes after a page refresh.
 
 ### P1-005: Exam-Level Access Control
 - **Description:** Scope read access to exam ownership

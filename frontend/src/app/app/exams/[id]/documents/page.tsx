@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { getExam } from "@/lib/api/exams";
 import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
 import { ExamTemplate } from "@/lib/api/templates";
 import {
-  validateGeneration, generateExams, listGeneratedExams,
-  getGeneratedExamDownloadUrl, GeneratedExam,
+  validateGeneration, startGenerationJob, getLatestGenerationJob, listGeneratedExams,
+  getGeneratedExamDownloadUrl, GeneratedExam, GenerationJob,
 } from "@/lib/api/generated";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -46,7 +46,10 @@ export default function DocumentsPage() {
   const [validation, setValidation] = useState<{ valid: boolean; errors: string[] } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [genResult, setGenResult] = useState<{ generated: number; failed: number } | null>(null);
+  const [genResult, setGenResult] = useState<{ generated: number } | null>(null);
+  const [job, setJob] = useState<GenerationJob | null>(null);
+  // Id of a job started or seen running on this visit; only its outcome is announced.
+  const watchedJobId = useRef<string | null>(null);
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
@@ -88,6 +91,41 @@ export default function DocumentsPage() {
     return cleanup;
   }, [fetchData]);
 
+  // Pick up a run that is already in progress, e.g. after a page refresh.
+  useEffect(() => {
+    getLatestGenerationJob(examId)
+      .then(({ job: latest }) => {
+        setJob(latest);
+        if (latest && (latest.status === "QUEUED" || latest.status === "RUNNING")) watchedJobId.current = latest.id;
+      })
+      .catch(() => {});
+  }, [examId]);
+
+  const jobActive = job?.status === "QUEUED" || job?.status === "RUNNING";
+
+  // Poll while the job runs; the poll that sees it finish reports the outcome once.
+  useEffect(() => {
+    if (!jobActive) return;
+    const timer = setTimeout(() => {
+      getLatestGenerationJob(examId)
+        .then(({ job: latest }) => {
+          setJob(latest);
+          if (!latest || latest.id !== watchedJobId.current) return;
+          if (latest.status === "SUCCEEDED") {
+            watchedJobId.current = null;
+            setGenResult({ generated: latest.generated });
+            fetchData();
+            notifyExamChanged();
+          } else if (latest.status === "FAILED") {
+            watchedJobId.current = null;
+            setError(latest.error ?? "Papers could not be generated. Try again in a moment.");
+          }
+        })
+        .catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [job, jobActive, examId, fetchData]);
+
   const handleValidate = async () => {
     setError(null);
     setGenResult(null);
@@ -104,11 +142,11 @@ export default function DocumentsPage() {
     setGenerating(true);
     setShowConfirm(false);
     setError(null);
+    setGenResult(null);
     try {
-      const result = await generateExams(examId);
-      setGenResult(result);
-      fetchData();
-      notifyExamChanged();
+      const started = await startGenerationJob(examId);
+      watchedJobId.current = started.id;
+      setJob(started);
     } catch (err) {
       setError(`Papers could not be generated. Try again in a moment.${errorReference(err)}`);
     } finally {
@@ -150,7 +188,31 @@ export default function DocumentsPage() {
         <div role="status" className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
           <CheckCircle className="h-4 w-4 shrink-0" />
           Generated {plural(genResult.generated, "paper")}
-          {genResult.failed > 0 && <span className="text-danger">· {formatNumber(genResult.failed)} failed</span>}
+        </div>
+      )}
+
+      {job && jobActive && (
+        <div role="status" aria-live="polite" className="surface-card p-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-ink">
+              {job.status === "QUEUED" || job.total === 0 ? "Starting generation…" : "Generating papers…"}
+            </p>
+            {job.total > 0 && (
+              <p className="tnum text-xs text-ink-2">
+                {formatNumber(job.done)} of {formatNumber(job.total)}
+              </p>
+            )}
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
+            <div
+              className="h-full rounded-full transition-[width] duration-500"
+              style={{
+                width: `${job.total > 0 ? Math.round((job.done / job.total) * 100) : 2}%`,
+                background: "var(--grad-primary)",
+              }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-ink-3">You can leave this page; generation keeps running.</p>
         </div>
       )}
 
@@ -170,7 +232,7 @@ export default function DocumentsPage() {
           </div>
           <div className="flex shrink-0 justify-end gap-2">
             <Button variant="secondary" onClick={() => setShowConfirm(false)}>Cancel</Button>
-            <Button onClick={handleGenerate} disabled={generating} loading={generating}>
+            <Button onClick={handleGenerate} disabled={generating || jobActive} loading={generating}>
               <CheckCircle className="h-4 w-4" /> Generate
             </Button>
           </div>
@@ -199,7 +261,7 @@ export default function DocumentsPage() {
                 : "Available once the template in part A is uploaded."}
             </p>
           </div>
-          <Button onClick={handleValidate} disabled={generating || !activeTemplate} loading={generating}>
+          <Button onClick={handleValidate} disabled={generating || jobActive || !activeTemplate} loading={generating || jobActive}>
             <FileCheck2 className="h-4 w-4" /> Check &amp; generate papers
           </Button>
         </div>
@@ -254,7 +316,7 @@ export default function DocumentsPage() {
             action={
               canEdit && !searchQuery ? (
                 activeTemplate ? (
-                  <Button onClick={handleValidate} disabled={generating} loading={generating}>
+                  <Button onClick={handleValidate} disabled={generating || jobActive} loading={generating}>
                     <FileCheck2 className="h-4 w-4" /> Check &amp; generate papers
                   </Button>
                 ) : undefined

@@ -25,18 +25,29 @@ export interface ValidationResult {
   errors: string[];
 }
 
-export interface GenerationResult {
+export interface GenerationJob {
+  id: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  total: number;
+  done: number;
   generated: number;
-  failed: number;
-  generation_version: number;
+  generation_version: number | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
 }
 
 export async function validateGeneration(examId: string): Promise<ValidationResult> {
   return fetchApi(`/api/exams/${examId}/generated/validate`);
 }
 
-export async function generateExams(examId: string): Promise<GenerationResult> {
-  return fetchApi(`/api/exams/${examId}/generated`, { method: "POST" });
+/** Starts generation in the background; poll getLatestGenerationJob for progress. */
+export async function startGenerationJob(examId: string): Promise<GenerationJob> {
+  return fetchApi(`/api/exams/${examId}/generated/jobs`, { method: "POST" });
+}
+
+export async function getLatestGenerationJob(examId: string): Promise<{ job: GenerationJob | null }> {
+  return fetchApi(`/api/exams/${examId}/generated/jobs/latest`);
 }
 
 export async function listGeneratedExams(

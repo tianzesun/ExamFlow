@@ -2,7 +2,7 @@ import os
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -11,7 +11,7 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
-from app.services import pdf_service
+from app.services import generation_job_service, pdf_service
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 
 router = APIRouter(tags=["generated-exams"], dependencies=[Depends(block_writes_to_archived_exam)])
@@ -76,6 +76,35 @@ def generate_exams(
         failed=result["failed"],
         generation_version=result["generation_version"],
     )
+
+
+# ── Background generation ───────────────────────────────────
+
+@router.post("/api/exams/{exam_id}/generated/jobs", status_code=status.HTTP_202_ACCEPTED)
+def start_generation_job(
+    exam_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    try:
+        job = generation_job_service.start_job(db, exam_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    background_tasks.add_task(generation_job_service.run_job, job.id)
+    return generation_job_service.to_dict(job)
+
+
+@router.get("/api/exams/{exam_id}/generated/jobs/latest")
+def get_latest_generation_job(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    job = generation_job_service.get_latest_job(db, exam_id)
+    return {"job": generation_job_service.to_dict(job) if job else None}
 
 
 # ── List ────────────────────────────────────────────────────
