@@ -57,7 +57,9 @@ def _draw_header(
 
     # Horizontal separator line
     y += 20
-    page.draw_line(pymupdf.Point(MARGIN_LEFT, y), pymupdf.Point(rect.width - MARGIN_LEFT, y), color=(0, 0, 0), width=0.5)
+    page.draw_line(
+        pymupdf.Point(MARGIN_LEFT, y), pymupdf.Point(rect.width - MARGIN_LEFT, y), color=(0, 0, 0), width=0.5
+    )
 
 
 QR_SIZE = 64

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -31,9 +31,17 @@ class Settings(BaseSettings):
     CROWDMARK_API_URL: str = ""
     CROWDMARK_API_KEY: str = ""
 
-    class Config:
-        env_file = str(Path(__file__).parent.parent.parent / ".env.local")
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).parent.parent.parent / ".env.local"),
+        env_file_encoding="utf-8",
+    )
+
+    @property
+    def database_url(self) -> str:
+        # SQLAlchemy 2.1 maps a bare "postgresql://" to psycopg 3; we ship psycopg2.
+        if self.DATABASE_URL.startswith("postgresql://"):
+            return "postgresql+psycopg2://" + self.DATABASE_URL.removeprefix("postgresql://")
+        return self.DATABASE_URL
 
     @property
     def cors_origins_list(self) -> list[str]:

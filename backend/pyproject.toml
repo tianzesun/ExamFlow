@@ -2,7 +2,7 @@
 name = "examflow-backend"
 version = "0.1.0"
 description = "ExamFlow Backend API"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -26,7 +26,7 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
@@ -37,3 +37,4 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

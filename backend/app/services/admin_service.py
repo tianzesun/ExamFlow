@@ -94,7 +94,9 @@ def generate_signature_list_pdf(
         y = margin
 
         # Header
-        page.insert_text(pymupdf.Point(margin, y), f"{exam.course_code} — {exam.exam_name}", fontsize=14, color=(0, 0, 0))
+        page.insert_text(
+            pymupdf.Point(margin, y), f"{exam.course_code} — {exam.exam_name}", fontsize=14, color=(0, 0, 0)
+        )
         y += 20
         page.insert_text(
             pymupdf.Point(margin, y),
@@ -232,7 +234,9 @@ def generate_seating_map_pdf(
         if student:
             name_short = student.full_name[:15]
             page.insert_text(pymupdf.Point(x + 3, sy + 28), name_short, fontsize=7, color=(0, 0, 0))
-            page.insert_text(pymupdf.Point(x + 3, sy + 38), student.student_number[:10], fontsize=6, color=(0.4, 0.4, 0.4))
+            page.insert_text(
+                pymupdf.Point(x + 3, sy + 38), student.student_number[:10], fontsize=6, color=(0.4, 0.4, 0.4)
+            )
         elif seat.status != "AVAILABLE":
             page.insert_text(pymupdf.Point(x + 3, sy + 28), "N/A", fontsize=7, color=(0.6, 0.6, 0.6))
         else:
