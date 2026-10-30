@@ -231,7 +231,7 @@ def test_seat_remaining_rejects_when_seats_run_out():
 
     response = client.post(f"/api/exams/{exam_id}/assignments/seat-remaining", headers=ADMIN_HEADERS)
     assert response.status_code == 400
-    assert "Not enough free seats" in response.json()["detail"]
+    assert "Not enough seats" in response.json()["detail"]
 
 
 def test_regenerate_increments_version():

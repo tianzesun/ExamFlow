@@ -59,15 +59,41 @@ export async function getAssignmentSummary(examId: string): Promise<AssignmentSu
   return fetchApi(`/api/exams/${examId}/assignments/summary`);
 }
 
-export async function previewAssignment(examId: string): Promise<{
+/** How automatic seating picks seats; applies to preview, confirm, regenerate and seat remaining. */
+export interface SeatingRules {
+  order: "student_number" | "name" | "random";
+  spacing: "none" | "every_other_seat" | "every_other_seat_and_row";
+  /** Students with accommodations sit here, and nobody else does */
+  accommodation_room_id: string | null;
+}
+
+export interface AssignmentPreview {
   students: number; rooms: number; available_seats: number; assigned: number; unused: number;
+  /** Usable seats the spacing rule keeps empty */
+  spaced_out_seats: number;
+  accommodation_students: number;
+  rules: SeatingRules;
   items: { assignment_order: number; student_number: string; full_name: string; building: string; room_number: string; seat_code: string }[];
   has_more: boolean;
-}> {
+}
+
+export async function getSeatingRules(examId: string): Promise<SeatingRules> {
+  return fetchApi(`/api/exams/${examId}/assignments/rules`);
+}
+
+/** Save the rules; reshuffle draws a new random order. */
+export async function saveSeatingRules(examId: string, rules: SeatingRules, reshuffle = false): Promise<SeatingRules> {
+  return fetchApi(`/api/exams/${examId}/assignments/rules?reshuffle=${reshuffle}`, {
+    method: "PUT",
+    body: JSON.stringify(rules),
+  });
+}
+
+export async function previewAssignment(examId: string): Promise<AssignmentPreview> {
   return fetchApi(`/api/exams/${examId}/assignments/preview`, { method: "POST" });
 }
 
-export async function confirmAssignment(examId: string): Promise<{ assigned: number; version: number; student_count: number; available_seats: number }> {
+export async function confirmAssignment(examId: string): Promise<{ assigned: number; version: number; student_count: number }> {
   return fetchApi(`/api/exams/${examId}/assignments/confirm`, { method: "POST" });
 }
 

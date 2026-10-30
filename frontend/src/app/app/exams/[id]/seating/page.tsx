@@ -8,7 +8,8 @@ import { getAllRooms, Room } from "@/lib/api/rooms";
 import {
   getExamRooms, addExamRoom, removeExamRoom,
   getAssignmentSummary, previewAssignment, confirmAssignment, regenerateAssignment, seatRemainingStudents,
-  getAssignments, AssignmentSummary, Assignment,
+  getAssignments, AssignmentSummary, Assignment, AssignmentPreview,
+  getSeatingRules, saveSeatingRules, SeatingRules,
 } from "@/lib/api/assignments";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -26,15 +27,23 @@ import { getSeatingListUrl } from "@/lib/api/administration";
 import {
   AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, Armchair,
   ChevronLeft, ChevronRight, DoorOpen, RefreshCw, Search, Sparkles, Users, UserX,
-  FileSpreadsheet, FileText, LayoutGrid, Printer,
+  FileSpreadsheet, FileText, LayoutGrid, Printer, Shuffle, SlidersHorizontal,
 } from "lucide-react";
 
 import { notifyExamChanged } from "@/components/exam/workspace";
-type PreviewData = {
-  students: number; rooms: number; available_seats: number; assigned: number; unused: number;
-  items: { assignment_order: number; student_number: string; full_name: string; building: string; room_number: string; seat_code: string }[];
-  has_more: boolean;
-};
+type PreviewData = AssignmentPreview;
+
+const ORDER_OPTIONS = [
+  { value: "student_number", label: "By student number" },
+  { value: "name", label: "By name (A–Z)" },
+  { value: "random", label: "Random" },
+];
+const SPACING_OPTIONS = [
+  { value: "none", label: "Fill every seat" },
+  { value: "every_other_seat", label: "Every other seat (checkerboard)" },
+  { value: "every_other_seat_and_row", label: "One seat in four" },
+];
+const DEFAULT_RULES: SeatingRules = { order: "student_number", spacing: "none", accommodation_room_id: null };
 
 export default function SeatingPage() {
   const params = useParams();
@@ -61,6 +70,8 @@ export default function SeatingPage() {
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [seatingRemaining, setSeatingRemaining] = useState(false);
   const [selectedAddRoom, setSelectedAddRoom] = useState<string>("");
+  const [rules, setRules] = useState<SeatingRules>(DEFAULT_RULES);
+  const [savingRules, setSavingRules] = useState(false);
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
@@ -72,15 +83,16 @@ export default function SeatingPage() {
       })
       .then(async () => {
         if (cancelled) return null;
-        const [e, r, er, s, a] = await Promise.all([
+        const [e, r, er, s, a, sr] = await Promise.all([
           getExam(examId),
           getAllRooms(),
           getExamRooms(examId),
           getAssignmentSummary(examId),
           getAssignments(examId, { page, page_size: 50, query: searchQuery || undefined, room_id: filterRoom || undefined }),
+          getSeatingRules(examId).catch(() => DEFAULT_RULES),
         ]);
         if (cancelled) return null;
-        return { exam: e, rooms: r, examRooms: er, summary: s, assignments: a } as const;
+        return { exam: e, rooms: r, examRooms: er, summary: s, assignments: a, rules: sr } as const;
       })
       .then((next) => {
         if (!cancelled && next) {
@@ -90,6 +102,7 @@ export default function SeatingPage() {
           setSummary(next.summary);
           setAssignments(next.assignments.assignments);
           setTotalAssignments(next.assignments.total);
+          setRules(next.rules);
         }
       })
       .catch((err) => {
@@ -128,6 +141,23 @@ export default function SeatingPage() {
       fetchAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove room");
+    }
+  };
+
+  const handleRulesChange = async (next: SeatingRules, reshuffle = false) => {
+    const previous = rules;
+    setRules(next);
+    setSavingRules(true);
+    setError(null);
+    try {
+      setRules(await saveSeatingRules(examId, next, reshuffle));
+      // A preview on screen was drawn with the old rules.
+      if (preview) setPreview(await previewAssignment(examId).catch(() => null));
+    } catch (err) {
+      setRules(previous);
+      setError(err instanceof Error ? err.message : "The seating rules couldn't be saved");
+    } finally {
+      setSavingRules(false);
     }
   };
 
@@ -306,6 +336,83 @@ export default function SeatingPage() {
         </div>
       )}
 
+      {/* Seating rules */}
+      {examRooms.length > 0 && (
+        <div className="surface-card p-5">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                <SlidersHorizontal className="h-4 w-4" />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold text-ink">Seating rules</h3>
+                <p className="mt-0.5 text-sm text-ink-2">
+                  {hasAssignments
+                    ? "Changes apply when you regenerate seating or seat remaining students. Current seats stay as they are."
+                    : "Choose how seats are filled, then preview the assignment."}
+                </p>
+              </div>
+            </div>
+            {savingRules && <span className="text-xs text-ink-3">Saving…</span>}
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="space-y-1.5">
+              <Select
+                label="Order"
+                id="seating-order"
+                value={rules.order}
+                onChange={(e) => handleRulesChange({ ...rules, order: e.target.value as SeatingRules["order"] })}
+                options={ORDER_OPTIONS}
+                disabled={!canEdit || savingRules}
+              />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-ink-3">
+                  {rules.order === "random" ? "Mixes students so friends don't sit together." : "Who gets the first seats in each room."}
+                </p>
+                {canEdit && rules.order === "random" && (
+                  <Button variant="ghost" size="sm" onClick={() => handleRulesChange(rules, true)} disabled={savingRules}>
+                    <Shuffle className="h-3.5 w-3.5" /> Shuffle again
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Select
+                label="Spacing"
+                id="seating-spacing"
+                value={rules.spacing}
+                onChange={(e) => handleRulesChange({ ...rules, spacing: e.target.value as SeatingRules["spacing"] })}
+                options={SPACING_OPTIONS}
+                disabled={!canEdit || savingRules}
+              />
+              <p className="text-xs text-ink-3">
+                {rules.spacing === "none"
+                  ? "Students sit side by side."
+                  : rules.spacing === "every_other_seat"
+                  ? "Nobody sits beside or directly behind another student. Uses about half the seats."
+                  : "Every other seat in every other row. Uses about a quarter of the seats."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Select
+                label="Accommodation room"
+                id="seating-accommodation"
+                value={rules.accommodation_room_id ?? ""}
+                onChange={(e) => handleRulesChange({ ...rules, accommodation_room_id: e.target.value || null })}
+                options={[
+                  { value: "", label: "No separate room" },
+                  ...examRooms.map((r) => ({ value: r.id, label: `${r.building} ${r.room_number}` })),
+                ]}
+                disabled={!canEdit || savingRules}
+              />
+              <p className="text-xs text-ink-3">
+                Students with extra time or accommodation notes on the roster sit here, and nobody else does.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Preview */}
       {preview && (
         <div className="surface-card overflow-hidden border-accent/30">
@@ -317,6 +424,8 @@ export default function SeatingPage() {
             <p className="tnum text-xs text-ink-2">
               {plural(preview.students, "student")} · {plural(preview.rooms, "room")} · {plural(preview.available_seats, "seat")} ·{" "}
               <span className="font-medium text-ink">{formatNumber(preview.assigned)} assigned</span> · {formatNumber(preview.unused)} unused
+              {preview.spaced_out_seats > 0 && <> · {formatNumber(preview.spaced_out_seats)} left empty for spacing</>}
+              {preview.rules.accommodation_room_id && <> · {plural(preview.accommodation_students, "student")} in the accommodation room</>}
             </p>
           </div>
           {preview.items.length > 0 && (

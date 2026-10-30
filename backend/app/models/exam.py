@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, String, Text, Time
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.database import Base
 from app.utils import utcnow
@@ -21,7 +21,10 @@ class Exam(Base):
     start_time = Column(Time, nullable=False)
     duration_minutes = Column(Integer, nullable=False)
     status = Column(String(50), nullable=False, default="DRAFT")
+    # Shuffles the order when seating_rules asks for random order, so preview and confirm agree.
     assignment_seed = Column(String(255))
+    # Order, spacing and accommodation room for automatic seating; see assignment_service.SeatingRules.
+    seating_rules = Column(JSONB)
     notes = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

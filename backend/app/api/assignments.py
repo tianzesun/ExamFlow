@@ -116,6 +116,34 @@ def get_summary(
     return assignment_service.get_summary(db, exam_id)
 
 
+# ── Seating rules ───────────────────────────────────────────
+
+@router.get("/rules", response_model=assignment_service.SeatingRules)
+def get_seating_rules(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    try:
+        return assignment_service.get_rules(db, exam_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put("/rules", response_model=assignment_service.SeatingRules)
+def save_seating_rules(
+    exam_id: UUID,
+    rules: assignment_service.SeatingRules,
+    reshuffle: bool = Query(False, description="Draw a new random order"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    try:
+        return assignment_service.save_rules(db, exam_id, rules, user.id, reshuffle=reshuffle)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 # ── Preview / Confirm / Regenerate ──────────────────────────
 
 @router.post("/preview")

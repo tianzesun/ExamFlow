@@ -1,29 +1,21 @@
+import random
+import secrets
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
 from app.models.exam_room import ExamRoom
 from app.models.exam_student import ExamStudent
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
-
-
-@dataclass
-class AssignmentPreviewItem:
-    assignment_order: int
-    student_id: str
-    student_number: str
-    full_name: str
-    room_id: str
-    building: str
-    room_number: str
-    seat_id: str
-    seat_code: str
 
 
 @dataclass
@@ -106,7 +98,69 @@ def get_exam_rooms(db: Session, exam_id: UUID) -> list[Room]:
     )
 
 
-# ── Deterministic Algorithm ─────────────────────────────────
+# ── Seating rules ───────────────────────────────────────────
+
+class SeatingRules(BaseModel):
+    """How automatic seating picks seats. Stored on the exam so every run follows the same rules."""
+
+    # Who sits first: by student number, by name, or shuffled so friends don't end up together.
+    order: Literal["student_number", "name", "random"] = "student_number"
+    # every_other_seat leaves a checkerboard so no one sits beside or directly behind another student;
+    # every_other_seat_and_row uses one seat in four.
+    spacing: Literal["none", "every_other_seat", "every_other_seat_and_row"] = "none"
+    # Students with accommodations (extra time or notes) sit here, and nobody else does.
+    accommodation_room_id: UUID | None = None
+
+
+def get_rules(db: Session, exam_id: UUID) -> SeatingRules:
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise ValueError("Exam not found")
+    return SeatingRules(**(exam.seating_rules or {}))
+
+
+def save_rules(db: Session, exam_id: UUID, rules: SeatingRules, user_id: UUID, reshuffle: bool = False) -> SeatingRules:
+    """Save the rules. They apply the next time seating is generated; existing seats don't move."""
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise ValueError("Exam not found")
+    if rules.accommodation_room_id and rules.accommodation_room_id not in {r.id for r in get_exam_rooms(db, exam_id)}:
+        raise ValueError("The accommodation room must be one of this exam's rooms")
+
+    old = SeatingRules(**(exam.seating_rules or {}))
+    if rules.order == "random" and (reshuffle or old.order != "random" or not exam.assignment_seed):
+        exam.assignment_seed = secrets.token_hex(8)
+    exam.seating_rules = rules.model_dump(mode="json")
+    db.add(AuditLog(
+        user_id=user_id,
+        action="SEATING_RULES_UPDATED",
+        entity_type="exam",
+        entity_id=exam_id,
+        old_values=old.model_dump(mode="json"),
+        new_values={**rules.model_dump(mode="json"), "reshuffled": rules.order == "random" and reshuffle},
+    ))
+    db.commit()
+    return rules
+
+
+def needs_accommodation(es: ExamStudent) -> bool:
+    return (es.extra_time_minutes or 0) > 0 or bool((es.accommodation_notes or "").strip())
+
+
+def _n(count: int, word: str) -> str:
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+def _seat_allowed(seat: Seat, spacing: str) -> bool:
+    row, col = seat.row_number, seat.column_number
+    if spacing == "none" or row is None or col is None:
+        return True
+    if spacing == "every_other_seat":
+        return (row + col) % 2 == 0
+    return row % 2 == 1 and col % 2 == 1
+
+
+# ── Seating plan ────────────────────────────────────────────
 
 def _get_sorted_students(db: Session, exam_id: UUID) -> list[tuple[ExamStudent, Student]]:
     return (
@@ -118,80 +172,124 @@ def _get_sorted_students(db: Session, exam_id: UUID) -> list[tuple[ExamStudent, 
     )
 
 
-def _get_sorted_seats(db: Session, exam_id: UUID) -> list[Seat]:
-    room_ids = [r.id for r in get_exam_rooms(db, exam_id)]
-    if not room_ids:
+def _order_students(students: list[tuple[ExamStudent, Student]], rules: SeatingRules, seed: str | None) -> list:
+    if rules.order == "name":
+        return sorted(students, key=lambda r: (r[1].full_name.casefold(), r[1].student_number))
+    if rules.order == "random":
+        shuffled = sorted(students, key=lambda r: r[1].student_number)
+        random.Random(seed or "").shuffle(shuffled)
+        return shuffled
+    return sorted(students, key=lambda r: r[1].student_number)
+
+
+def _free_seats(db: Session, exam_id: UUID) -> list[tuple[Seat, Room]]:
+    """Usable seats nobody holds yet, room by room, front row first."""
+    rooms = get_exam_rooms(db, exam_id)
+    if not rooms:
         return []
+    position = {room.id: i for i, room in enumerate(rooms)}
+    by_id = {room.id: room for room in rooms}
     assigned_seat_ids = db.query(ExamAssignment.seat_id).filter(ExamAssignment.exam_id == exam_id)
-    return (
+    seats = (
         db.query(Seat)
-        .filter(
-            Seat.room_id.in_(room_ids),
-            Seat.is_usable,
-            ~Seat.id.in_(assigned_seat_ids),
-        )
-        .order_by(Seat.room_id, Seat.row_number, Seat.column_number)
+        .filter(Seat.room_id.in_(list(by_id)), Seat.is_usable, ~Seat.id.in_(assigned_seat_ids))
         .all()
+    )
+    seats.sort(key=lambda s: (position[s.room_id], s.row_number or 0, s.column_number or 0, s.seat_code))
+    return [(seat, by_id[seat.room_id]) for seat in seats]
+
+
+def _plan(
+    db: Session, exam_id: UUID, students: list[tuple[ExamStudent, Student]]
+) -> list[tuple[ExamStudent, Student, Seat, Room]]:
+    """Match students to free seats following the exam's seating rules.
+
+    Raises ValueError explaining what's short when the rules leave too few seats.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    rules = SeatingRules(**(exam.seating_rules or {})) if exam else SeatingRules()
+    students = _order_students(students, rules, exam.assignment_seed if exam else None)
+    free = _free_seats(db, exam_id)
+    seats = [(seat, room) for seat, room in free if _seat_allowed(seat, rules.spacing)]
+    spacing_hint = " with the current spacing" if rules.spacing != "none" else ""
+
+    accommodation_room = rules.accommodation_room_id
+    if accommodation_room not in {r.id for r in get_exam_rooms(db, exam_id)}:
+        accommodation_room = None  # the room was removed from the exam
+
+    if not accommodation_room:
+        if len(students) > len(seats):
+            raise ValueError(
+                f"Not enough seats: {_n(len(students), 'student')} need a seat and {_n(len(seats), 'seat')} free"
+                f"{spacing_hint}. Add a room{' or reduce the spacing' if spacing_hint else ''}."
+            )
+        return [(es, st, seat, room) for (es, st), (seat, room) in zip(students, seats)]
+
+    special = [r for r in students if needs_accommodation(r[0])]
+    regular = [r for r in students if not needs_accommodation(r[0])]
+    special_seats = [(seat, room) for seat, room in seats if room.id == accommodation_room]
+    regular_seats = [(seat, room) for seat, room in seats if room.id != accommodation_room]
+    if len(special) > len(special_seats):
+        raise ValueError(
+            f"The accommodation room has {_n(len(special_seats), 'free seat')}{spacing_hint} for "
+            f"{_n(len(special), 'student')} with accommodations. Choose a larger room or reduce the spacing."
+        )
+    if len(regular) > len(regular_seats):
+        raise ValueError(
+            f"Not enough seats outside the accommodation room: {_n(len(regular), 'student')} need a seat and "
+            f"{_n(len(regular_seats), 'seat')} free{spacing_hint}. Add a room"
+            f"{' or reduce the spacing' if spacing_hint else ''}."
+        )
+    return (
+        [(es, st, seat, room) for (es, st), (seat, room) in zip(special, special_seats)]
+        + [(es, st, seat, room) for (es, st), (seat, room) in zip(regular, regular_seats)]
     )
 
 
-def _build_preview(db: Session, exam_id: UUID) -> tuple[list[AssignmentPreviewItem], int, int]:
-    students = _get_sorted_students(db, exam_id)
-    seats = _get_sorted_seats(db, exam_id)
-
-    available_count = len(seats)
-    student_count = len(students)
-
-    if student_count > available_count:
-        raise ValueError(
-            f"Insufficient seating capacity: {student_count} students, "
-            f"{available_count} available seats"
+def _assignments(plan: list, exam_id: UUID, version: int) -> list[ExamAssignment]:
+    return [
+        ExamAssignment(
+            exam_id=exam_id,
+            exam_student_id=es.id,
+            seat_id=seat.id,
+            assignment_method="AUTOMATIC",
+            version=version,
         )
-
-    room_cache: dict[UUID, Room] = {}
-    previews = []
-    for i, ((es, student), seat) in enumerate(zip(students, seats), start=1):
-        if seat.room_id not in room_cache:
-            room_cache[seat.room_id] = db.query(Room).filter(Room.id == seat.room_id).first()
-        room = room_cache[seat.room_id]
-        previews.append(AssignmentPreviewItem(
-            assignment_order=i,
-            student_id=str(es.student_id),
-            student_number=student.student_number,
-            full_name=student.full_name,
-            room_id=str(seat.room_id),
-            building=room.building,
-            room_number=room.room_number,
-            seat_id=str(seat.id),
-            seat_code=seat.seat_code,
-        ))
-
-    return previews, student_count, available_count
+        for es, _student, seat, _room in plan
+    ]
 
 
 # ── Preview ─────────────────────────────────────────────────
 
 def preview_assignment(db: Session, exam_id: UUID) -> dict:
-    previews, student_count, available_count = _build_preview(db, exam_id)
+    rules = get_rules(db, exam_id)
+    students = _get_sorted_students(db, exam_id)
+    free = _free_seats(db, exam_id)
+    available = sum(1 for seat, _ in free if _seat_allowed(seat, rules.spacing))
+    plan = _plan(db, exam_id, students)
     rooms = get_exam_rooms(db, exam_id)
     return {
-        "students": student_count,
+        "students": len(students),
         "rooms": len(rooms),
-        "available_seats": available_count,
-        "assigned": len(previews),
-        "unused": available_count - len(previews),
+        "available_seats": available,
+        # Usable seats the spacing rule keeps empty.
+        "spaced_out_seats": len(free) - available,
+        "accommodation_students": sum(1 for es, _ in students if needs_accommodation(es)),
+        "assigned": len(plan),
+        "unused": available - len(plan),
+        "rules": rules.model_dump(mode="json"),
         "items": [
             {
-                "assignment_order": p.assignment_order,
-                "student_number": p.student_number,
-                "full_name": p.full_name,
-                "building": p.building,
-                "room_number": p.room_number,
-                "seat_code": p.seat_code,
+                "assignment_order": i,
+                "student_number": st.student_number,
+                "full_name": st.full_name,
+                "building": room.building,
+                "room_number": room.room_number,
+                "seat_code": seat.seat_code,
             }
-            for p in previews[:20]
+            for i, (_es, st, seat, room) in enumerate(plan[:20], start=1)
         ],
-        "has_more": len(previews) > 20,
+        "has_more": len(plan) > 20,
     }
 
 
@@ -202,42 +300,28 @@ def confirm_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     if existing:
         raise ValueError("Seating has already been generated. Use regenerate to replace.")
 
-    previews, student_count, available_count = _build_preview(db, exam_id)
-
     students = _get_sorted_students(db, exam_id)
-    seats = _get_sorted_seats(db, exam_id)
-
+    plan = _plan(db, exam_id, students)
     version = 1
-    assignments_to_insert = []
-    for (es, _student), seat in zip(students, seats):
-        assignments_to_insert.append(ExamAssignment(
-            exam_id=exam_id,
-            exam_student_id=es.id,
-            seat_id=seat.id,
-            assignment_method="AUTOMATIC",
-            version=version,
-        ))
-
-    db.add_all(assignments_to_insert)
+    db.add_all(_assignments(plan, exam_id, version))
     db.add(AuditLog(
         user_id=user_id,
         action="SEATING_ASSIGNMENT_CREATED",
         entity_type="exam",
         entity_id=exam_id,
         new_values={
-            "student_count": student_count,
-            "seat_count": available_count,
-            "assignment_count": len(assignments_to_insert),
+            "student_count": len(students),
+            "assignment_count": len(plan),
             "version": version,
+            "rules": get_rules(db, exam_id).model_dump(mode="json"),
         },
     ))
     db.commit()
 
     return {
-        "assigned": len(assignments_to_insert),
+        "assigned": len(plan),
         "version": version,
-        "student_count": student_count,
-        "available_seats": available_count,
+        "student_count": len(students),
     }
 
 
@@ -256,22 +340,13 @@ def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
 
     db.query(ExamAssignment).filter(ExamAssignment.exam_id == exam_id).delete()
 
-    previews, student_count, available_count = _build_preview(db, exam_id)
-
     students = _get_sorted_students(db, exam_id)
-    seats = _get_sorted_seats(db, exam_id)
-
-    assignments_to_insert = []
-    for (es, _student), seat in zip(students, seats):
-        assignments_to_insert.append(ExamAssignment(
-            exam_id=exam_id,
-            exam_student_id=es.id,
-            seat_id=seat.id,
-            assignment_method="AUTOMATIC",
-            version=new_version,
-        ))
-
-    db.add_all(assignments_to_insert)
+    try:
+        plan = _plan(db, exam_id, students)
+    except ValueError:
+        db.rollback()  # keep the current seating when the new rules don't fit
+        raise
+    db.add_all(_assignments(plan, exam_id, new_version))
     db.add(AuditLog(
         user_id=user_id,
         action="SEATING_ASSIGNMENT_REGENERATED",
@@ -279,20 +354,19 @@ def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
         entity_id=exam_id,
         old_values={"previous_count": existing_count},
         new_values={
-            "student_count": student_count,
-            "seat_count": available_count,
-            "assignment_count": len(assignments_to_insert),
+            "student_count": len(students),
+            "assignment_count": len(plan),
             "version": new_version,
+            "rules": get_rules(db, exam_id).model_dump(mode="json"),
         },
     ))
     db.commit()
 
     return {
-        "assigned": len(assignments_to_insert),
+        "assigned": len(plan),
         "version": new_version,
         "previous_count": existing_count,
-        "student_count": student_count,
-        "available_seats": available_count,
+        "student_count": len(students),
     }
 
 
@@ -306,35 +380,21 @@ def seat_remaining_students(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     students = [(es, st) for es, st in _get_sorted_students(db, exam_id) if es.id not in seated]
     if not students:
         raise ValueError("Every student already has a seat")
-    seats = _get_sorted_seats(db, exam_id)
-    if len(students) > len(seats):
-        raise ValueError(
-            f"Not enough free seats: {len(students)} students need a seat, "
-            f"{len(seats)} seats are free. Add a room first."
-        )
+    plan = _plan(db, exam_id, students)
 
     version = db.query(func.max(ExamAssignment.version)).filter(
         ExamAssignment.exam_id == exam_id
     ).scalar() or 1
-    db.add_all(
-        ExamAssignment(
-            exam_id=exam_id,
-            exam_student_id=es.id,
-            seat_id=seat.id,
-            assignment_method="AUTOMATIC",
-            version=version,
-        )
-        for (es, _student), seat in zip(students, seats)
-    )
+    db.add_all(_assignments(plan, exam_id, version))
     db.add(AuditLog(
         user_id=user_id,
         action="SEATING_REMAINING_ASSIGNED",
         entity_type="exam",
         entity_id=exam_id,
-        new_values={"assignment_count": len(students), "version": version},
+        new_values={"assignment_count": len(plan), "version": version},
     ))
     db.commit()
-    return {"assigned": len(students), "version": version}
+    return {"assigned": len(plan), "version": version}
 
 
 # ── Summary ─────────────────────────────────────────────────
