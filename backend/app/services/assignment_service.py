@@ -248,17 +248,18 @@ def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     if not existing_count:
         raise ValueError("No existing assignments to regenerate")
 
+    # Read the version before the old rows are deleted, or it always resets to 1.
+    max_version = db.query(func.max(ExamAssignment.version)).filter(
+        ExamAssignment.exam_id == exam_id
+    ).scalar() or 0
+    new_version = max_version + 1
+
     db.query(ExamAssignment).filter(ExamAssignment.exam_id == exam_id).delete()
 
     previews, student_count, available_count = _build_preview(db, exam_id)
 
     students = _get_sorted_students(db, exam_id)
     seats = _get_sorted_seats(db, exam_id)
-
-    max_version = db.query(func.max(ExamAssignment.version)).filter(
-        ExamAssignment.exam_id == exam_id
-    ).scalar() or 0
-    new_version = max_version + 1
 
     assignments_to_insert = []
     for (es, _student), seat in zip(students, seats):
@@ -293,6 +294,47 @@ def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
         "student_count": student_count,
         "available_seats": available_count,
     }
+
+
+# ── Seat Remaining ──────────────────────────────────────────
+
+def seat_remaining_students(db: Session, exam_id: UUID, user_id: UUID) -> dict:
+    """Seat students who have no seat yet in the free seats, keeping every existing seat."""
+    seated = {
+        row[0] for row in db.query(ExamAssignment.exam_student_id).filter(ExamAssignment.exam_id == exam_id)
+    }
+    students = [(es, st) for es, st in _get_sorted_students(db, exam_id) if es.id not in seated]
+    if not students:
+        raise ValueError("Every student already has a seat")
+    seats = _get_sorted_seats(db, exam_id)
+    if len(students) > len(seats):
+        raise ValueError(
+            f"Not enough free seats: {len(students)} students need a seat, "
+            f"{len(seats)} seats are free. Add a room first."
+        )
+
+    version = db.query(func.max(ExamAssignment.version)).filter(
+        ExamAssignment.exam_id == exam_id
+    ).scalar() or 1
+    db.add_all(
+        ExamAssignment(
+            exam_id=exam_id,
+            exam_student_id=es.id,
+            seat_id=seat.id,
+            assignment_method="AUTOMATIC",
+            version=version,
+        )
+        for (es, _student), seat in zip(students, seats)
+    )
+    db.add(AuditLog(
+        user_id=user_id,
+        action="SEATING_REMAINING_ASSIGNED",
+        entity_type="exam",
+        entity_id=exam_id,
+        new_values={"assignment_count": len(students), "version": version},
+    ))
+    db.commit()
+    return {"assigned": len(students), "version": version}
 
 
 # ── Summary ─────────────────────────────────────────────────

@@ -200,3 +200,42 @@ def test_cannot_unassign_through_another_exam():
     response = client.delete(f"/api/exams/{exam_b}/assignments/{assignment_id}", headers=ADMIN_HEADERS)
     assert response.status_code == 404
     assert _seat_map(exam_a)["occupied_seats"] == 1
+
+
+def test_seat_remaining_keeps_existing_seats():
+    exam_id, _, numbers = _create_exam_with_students(student_count=3, capacity=10)
+    client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS)
+    room = _seat_map(exam_id)
+    kept = _seat_of(room, numbers[0])["id"]
+    freed = _seat_of(room, numbers[2])
+    client.delete(f"/api/exams/{exam_id}/assignments/{freed['occupant']['assignment_id']}", headers=ADMIN_HEADERS)
+
+    response = client.post(f"/api/exams/{exam_id}/assignments/seat-remaining", headers=ADMIN_HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json()["assigned"] == 1
+    room = _seat_map(exam_id)
+    assert _seat_of(room, numbers[0])["id"] == kept
+    assert client.get(f"/api/exams/{exam_id}/assignments/unassigned", headers=ADMIN_HEADERS).json()["students"] == []
+
+    response = client.post(f"/api/exams/{exam_id}/assignments/seat-remaining", headers=ADMIN_HEADERS)
+    assert response.status_code == 400
+
+
+def test_seat_remaining_rejects_when_seats_run_out():
+    exam_id, room_id, numbers = _create_exam_with_students(student_count=2, capacity=2)
+    client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS)
+    room = _seat_map(exam_id)
+    last = _seat_of(room, numbers[1])
+    client.delete(f"/api/exams/{exam_id}/assignments/{last['occupant']['assignment_id']}", headers=ADMIN_HEADERS)
+    assert client.patch(f"/api/rooms/{room_id}", json={"capacity": 1}, headers=ADMIN_HEADERS).status_code == 200
+
+    response = client.post(f"/api/exams/{exam_id}/assignments/seat-remaining", headers=ADMIN_HEADERS)
+    assert response.status_code == 400
+    assert "Not enough free seats" in response.json()["detail"]
+
+
+def test_regenerate_increments_version():
+    exam_id, _, _ = _create_exam_with_students(student_count=2, capacity=10)
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).json()["version"] == 1
+    response = client.post(f"/api/exams/{exam_id}/assignments/regenerate", headers=ADMIN_HEADERS)
+    assert response.json()["version"] == 2

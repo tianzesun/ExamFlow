@@ -75,6 +75,10 @@ export async function regenerateAssignment(examId: string): Promise<{ assigned: 
   return fetchApi(`/api/exams/${examId}/assignments/regenerate`, { method: "POST" });
 }
 
+export async function seatRemainingStudents(examId: string): Promise<{ assigned: number; version: number }> {
+  return fetchApi(`/api/exams/${examId}/assignments/seat-remaining`, { method: "POST" });
+}
+
 export async function getAssignments(examId: string, opts?: { query?: string; room_id?: string; page?: number; page_size?: number }): Promise<AssignmentListResponse> {
   const params = new URLSearchParams();
   if (opts?.query) params.set("query", opts.query);

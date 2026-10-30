@@ -6,7 +6,7 @@ import { getExam } from "@/lib/api/exams";
 import { getAllRooms, Room } from "@/lib/api/rooms";
 import {
   getExamRooms, addExamRoom, removeExamRoom,
-  getAssignmentSummary, previewAssignment, confirmAssignment, regenerateAssignment,
+  getAssignmentSummary, previewAssignment, confirmAssignment, regenerateAssignment, seatRemainingStudents,
   getAssignments, AssignmentSummary, Assignment,
 } from "@/lib/api/assignments";
 import { Exam } from "@/lib/types";
@@ -55,6 +55,7 @@ export default function SeatingPage() {
   const [confirming, setConfirming] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const [seatingRemaining, setSeatingRemaining] = useState(false);
   const [selectedAddRoom, setSelectedAddRoom] = useState<string>("");
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
@@ -170,8 +171,23 @@ export default function SeatingPage() {
     }
   };
 
+  const handleSeatRemaining = async () => {
+    setSeatingRemaining(true);
+    setError(null);
+    try {
+      await seatRemainingStudents(examId);
+      notifyExamChanged();
+      fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not seat the remaining students");
+    } finally {
+      setSeatingRemaining(false);
+    }
+  };
+
   const handleSearch = () => { setPage(1); fetchAll(); };
   const hasAssignments = (summary?.assigned_students ?? 0) > 0;
+  const unseated = summary?.unassigned_students ?? 0;
   const availableRooms = allRooms.filter(r => r.is_active && !examRooms.some(er => er.id === r.id));
 
   if (loading && !exam) return <PageLoader />;
@@ -187,12 +203,19 @@ export default function SeatingPage() {
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-ink">Seats</h2>
           <p className="text-sm text-ink-2">
-            {hasAssignments
+            {hasAssignments && unseated > 0
+              ? `${plural(unseated, "student")} still ${unseated === 1 ? "needs" : "need"} a seat. Seat them without moving anyone else.`
+              : hasAssignments
               ? "Seating has been generated. Fine-tune individual seats on the seat map."
               : "Choose rooms, preview the assignment, then confirm it."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canEdit && hasAssignments && unseated > 0 && (
+            <Button onClick={handleSeatRemaining} disabled={seatingRemaining || regenerating} loading={seatingRemaining}>
+              <Sparkles className="h-4 w-4" /> Seat remaining {plural(unseated, "student")}
+            </Button>
+          )}
           {canEdit && (hasAssignments ? (
             <Button variant="secondary" className="text-danger" onClick={() => setShowRegenConfirm(true)} disabled={regenerating} loading={regenerating}>
               <RefreshCw className="h-4 w-4" /> Regenerate

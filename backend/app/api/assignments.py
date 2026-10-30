@@ -158,6 +158,20 @@ def regenerate_assignment(
     return result
 
 
+@router.post("/seat-remaining")
+def seat_remaining_students(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    try:
+        result = assignment_service.seat_remaining_students(db, exam_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
+    return result
+
+
 # ── Seat Map / Manual Seating ───────────────────────────────
 
 @router.get("/seat-map")

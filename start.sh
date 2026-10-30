@@ -21,8 +21,9 @@ sleep 2
 # Start Backend
 echo "[1/2] Starting Backend (FastAPI)..."
 cd backend
-source venv/bin/activate
-uvicorn app.main:app --reload --port 8000 --host 127.0.0.1 &
+# Call the venv's Python directly: its activate script may hold a stale path
+# if the project folder was moved.
+venv/bin/python -m uvicorn app.main:app --reload --port 8000 --host 127.0.0.1 &
 BACKEND_PID=$!
 cd ..
 
