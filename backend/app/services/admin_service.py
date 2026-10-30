@@ -132,9 +132,12 @@ def table_pdf(
     return data
 
 
-def _seated_students(db: Session, exam_id: UUID, room_id: UUID | None = None) -> list[tuple[Student, Seat, Room]]:
+def _seated_students(
+    db: Session, exam_id: UUID, room_id: UUID | None = None
+) -> list[tuple[Student, Seat, Room, str]]:
+    """(student, seat, room, paper version) for every seated student."""
     q = (
-        db.query(Student, Seat, Room)
+        db.query(Student, Seat, Room, ExamAssignment.paper_version)
         .join(ExamStudent, ExamStudent.student_id == Student.id)
         .join(ExamAssignment, ExamAssignment.exam_student_id == ExamStudent.id)
         .join(Seat, ExamAssignment.seat_id == Seat.id)
@@ -144,6 +147,12 @@ def _seated_students(db: Session, exam_id: UUID, room_id: UUID | None = None) ->
     if room_id:
         q = q.filter(Seat.room_id == room_id)
     return q.all()
+
+
+def _has_versions(db: Session, exam_id: UUID) -> bool:
+    return db.query(ExamAssignment.paper_version).filter(
+        ExamAssignment.exam_id == exam_id, ExamAssignment.paper_version != "A"
+    ).first() is not None
 
 
 def seat_order(seat: Seat) -> tuple:
@@ -163,18 +172,23 @@ def generate_signature_list_pdf(
         raise ValueError("Exam or room not found")
 
     seated = sorted(_seated_students(db, exam_id, room_id), key=lambda r: seat_order(r[1]))
+    if _has_versions(db, exam_id):
+        columns = [("Seat", 8), ("Version", 9), ("Student number", 16), ("Name", 32), ("Signature", 25), ("Time", 10)]
+        rows = [[seat.seat_code, version, student.student_number, student.full_name, "", ""]
+                for student, seat, _, version in seated]
+    else:
+        columns = [("Seat", 9), ("Student number", 17), ("Name", 36), ("Signature", 28), ("Time", 10)]
+        rows = [[seat.seat_code, student.student_number, student.full_name, "", ""] for student, seat, _, _ in seated]
     return table_pdf(
         f"{exam.course_code} — {exam.exam_name}",
         f"Signature list · {_room_label(room)} · {_exam_when(exam)}",
-        [("Seat", 9), ("Student number", 17), ("Name", 36), ("Signature", 28), ("Time", 10)],
-        [[seat.seat_code, student.student_number, student.full_name, "", ""] for student, seat, _ in seated],
-        rows_per_page=24, tall_rows=True, pad_last_page=True,
+        columns, rows, rows_per_page=24, tall_rows=True, pad_last_page=True,
     )
 
 
 # ── Seating List (whole exam, by name) ──────────────────────
 
-def seating_list_rows(db: Session, exam_id: UUID) -> list[tuple[Student, Seat, Room]]:
+def seating_list_rows(db: Session, exam_id: UUID) -> list[tuple[Student, Seat, Room, str]]:
     """Every seated student, by name, so a student can find their room and seat."""
     return sorted(_seated_students(db, exam_id), key=lambda r: (r[0].full_name.casefold(), r[0].student_number))
 
@@ -186,12 +200,16 @@ def generate_seating_list_pdf(db: Session, exam_id: UUID) -> bytes:
     rows = seating_list_rows(db, exam_id)
     if not rows:
         raise ValueError("No students have seats yet")
+    columns = [("Name", 44), ("Student number", 22), ("Room", 20), ("Seat", 14)]
+    table = [[student.full_name, student.student_number, _room_label(room), seat.seat_code]
+             for student, seat, room, _ in rows]
+    if _has_versions(db, exam_id):
+        columns = [("Name", 40), ("Student number", 20), ("Room", 18), ("Seat", 11), ("Version", 11)]
+        table = [row + [version] for row, (*_, version) in zip(table, rows)]
     return table_pdf(
         f"{exam.course_code} — {exam.exam_name}",
         f"Seating list · {_exam_when(exam)} · {len(rows)} students",
-        [("Name", 44), ("Student number", 22), ("Room", 20), ("Seat", 14)],
-        [[student.full_name, student.student_number, _room_label(room), seat.seat_code]
-         for student, seat, room in rows],
+        columns, table,
     )
 
 
@@ -204,11 +222,11 @@ def generate_seating_list_csv(db: Session, exam_id: UUID) -> str:
     rows = seating_list_rows(db, exam_id)
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Name", "Student number", "UTORid", "Room", "Seat"])
-    for student, seat, room in rows:
-        writer.writerow([_csv_cell(v) for v in (
-            student.full_name, student.student_number, student.utorid or "", _room_label(room), seat.seat_code,
-        )])
+    versions = _has_versions(db, exam_id)
+    writer.writerow(["Name", "Student number", "UTORid", "Room", "Seat"] + (["Version"] if versions else []))
+    for student, seat, room, version in rows:
+        values = [student.full_name, student.student_number, student.utorid or "", _room_label(room), seat.seat_code]
+        writer.writerow([_csv_cell(v) for v in values + ([version] if versions else [])])
     return buf.getvalue()
 
 

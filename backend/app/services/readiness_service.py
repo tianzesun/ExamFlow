@@ -65,15 +65,27 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
         required=roster_count,
     ))
 
-    # 4. Template check
-    active_template = db.query(ExamTemplate).filter(
-        ExamTemplate.exam_id == exam_id,
-        ExamTemplate.is_active == True,  # noqa: E712
-    ).first()
+    # 4. Template check: an active paper for every version students are seated for.
+    active = {
+        t.paper_version: t for t in db.query(ExamTemplate).filter(
+            ExamTemplate.exam_id == exam_id,
+            ExamTemplate.is_active == True,  # noqa: E712
+        )
+    }
+    needed = {v for (v,) in db.query(ExamAssignment.paper_version).filter(ExamAssignment.exam_id == exam_id).distinct()}
+    missing = sorted((needed or {"A"}) - set(active))
+    if missing and needed - {"A"}:
+        template_message = f"No paper uploaded for version {', '.join(missing)}"
+    elif missing:
+        template_message = "No active template"
+    elif len(active) > 1:
+        template_message = f"Versions {', '.join(sorted(active))} uploaded"
+    else:
+        template_message = f"Template v{next(iter(active.values())).version} active"
     checks.append(CheckResult(
         name="template",
-        status="PASS" if active_template else "FAIL",
-        message=f"Template v{active_template.version} active" if active_template else "No active template",
+        status="FAIL" if missing else "PASS",
+        message=template_message,
     ))
 
     # 5. Generated exams check

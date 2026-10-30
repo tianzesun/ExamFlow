@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Download, FileText, Upload } from "lucide-react";
 import {
   uploadTemplate, listTemplates, getTemplateDownloadUrl,
-  activateTemplate, archiveTemplate, ExamTemplate,
+  activateTemplate, ExamTemplate,
 } from "@/lib/api/templates";
 import { errorReference } from "@/lib/api/client";
 import { Card, CardHeader } from "@/components/card";
@@ -18,15 +18,20 @@ import { notifyExamChanged } from "./workspace";
 
 const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-/** The Crowdmark PDF that personalized papers are generated from. */
+const LETTERS = ["A", "B", "C", "D"];
+
+/** The Crowdmark PDF that personalized papers are generated from; one per paper version. */
 export function TemplateCard({
   examId,
   canEdit,
   onChange,
+  versions = 1,
 }: {
   examId: string;
   canEdit: boolean;
   onChange?: (templates: ExamTemplate[]) => void;
+  /** Number of paper versions the seating rules alternate between */
+  versions?: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [templates, setTemplates] = useState<ExamTemplate[]>([]);
@@ -34,6 +39,7 @@ export function TemplateCard({
   const [error, setError] = useState<string | null>(null);
   const [crowdmarkId, setCrowdmarkId] = useState("");
   const [crowdmarkUrl, setCrowdmarkUrl] = useState("");
+  const [uploadVersion, setUploadVersion] = useState("A");
 
   const load = useCallback(async () => {
     const t = await listTemplates(examId).catch(() => [] as ExamTemplate[]);
@@ -64,7 +70,7 @@ export function TemplateCard({
     setUploading(true);
     setError(null);
     try {
-      await uploadTemplate(examId, file, crowdmarkId || undefined, crowdmarkUrl || undefined);
+      await uploadTemplate(examId, file, crowdmarkId || undefined, crowdmarkUrl || undefined, uploadVersion);
       setCrowdmarkId("");
       setCrowdmarkUrl("");
       await changed();
@@ -85,26 +91,29 @@ export function TemplateCard({
     }
   };
 
-  const handleArchive = async (templateId: string) => {
-    if (!confirm("Archive this template?")) return;
-    try {
-      await archiveTemplate(examId, templateId);
-      await changed();
-    } catch (err) {
-      setError(`That version could not be archived.${errorReference(err)}`);
-    }
+  const letters = LETTERS.slice(0, Math.max(1, versions));
+  const multi = letters.length > 1;
+  const activeFor = (letter: string) => templates.find((t) => t.is_active && t.paper_version === letter);
+  const missing = letters.filter((l) => !activeFor(l));
+  const chooseFile = (letter: string) => {
+    setUploadVersion(letter);
+    inputRef.current?.click();
   };
-
-  const active = templates.find((t) => t.is_active);
 
   return (
     <Card>
       <CardHeader className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-ink">A · Exam template</h2>
-          <p className="text-xs text-ink-3">The Crowdmark PDF each student&rsquo;s paper is generated from</p>
+          <h2 className="text-sm font-semibold text-ink">A · Exam {multi ? "papers" : "template"}</h2>
+          <p className="text-xs text-ink-3">
+            {multi
+              ? `One Crowdmark PDF per version. Students get version ${letters.join(", ")} by seat, so neighbours write different papers.`
+              : "The Crowdmark PDF each student\u2019s paper is generated from"}
+          </p>
         </div>
-        {active ? <Badge variant="success">Uploaded</Badge> : <Badge variant="warning">Needed</Badge>}
+        {missing.length === 0
+          ? <Badge variant="success">Uploaded</Badge>
+          : <Badge variant="warning">{multi ? `Version ${missing.join(", ")} needed` : "Needed"}</Badge>}
       </CardHeader>
       <div className="space-y-5 px-5 py-4">
         {error && (
@@ -114,36 +123,61 @@ export function TemplateCard({
           </div>
         )}
 
-        {active ? (
-          <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
-                <CheckCircle2 className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink">{active.original_filename}</p>
-                <p className="tnum mt-0.5 text-xs text-ink-3">
-                  Version {active.version} · {formatMb(active.file_size)}
-                  {active.crowdmark_exam_id && <> · Crowdmark ID <span className="font-mono">{active.crowdmark_exam_id}</span></>}
-                  {active.created_at && <> · Uploaded {formatDate(active.created_at)}</>}
-                </p>
+        <div className="space-y-2.5">
+          {letters.map((letter) => {
+            const active = activeFor(letter);
+            return active ? (
+              <div key={letter} className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10 font-semibold text-success">
+                    {multi ? letter : <CheckCircle2 className="h-4 w-4" />}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {multi && <span className="text-ink-3">Version {letter} · </span>}{active.original_filename}
+                    </p>
+                    <p className="tnum mt-0.5 text-xs text-ink-3">
+                      Revision {active.version} · {formatMb(active.file_size)}
+                      {active.crowdmark_exam_id && <> · Crowdmark ID <span className="font-mono">{active.crowdmark_exam_id}</span></>}
+                      {active.created_at && <> · Uploaded {formatDate(active.created_at)}</>}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <DownloadButton url={getTemplateDownloadUrl(examId, active.id)} filename="exam-paper.pdf" variant="secondary" size="sm">
+                    <Download className="h-3.5 w-3.5" /> Download
+                  </DownloadButton>
+                  {canEdit && multi && (
+                    <Button size="sm" variant="secondary" onClick={() => chooseFile(letter)} loading={uploading && uploadVersion === letter}>
+                      <Upload className="h-3.5 w-3.5" /> Replace
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-            <DownloadButton url={getTemplateDownloadUrl(examId, active.id)} filename="exam-paper.pdf" variant="secondary" size="sm">
-                <Download className="h-3.5 w-3.5" /> Download
-              </DownloadButton>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3 rounded-lg border border-dashed border-line-strong px-4 py-3.5 text-sm text-ink-2">
-            <FileText className="h-4 w-4 shrink-0 text-ink-3" />
-            No template yet. Export the exam PDF from Crowdmark and upload it here.
-          </div>
-        )}
+            ) : (
+              <div key={letter} className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong px-4 py-3.5 text-sm text-ink-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="flex items-center gap-3">
+                  {multi
+                    ? <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/10 font-semibold text-warning">{letter}</span>
+                    : <FileText className="h-4 w-4 shrink-0 text-ink-3" />}
+                  {multi
+                    ? `Version ${letter} isn't uploaded yet.`
+                    : "No template yet. Export the exam PDF from Crowdmark and upload it here."}
+                </span>
+                {canEdit && multi && (
+                  <Button size="sm" onClick={() => chooseFile(letter)} loading={uploading && uploadVersion === letter} className="shrink-0">
+                    <Upload className="h-3.5 w-3.5" /> Upload version {letter}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {canEdit && (
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-ink-3">
-              {active ? "Replace with a new version" : "Upload the PDF"}
+              {multi ? "Crowdmark details for the next upload" : activeFor("A") ? "Replace with a new revision" : "Upload the PDF"}
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input type="text" placeholder="Crowdmark exam ID (optional)" value={crowdmarkId}
@@ -154,9 +188,11 @@ export function TemplateCard({
             <div className="flex items-center justify-end gap-3">
               <span className="text-xs text-ink-3">PDF only</span>
               <input ref={inputRef} type="file" accept=".pdf" onChange={handleUpload} className="sr-only" tabIndex={-1} aria-hidden />
-              <Button size="sm" variant={active ? "secondary" : "primary"} onClick={() => inputRef.current?.click()} loading={uploading}>
-                <Upload className="h-3.5 w-3.5" /> {uploading ? "Uploading…" : "Choose PDF"}
-              </Button>
+              {!multi && (
+                <Button size="sm" variant={activeFor("A") ? "secondary" : "primary"} onClick={() => chooseFile("A")} loading={uploading}>
+                  <Upload className="h-3.5 w-3.5" /> {uploading ? "Uploading…" : "Choose PDF"}
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -165,11 +201,12 @@ export function TemplateCard({
       {templates.length > 1 && (
         <div className="border-t border-line">
           <div className="px-5 pb-2 pt-4">
-            <h3 className="text-sm font-semibold text-ink">Version history</h3>
+            <h3 className="text-sm font-semibold text-ink">Upload history</h3>
           </div>
           <Table>
             <TableHead>
-              <Th>Version</Th>
+              <Th>Revision</Th>
+              {multi && <Th>Version</Th>}
               <Th>File</Th>
               <Th>Size</Th>
               <Th>Status</Th>
@@ -179,7 +216,8 @@ export function TemplateCard({
             <TableBody>
               {templates.map((t) => (
                 <tr key={t.id}>
-                  <Td className="font-mono text-xs">v{t.version}</Td>
+                  <Td className="font-mono text-xs">{t.version}</Td>
+                  {multi && <Td className="font-semibold">{t.paper_version}</Td>}
                   <Td className="max-w-[320px] truncate">{t.original_filename}</Td>
                   <Td className="tnum text-ink-2">{formatMb(t.file_size)}</Td>
                   <Td>
@@ -195,11 +233,6 @@ export function TemplateCard({
                         {!t.is_active && (
                           <Button variant="ghost" size="sm" className="text-accent hover:text-accent-strong" onClick={() => handleActivate(t.id)}>
                             Activate
-                          </Button>
-                        )}
-                        {t.is_active && templates.filter((tt) => tt.is_active).length > 1 && (
-                          <Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={() => handleArchive(t.id)}>
-                            Archive
                           </Button>
                         )}
                       </div>

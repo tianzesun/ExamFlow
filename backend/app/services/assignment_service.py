@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -110,6 +110,8 @@ class SeatingRules(BaseModel):
     spacing: Literal["none", "every_other_seat", "every_other_seat_and_row"] = "none"
     # Students with accommodations (extra time or notes) sit here, and nobody else does.
     accommodation_room_id: UUID | None = None
+    # How many paper versions (A, B, ...) to alternate between, so neighbours write different papers.
+    versions: int = Field(1, ge=1, le=4)
 
 
 def get_rules(db: Session, exam_id: UUID) -> SeatingRules:
@@ -149,6 +151,27 @@ def needs_accommodation(es: ExamStudent) -> bool:
 
 def _n(count: int, word: str) -> str:
     return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+PAPER_VERSIONS = "ABCD"
+
+
+def version_for_seat(seat: Seat, rules: SeatingRules) -> str:
+    """The paper version for a seat, alternating so the nearest occupied seats differ.
+
+    With every seat used, neighbours beside, in front and behind differ. With the
+    checkerboard, the nearest students are diagonal, so versions alternate by row.
+    """
+    if rules.versions == 1 or seat.row_number is None or seat.column_number is None:
+        return "A"
+    row, col = seat.row_number, seat.column_number
+    if rules.spacing == "every_other_seat":
+        index = row
+    elif rules.spacing == "every_other_seat_and_row":
+        index = (row - 1) // 2 + (col - 1) // 2
+    else:
+        index = row + col
+    return PAPER_VERSIONS[index % rules.versions]
 
 
 def _seat_allowed(seat: Seat, spacing: str) -> bool:
@@ -246,7 +269,8 @@ def _plan(
     )
 
 
-def _assignments(plan: list, exam_id: UUID, version: int) -> list[ExamAssignment]:
+def _assignments(db: Session, plan: list, exam_id: UUID, version: int) -> list[ExamAssignment]:
+    rules = get_rules(db, exam_id)
     return [
         ExamAssignment(
             exam_id=exam_id,
@@ -254,6 +278,7 @@ def _assignments(plan: list, exam_id: UUID, version: int) -> list[ExamAssignment
             seat_id=seat.id,
             assignment_method="AUTOMATIC",
             version=version,
+            paper_version=version_for_seat(seat, rules),
         )
         for es, _student, seat, _room in plan
     ]
@@ -286,6 +311,7 @@ def preview_assignment(db: Session, exam_id: UUID) -> dict:
                 "building": room.building,
                 "room_number": room.room_number,
                 "seat_code": seat.seat_code,
+                "paper_version": version_for_seat(seat, rules),
             }
             for i, (_es, st, seat, room) in enumerate(plan[:20], start=1)
         ],
@@ -303,7 +329,7 @@ def confirm_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     students = _get_sorted_students(db, exam_id)
     plan = _plan(db, exam_id, students)
     version = 1
-    db.add_all(_assignments(plan, exam_id, version))
+    db.add_all(_assignments(db, plan, exam_id, version))
     db.add(AuditLog(
         user_id=user_id,
         action="SEATING_ASSIGNMENT_CREATED",
@@ -346,7 +372,7 @@ def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     except ValueError:
         db.rollback()  # keep the current seating when the new rules don't fit
         raise
-    db.add_all(_assignments(plan, exam_id, new_version))
+    db.add_all(_assignments(db, plan, exam_id, new_version))
     db.add(AuditLog(
         user_id=user_id,
         action="SEATING_ASSIGNMENT_REGENERATED",
@@ -385,7 +411,7 @@ def seat_remaining_students(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     version = db.query(func.max(ExamAssignment.version)).filter(
         ExamAssignment.exam_id == exam_id
     ).scalar() or 1
-    db.add_all(_assignments(plan, exam_id, version))
+    db.add_all(_assignments(db, plan, exam_id, version))
     db.add(AuditLog(
         user_id=user_id,
         action="SEATING_REMAINING_ASSIGNED",
@@ -498,6 +524,7 @@ def search_assignments(
             "room_number": room.room_number,
             "method": a.assignment_method,
             "version": a.version,
+            "paper_version": a.paper_version,
         }
         for a, s, seat, room in results
     ], total
@@ -549,6 +576,7 @@ def assign_student(
         seat_id=seat_id,
         assignment_method=method,
         version=max_version + 1,
+        paper_version=version_for_seat(seat, get_rules(db, exam_id)),
     )
     db.add(assignment)
 
@@ -624,6 +652,7 @@ def get_seat_map(db: Session, exam_id: UUID) -> list[dict]:
                 "student_number": student.student_number,
                 "full_name": student.full_name,
                 "method": assignment.assignment_method,
+                "paper_version": assignment.paper_version,
             } if assignment else None,
         })
 
@@ -688,6 +717,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
     if occupant and not current:
         raise ValueError("Seat is occupied. Choose an empty seat or unassign that student first.")
 
+    rules = get_rules(db, exam_id)
     new_version = (db.query(func.max(ExamAssignment.version)).filter(
         ExamAssignment.exam_id == exam_id
     ).scalar() or 0) + 1
@@ -703,6 +733,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
         current.seat_id = seat_id
         current.assignment_method = "MANUAL"
         current.version = new_version
+        current.paper_version = version_for_seat(seat, rules)
         db.flush()
         db.add(ExamAssignment(
             exam_id=exam_id,
@@ -710,6 +741,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
             seat_id=vacated_seat_id,
             assignment_method="MANUAL",
             version=new_version,
+            paper_version=version_for_seat(db.get(Seat, vacated_seat_id), rules),
         ))
         action = "swapped"
         old_values["seat_id"] = str(vacated_seat_id)
@@ -719,6 +751,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
         current.seat_id = seat_id
         current.assignment_method = "MANUAL"
         current.version = new_version
+        current.paper_version = version_for_seat(seat, rules)
         action = "moved"
     else:
         current = ExamAssignment(
@@ -727,6 +760,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
             seat_id=seat_id,
             assignment_method="MANUAL",
             version=new_version,
+            paper_version=version_for_seat(seat, rules),
         )
         db.add(current)
         db.flush()

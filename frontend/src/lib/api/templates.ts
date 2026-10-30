@@ -8,7 +8,10 @@ export interface ExamTemplate {
   file_size: number;
   file_hash: string;
   template_type: string;
+  /** Upload revision (1, 2, …) */
   version: number;
+  /** Paper version (A–D); each has its own active upload */
+  paper_version: string;
   is_active: boolean;
   crowdmark_exam_id: string | null;
   crowdmark_url: string | null;
@@ -19,10 +22,12 @@ export async function uploadTemplate(
   examId: string,
   file: File,
   crowdmarkExamId?: string,
-  crowdmarkUrl?: string
+  crowdmarkUrl?: string,
+  paperVersion = "A",
 ): Promise<ExamTemplate> {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("paper_version", paperVersion);
   if (crowdmarkExamId) formData.append("crowdmark_exam_id", crowdmarkExamId);
   if (crowdmarkUrl) formData.append("crowdmark_url", crowdmarkUrl);
 

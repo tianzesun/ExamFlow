@@ -2,43 +2,39 @@
 
 A paper stays valid (its QR code verifies) until it is replaced, but it is only
 up to date while the student sits in the seat printed on it and the template it
-was made from is still the active one. Seating changes and a new template
+was made from is still the active one for the student's paper version. Seating changes and a new template
 therefore make just the affected papers out of date, and only those need
 generating and printing again.
 """
 
 from uuid import UUID
 
-from sqlalchemy import and_, func, not_, select
+from sqlalchemy import func, not_, select
 from sqlalchemy.orm import Session
 
 from app.models.exam_assignment import ExamAssignment
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
 
-# Correlated to the paper explicitly, so these still work in queries that also join seats or templates.
-_seat_matches = (
+# Correlated to the paper explicitly, so it still works in queries that also join seats or templates.
+# The student must still hold the seat printed on the paper, and the paper's template must be the
+# active upload for the version that seat now has.
+_matches = (
     select(ExamAssignment.id)
+    .join(ExamTemplate, ExamTemplate.id == GeneratedExam.exam_template_id)
     .where(
         ExamAssignment.exam_student_id == GeneratedExam.exam_student_id,
         ExamAssignment.seat_id == GeneratedExam.seat_id,
-    )
-    .correlate(GeneratedExam)
-    .exists()
-)
-_template_active = (
-    select(ExamTemplate.id)
-    .where(
-        ExamTemplate.id == GeneratedExam.exam_template_id,
         ExamTemplate.is_active == True,  # noqa: E712
+        ExamTemplate.paper_version == ExamAssignment.paper_version,
     )
     .correlate(GeneratedExam)
     .exists()
 )
 
 # Filters for a current paper that matches its student's seat and the active template.
-UP_TO_DATE = (GeneratedExam.status == "GENERATED", _seat_matches, _template_active)
-OUTDATED = (GeneratedExam.status == "GENERATED", not_(and_(_seat_matches, _template_active)))
+UP_TO_DATE = (GeneratedExam.status == "GENERATED", _matches)
+OUTDATED = (GeneratedExam.status == "GENERATED", not_(_matches))
 
 
 def up_to_date_student_ids(db: Session, exam_id: UUID) -> set[UUID]:

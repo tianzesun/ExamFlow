@@ -24,7 +24,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
-from app.services import paper_state
+from app.services import assignment_service, paper_state
 from app.utils import utcnow
 
 MARGIN = 36
@@ -35,11 +35,11 @@ QR_SIZE = 58
 # Clearance kept between the stamp and the paper's own content.
 CONTENT_GAP = 4
 
-_CSS = "* {font-family: sans-serif; margin: 0; padding: 0; color: #000;} b {font-weight: bold;}"
+_CSS = "* {font-family: sans-serif; margin: 0; padding: 0;} b {font-weight: bold; color: inherit;}"
 
 
 def write_text(page: pymupdf.Page, rect: pymupdf.Rect, text: str, size: float = 10,
-               bold: bool = False, align: str = "left", grey: bool = False) -> None:
+               bold: bool = False, align: str = "left", grey: bool = False, colour: str | None = None) -> None:
     """Write one line of text, falling back to other fonts for accents and non-Latin names.
 
     The base-14 fonts used by insert_text can't show names like Nguyễn or 李华.
@@ -47,7 +47,7 @@ def write_text(page: pymupdf.Page, rect: pymupdf.Rect, text: str, size: float = 
     content = html.escape(text)
     if bold:
         content = f"<b>{content}</b>"
-    colour = "#555" if grey else "#000"
+    colour = colour or ("#555" if grey else "#000")
     page.insert_htmlbox(
         rect, f'<p style="font-size:{size}pt; text-align:{align}; color:{colour}">{content}</p>',
         css=_CSS, scale_low=0.5,
@@ -95,7 +95,7 @@ def _place_pages(template: pymupdf.Document) -> pymupdf.Document:
 
 
 def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Room, seat: Seat,
-                      qr_token: str | None) -> None:
+                      qr_token: str | None, paper_version: str | None = None) -> None:
     w = page.rect.width
     right = w - MARGIN
     top = 14
@@ -115,6 +115,15 @@ def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Ro
                seat.seat_code, 15, bold=True, align="right")
 
     text_right = box.x0 - 12
+    if paper_version:
+        # A large letter so proctors can hand out versions without reading names.
+        badge = pymupdf.Rect(box.x0 - 54, box.y0, box.x0 - 8, box.y1)
+        page.draw_rect(badge, color=(0, 0, 0), fill=(0, 0, 0), width=1)
+        write_text(page, pymupdf.Rect(badge.x0, badge.y0 + 5, badge.x1, badge.y0 + 15), "VERSION", 6,
+                   align="center", colour="#fff")
+        write_text(page, pymupdf.Rect(badge.x0, badge.y0 + 14, badge.x1, badge.y1 - 2), paper_version, 26,
+                   bold=True, align="center", colour="#fff")
+        text_right = badge.x0 - 10
     write_text(page, pymupdf.Rect(MARGIN, top, text_right, top + 16), f"{exam.course_code} — {exam.exam_name}", 9,
                grey=True)
     write_text(page, pymupdf.Rect(MARGIN, top + 14, text_right, top + 40), student.full_name, 15, bold=True)
@@ -125,12 +134,15 @@ def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Ro
     page.draw_line(pymupdf.Point(MARGIN, y), pymupdf.Point(w - MARGIN, y), color=(0, 0, 0), width=0.75)
 
 
-def _stamp_other_page(page: pymupdf.Page, student: Student, room: Room, seat: Seat, number: int, total: int) -> None:
+def _stamp_other_page(page: pymupdf.Page, student: Student, room: Room, seat: Seat, number: int, total: int,
+                      paper_version: str | None = None) -> None:
     """A slim line so a page that comes loose can be matched to its student."""
     w = page.rect.width
+    version = f" · Version {paper_version}" if paper_version else ""
     write_text(
         page, pymupdf.Rect(MARGIN, 6, w - MARGIN - 80, 18),
-        f"{student.full_name} · {student.student_number} · {room.building} {room.room_number} · Seat {seat.seat_code}",
+        f"{student.full_name} · {student.student_number} · {room.building} {room.room_number} · Seat {seat.seat_code}"
+        f"{version}",
         8,
     )
     write_text(page, pymupdf.Rect(w - MARGIN - 80, 6, w - MARGIN, 18), f"Page {number} of {total}", 8,
@@ -146,7 +158,9 @@ def generate_one_student_pdf(
     room: Room,
     seat: Seat,
     qr_token: str | None = None,
+    paper_version: str | None = None,
 ) -> bytes:
+    """Stamp the template for one student. paper_version is printed only when the exam has several."""
     template = pymupdf.open(stream=template_bytes, filetype="pdf")
     try:
         if len(template) == 0:
@@ -156,9 +170,9 @@ def generate_one_student_pdf(
         template.close()
 
     try:
-        _stamp_first_page(doc[0], exam, student, room, seat, qr_token)
+        _stamp_first_page(doc[0], exam, student, room, seat, qr_token, paper_version)
         for i in range(1, len(doc)):
-            _stamp_other_page(doc[i], student, room, seat, i + 1, len(doc))
+            _stamp_other_page(doc[i], student, room, seat, i + 1, len(doc), paper_version)
         # Only embed the glyphs used; whole fallback fonts add megabytes per paper.
         doc.subset_fonts()
         return doc.tobytes(garbage=4, deflate=True)
@@ -174,20 +188,27 @@ def validate_generation(db: Session, exam_id: UUID) -> list[str]:
         errors.append("Exam not found")
         return errors
 
-    template = db.query(ExamTemplate).filter(
-        ExamTemplate.exam_id == exam_id,
-        ExamTemplate.is_active == True,  # noqa: E712
-    ).first()
-    if not template:
-        errors.append("No active template found")
-        return errors
-
-    template_path = os.path.join(
-        "storage", "exams", str(exam_id), "templates", template.stored_filename
+    # Every version students are seated for needs its own uploaded paper.
+    needed = sorted(
+        {v for (v,) in db.query(ExamAssignment.paper_version).filter(ExamAssignment.exam_id == exam_id).distinct()}
+        or {"A"}
     )
-    if not os.path.exists(template_path):
-        errors.append("Template file not found on disk")
-        return errors
+    for version in needed:
+        template = db.query(ExamTemplate).filter(
+            ExamTemplate.exam_id == exam_id,
+            ExamTemplate.paper_version == version,
+            ExamTemplate.is_active == True,  # noqa: E712
+        ).first()
+        label = f" for version {version}" if needed != ["A"] else ""
+        if not template:
+            errors.append(f"No exam paper uploaded{label}" if label else "No active template found")
+            return errors
+        template_path = os.path.join(
+            "storage", "exams", str(exam_id), "templates", template.stored_filename
+        )
+        if not os.path.exists(template_path):
+            errors.append(f"Template file not found on disk{label}")
+            return errors
 
     roster_count = db.query(func.count(ExamStudent.id)).filter(
         ExamStudent.exam_id == exam_id
@@ -209,13 +230,16 @@ def validate_generation(db: Session, exam_id: UUID) -> list[str]:
     return errors
 
 
-def _load_active_template(db: Session, exam_id: UUID) -> tuple[ExamTemplate, bytes]:
+def _load_active_template(db: Session, exam_id: UUID, paper_version: str = "A") -> tuple[ExamTemplate, bytes]:
     template = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
+        ExamTemplate.paper_version == paper_version,
         ExamTemplate.is_active == True,  # noqa: E712
     ).first()
     if not template:
-        raise ValueError("No active template")
+        raise ValueError(
+            "No active template" if paper_version == "A" else f"No exam paper uploaded for version {paper_version}"
+        )
 
     template_path = os.path.join(
         "storage", "exams", str(exam_id), "templates", template.stored_filename
@@ -256,7 +280,8 @@ def preview_paper(db: Session, exam_id: UUID) -> bytes:
     # A long name shows whether the stamp has room for real ones.
     student = SimpleNamespace(full_name="Alexandra Sample-Studentname", student_number="1000000000")
 
-    doc = pymupdf.open(stream=generate_one_student_pdf(template_bytes, exam, student, room, seat, "preview"),
+    version = "A" if assignment_service.get_rules(db, exam_id).versions > 1 else None
+    doc = pymupdf.open(stream=generate_one_student_pdf(template_bytes, exam, student, room, seat, "preview", version),
                        filetype="pdf")
     try:
         for page in doc:
@@ -286,8 +311,6 @@ def generate_all_exams(
     if not exam:
         raise ValueError("Exam not found")
 
-    template, template_bytes = _load_active_template(db, exam_id)
-
     assignments = (
         db.query(ExamAssignment, Student, Seat, Room)
         .join(ExamStudent, ExamAssignment.exam_student_id == ExamStudent.id)
@@ -307,6 +330,10 @@ def generate_all_exams(
         if not assignments:
             raise ValueError("Every paper is already up to date")
 
+    templates = {v: _load_active_template(db, exam_id, v) for v in sorted({a.paper_version for a, *_ in assignments})}
+    # Print the version only when the exam has several, so single-version papers look as before.
+    show_version = assignment_service.get_rules(db, exam_id).versions > 1 or len(templates) > 1
+
     # Determine generation version
     max_version = db.query(func.max(GeneratedExam.generation_version)).filter(
         GeneratedExam.exam_id == exam_id
@@ -325,7 +352,9 @@ def generate_all_exams(
     for done, (assignment, student, seat, room) in enumerate(assignments, start=1):
         try:
             qr_token = secrets.token_urlsafe(32)
-            pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat, qr_token)
+            template, template_bytes = templates[assignment.paper_version]
+            pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat, qr_token,
+                                                 assignment.paper_version if show_version else None)
             file_hash = hashlib.sha256(pdf_bytes).hexdigest()
 
             file_name = f"{exam.course_code}-{student.student_number}-v{new_version}.pdf"
@@ -388,7 +417,7 @@ def generate_all_exams(
         entity_type="exam",
         entity_id=exam_id,
         new_values={
-            "template_version": template.version,
+            "template_versions": {v: t.version for v, (t, _) in templates.items()},
             "assignment_version": assignments[0][0].version if assignments else 0,
             "generation_version": new_version,
             "count": len(generated_objects),

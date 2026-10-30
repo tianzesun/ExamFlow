@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { getExam } from "@/lib/api/exams";
-import { getAssignmentSummary, AssignmentSummary } from "@/lib/api/assignments";
+import { getAssignmentSummary, AssignmentSummary, getSeatingRules } from "@/lib/api/assignments";
 import { ExamTemplate } from "@/lib/api/templates";
 import {
   validateGeneration, startGenerationJob, getLatestGenerationJob, listGeneratedExams, getPaperStatus, PaperStatus,
@@ -42,6 +42,7 @@ export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [outdatedOnly, setOutdatedOnly] = useState(false);
   const [paperStatus, setPaperStatus] = useState<PaperStatus | null>(null);
+  const [paperVersions, setPaperVersions] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,14 +70,15 @@ export default function DocumentsPage() {
       })
       .then(async () => {
         if (cancelled) return null;
-        const [e, s, g, ps] = await Promise.all([
+        const [e, s, g, ps, rules] = await Promise.all([
           getExam(examId),
           getAssignmentSummary(examId).catch(() => null),
           listGeneratedExams(examId, { page, page_size: 50, query: searchQuery || undefined, outdated_only: outdatedOnly }),
           getPaperStatus(examId).catch(() => null),
+          getSeatingRules(examId).catch(() => null),
         ]);
         if (cancelled) return null;
-        return { exam: e, summary: s, generated: g, paperStatus: ps } as const;
+        return { exam: e, summary: s, generated: g, paperStatus: ps, versions: rules?.versions ?? 1 } as const;
       })
       .then((next) => {
         if (!cancelled && next) {
@@ -85,6 +87,7 @@ export default function DocumentsPage() {
           setGenerated(next.generated.exams);
           setTotalGenerated(next.generated.total);
           setPaperStatus(next.paperStatus);
+          setPaperVersions(next.versions);
           // Once some papers have gone to print, default to printing only the new ones.
           if (next.paperStatus && next.paperStatus.not_printed > 0 && next.paperStatus.not_printed < next.paperStatus.up_to_date) {
             setPrintScope("new");
@@ -182,6 +185,10 @@ export default function DocumentsPage() {
   };
 
   const activeTemplate = templates.find(t => t.is_active);
+  const activeVersions = [...new Set(templates.filter(t => t.is_active).map(t => t.paper_version))].sort();
+  const templateSummary = paperVersions > 1
+    ? `Versions ${activeVersions.join(", ") || "none"} of ${["A", "B", "C", "D"].slice(0, paperVersions).join(", ")}`
+    : activeTemplate ? `${activeTemplate.original_filename} · revision ${activeTemplate.version}` : "";
 
   if (loading && !exam) return <PageLoader />;
 
@@ -196,7 +203,11 @@ export default function DocumentsPage() {
   const willGenerate = fullRun ? assigned : toGenerate;
   const pageCount = Math.max(1, Math.ceil(totalGenerated / 50));
   const readiness = [
-    { label: "Active template", ok: !!activeTemplate, detail: activeTemplate ? `${activeTemplate.original_filename} · v${activeTemplate.version}` : "Upload it in part A" },
+    {
+      label: paperVersions > 1 ? "Exam papers" : "Active template",
+      ok: paperVersions > 1 ? activeVersions.length >= paperVersions : !!activeTemplate,
+      detail: templateSummary || "Upload it in part A",
+    },
     { label: "Roster", ok: (summary?.registered_students ?? 0) > 0, detail: plural(summary?.registered_students ?? 0, "student") },
     { label: "Seating", ok: assigned > 0, detail: `${formatNumber(assigned)} of ${formatNumber(summary?.registered_students ?? 0)} seated` },
   ];
@@ -215,7 +226,7 @@ export default function DocumentsPage() {
         </p>
       </div>
 
-      <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} />
+      <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} versions={paperVersions} />
 
       {error && (
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -268,7 +279,7 @@ export default function DocumentsPage() {
                 {fullRun && hasPapers ? `Regenerate all ${plural(willGenerate, "paper")}?` : `Generate ${plural(willGenerate, "paper")}?`}
               </h3>
               <p className="mt-0.5 text-sm text-ink-2">
-                Uses template {activeTemplate?.original_filename} v{activeTemplate?.version}.{" "}
+                Uses {paperVersions > 1 ? `versions ${activeVersions.join(", ")}` : `template ${activeTemplate?.original_filename}, revision ${activeTemplate?.version}`}.{" "}
                 {!hasPapers
                   ? "Validation passed."
                   : fullRun

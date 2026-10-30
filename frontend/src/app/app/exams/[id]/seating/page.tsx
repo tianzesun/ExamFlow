@@ -43,7 +43,13 @@ const SPACING_OPTIONS = [
   { value: "every_other_seat", label: "Every other seat (checkerboard)" },
   { value: "every_other_seat_and_row", label: "One seat in four" },
 ];
-const DEFAULT_RULES: SeatingRules = { order: "student_number", spacing: "none", accommodation_room_id: null };
+const VERSION_OPTIONS = [
+  { value: "1", label: "One version" },
+  { value: "2", label: "Two (A, B)" },
+  { value: "3", label: "Three (A, B, C)" },
+  { value: "4", label: "Four (A–D)" },
+];
+const DEFAULT_RULES: SeatingRules = { order: "student_number", spacing: "none", accommodation_room_id: null, versions: 1 };
 
 export default function SeatingPage() {
   const params = useParams();
@@ -222,6 +228,8 @@ export default function SeatingPage() {
   const handleSearch = () => { setPage(1); fetchAll(); };
   const hasAssignments = (summary?.assigned_students ?? 0) > 0;
   const unseated = summary?.unassigned_students ?? 0;
+  // Existing seats keep their version after the rule changes, so show the column while any differ.
+  const showVersions = rules.versions > 1 || assignments.some((a) => a.paper_version !== "A");
   const availableRooms = allRooms.filter(r => r.is_active && !examRooms.some(er => er.id === r.id));
 
   if (loading && !exam) return <PageLoader />;
@@ -355,7 +363,7 @@ export default function SeatingPage() {
             </div>
             {savingRules && <span className="text-xs text-ink-3">Saving…</span>}
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-1.5">
               <Select
                 label="Order"
@@ -409,6 +417,21 @@ export default function SeatingPage() {
                 Students with extra time or accommodation notes on the roster sit here, and nobody else does.
               </p>
             </div>
+            <div className="space-y-1.5">
+              <Select
+                label="Paper versions"
+                id="seating-versions"
+                value={String(rules.versions)}
+                onChange={(e) => handleRulesChange({ ...rules, versions: Number(e.target.value) })}
+                options={VERSION_OPTIONS}
+                disabled={!canEdit || savingRules}
+              />
+              <p className="text-xs text-ink-3">
+                {rules.versions > 1
+                  ? "Versions alternate by seat so neighbours write different papers. Upload one PDF per version on the papers page."
+                  : "Everyone writes the same paper."}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -435,6 +458,7 @@ export default function SeatingPage() {
                 <Th>Student</Th>
                 <Th>Room</Th>
                 <Th>Seat</Th>
+                {showVersions && <Th>Version</Th>}
               </TableHead>
               <TableBody>
                 {preview.items.map((p) => (
@@ -446,6 +470,7 @@ export default function SeatingPage() {
                     </Td>
                     <Td>{p.building} <span className="font-mono text-xs text-ink-2">{p.room_number}</span></Td>
                     <Td className="font-mono text-xs font-medium">{p.seat_code}</Td>
+                    {showVersions && <Td className="font-semibold">{p.paper_version}</Td>}
                   </tr>
                 ))}
               </TableBody>
@@ -598,6 +623,7 @@ export default function SeatingPage() {
                 <Th>Name</Th>
                 <Th>Room</Th>
                 <Th>Seat</Th>
+                {showVersions && <Th>Version</Th>}
                 <Th>Method</Th>
               </TableHead>
               <TableBody>
@@ -608,6 +634,7 @@ export default function SeatingPage() {
                     <Td className="font-medium">{a.full_name}</Td>
                     <Td>{a.building} <span className="font-mono text-xs text-ink-2">{a.room_number}</span></Td>
                     <Td className="font-mono text-xs font-medium">{a.seat_code}</Td>
+                    {showVersions && <Td className="font-semibold">{a.paper_version}</Td>}
                     <Td><Badge variant={a.method === "MANUAL" ? "violet" : "default"}>{a.method.charAt(0) + a.method.slice(1).toLowerCase()}</Badge></Td>
                   </tr>
                 ))}

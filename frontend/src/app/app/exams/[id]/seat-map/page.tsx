@@ -593,6 +593,8 @@ function RoomCanvas({
   onSeatDragOver: (e: DragEvent, seat: SeatMapSeat) => void;
   onSeatDrop: (e: DragEvent, seat: SeatMapSeat) => void;
 }) {
+  // Paper versions are only worth showing when the room actually mixes them.
+  const showVersion = room.seats.some((s) => s.occupant && s.occupant.paper_version !== "A");
   const grid = useMemo(() => {
     const byRow = new Map<number, SeatMapSeat[]>();
     for (const seat of room.seats) {
@@ -663,6 +665,7 @@ function RoomCanvas({
                       {seat ? (
                         <SeatTile
                           seat={seat}
+                          showVersion={showVersion}
                           canEdit={canEdit}
                           carry={carry}
                           selected={seat.id === selectedSeatId}
@@ -723,8 +726,10 @@ function SeatTile({
   onDragEnd,
   onDragOver,
   onDrop,
+  showVersion = false,
 }: {
   seat: SeatMapSeat;
+  showVersion?: boolean;
   canEdit: boolean;
   carry: Carry | null;
   selected: boolean;
@@ -744,7 +749,7 @@ function SeatTile({
   const label = !seat.is_usable
     ? `${seat.seat_code}, not in use`
     : o
-      ? `${seat.seat_code}, ${o.full_name}, ${o.student_number}`
+      ? `${seat.seat_code}, ${o.full_name}, ${o.student_number}${showVersion ? `, version ${o.paper_version}` : ""}`
       : `${seat.seat_code}, empty`;
 
   return (
@@ -780,6 +785,9 @@ function SeatTile({
       <span className="flex items-center justify-between">
         <span className="tnum font-mono text-[10px] font-semibold text-ink-3">{seat.seat_code}</span>
         {isTarget && o && <ArrowLeftRight className="h-3 w-3 text-violet opacity-0 group-hover:opacity-100" />}
+        {!(isTarget && o) && o && showVersion && (
+          <span className="rounded bg-ink px-1 text-[9px] font-bold leading-[14px] text-surface">{o.paper_version}</span>
+        )}
       </span>
       {o ? (
         <span className="min-w-0">

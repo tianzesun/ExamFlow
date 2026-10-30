@@ -34,7 +34,9 @@ def upload_template(
     user_id: UUID,
     crowdmark_exam_id: str | None = None,
     crowdmark_url: str | None = None,
+    paper_version: str = "A",
 ) -> ExamTemplate:
+    """Store a new upload and make it the active paper for its version."""
     if len(content) > MAX_TEMPLATE_SIZE:
         raise ValueError(f"File too large (max {MAX_TEMPLATE_SIZE // (1024 * 1024)}MB)")
 
@@ -50,9 +52,10 @@ def upload_template(
     if existing:
         raise ValueError("This template already exists (identical file)")
 
-    # Archive current active template
+    # Replace the active upload for the same version; other versions keep theirs.
     current_active = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
+        ExamTemplate.paper_version == paper_version,
         ExamTemplate.is_active == True,  # noqa: E712
     ).first()
     if current_active:
@@ -80,6 +83,7 @@ def upload_template(
         file_size=len(content),
         file_hash=file_hash,
         version=next_version,
+        paper_version=paper_version,
         is_active=True,
         crowdmark_exam_id=crowdmark_exam_id,
         crowdmark_url=crowdmark_url,
@@ -95,6 +99,7 @@ def upload_template(
         new_values={
             "exam_id": str(exam_id),
             "version": next_version,
+            "paper_version": paper_version,
             "filename": filename,
             "file_size": len(content),
         },
@@ -113,9 +118,10 @@ def list_templates(db: Session, exam_id: UUID) -> list[ExamTemplate]:
     )
 
 
-def get_active_template(db: Session, exam_id: UUID) -> ExamTemplate | None:
+def get_active_template(db: Session, exam_id: UUID, paper_version: str = "A") -> ExamTemplate | None:
     return db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
+        ExamTemplate.paper_version == paper_version,
         ExamTemplate.is_active == True,  # noqa: E712
     ).first()
 
@@ -132,6 +138,7 @@ def activate_template(db: Session, template_id: UUID, user_id: UUID) -> ExamTemp
     # Deactivate current active
     current_active = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == template.exam_id,
+        ExamTemplate.paper_version == template.paper_version,
         ExamTemplate.is_active == True,  # noqa: E712
         ExamTemplate.id != template_id,
     ).first()

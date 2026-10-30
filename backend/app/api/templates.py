@@ -25,6 +25,7 @@ class TemplateResponse(BaseModel):
     file_hash: str
     template_type: str
     version: int
+    paper_version: str
     is_active: bool
     crowdmark_exam_id: str | None
     crowdmark_url: str | None
@@ -54,6 +55,7 @@ async def upload_template(
     file: UploadFile = File(...),
     crowdmark_exam_id: str | None = Form(None),
     crowdmark_url: str | None = Form(None),
+    paper_version: str = Form("A", pattern="^[ABCD]$"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
@@ -64,6 +66,7 @@ async def upload_template(
         template = template_service.upload_template(
             db, exam_id, file.filename or "unnamed.pdf", content, mime_type,
             user.id, crowdmark_exam_id=crowdmark_exam_id, crowdmark_url=crowdmark_url,
+            paper_version=paper_version,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -79,6 +82,7 @@ async def upload_template(
         file_hash=template.file_hash,
         template_type=template.template_type,
         version=template.version,
+        paper_version=template.paper_version,
         is_active=template.is_active,
         crowdmark_exam_id=template.crowdmark_exam_id,
         crowdmark_url=template.crowdmark_url,
@@ -105,6 +109,7 @@ def list_templates(
             file_hash=t.file_hash,
             template_type=t.template_type,
             version=t.version,
+            paper_version=t.paper_version,
             is_active=t.is_active,
             crowdmark_exam_id=t.crowdmark_exam_id,
             crowdmark_url=t.crowdmark_url,
@@ -168,6 +173,7 @@ def activate_template(
         file_hash=template.file_hash,
         template_type=template.template_type,
         version=template.version,
+        paper_version=template.paper_version,
         is_active=template.is_active,
         crowdmark_exam_id=template.crowdmark_exam_id,
         crowdmark_url=template.crowdmark_url,
@@ -202,6 +208,7 @@ def archive_template(
         file_hash=template.file_hash,
         template_type=template.template_type,
         version=template.version,
+        paper_version=template.paper_version,
         is_active=template.is_active,
         crowdmark_exam_id=template.crowdmark_exam_id,
         crowdmark_url=template.crowdmark_url,

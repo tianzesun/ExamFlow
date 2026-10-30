@@ -13,6 +13,8 @@ export interface Assignment {
   room_number: string;
   method: string;
   version: number;
+  /** Paper version (A–D) the student writes */
+  paper_version: string;
 }
 
 export interface AssignmentSummary {
@@ -65,6 +67,8 @@ export interface SeatingRules {
   spacing: "none" | "every_other_seat" | "every_other_seat_and_row";
   /** Students with accommodations sit here, and nobody else does */
   accommodation_room_id: string | null;
+  /** Paper versions (1–4) alternated by seat so neighbours write different papers */
+  versions: number;
 }
 
 export interface AssignmentPreview {
@@ -73,7 +77,7 @@ export interface AssignmentPreview {
   spaced_out_seats: number;
   accommodation_students: number;
   rules: SeatingRules;
-  items: { assignment_order: number; student_number: string; full_name: string; building: string; room_number: string; seat_code: string }[];
+  items: { assignment_order: number; student_number: string; full_name: string; building: string; room_number: string; seat_code: string; paper_version: string }[];
   has_more: boolean;
 }
 
@@ -133,6 +137,7 @@ export interface SeatOccupant {
   student_number: string;
   full_name: string;
   method: string;
+  paper_version: string;
 }
 
 export interface SeatMapSeat {

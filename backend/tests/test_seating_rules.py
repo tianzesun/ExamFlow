@@ -34,7 +34,7 @@ def _preview_order(exam_id: str) -> list[str]:
 def test_rules_default_and_round_trip():
     exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
     r = client.get(f"/api/exams/{exam_id}/assignments/rules", headers=INSTRUCTOR_HEADERS)
-    assert r.json() == {"order": "student_number", "spacing": "none", "accommodation_room_id": None}
+    assert r.json() == {"order": "student_number", "spacing": "none", "accommodation_room_id": None, "versions": 1}
     assert _rules(exam_id, order="name", spacing="every_other_seat").status_code == 200
     assert client.get(f"/api/exams/{exam_id}/assignments/rules", headers=ADMIN_HEADERS).json()["order"] == "name"
     assert _rules(exam_id, order="alphabetical").status_code == 422
