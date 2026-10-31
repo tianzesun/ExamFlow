@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/auth/context";
 import { getAllExams } from "@/lib/api/exams";
 import { getExamSummaries } from "@/lib/api/readiness";
 import { getCourses } from "@/lib/api/courses";
+import { errorReference } from "@/lib/api/client";
 import type { ExamSummary } from "@/lib/api/readiness";
 import type { Exam } from "@/lib/types";
 import { useNow } from "@/hooks/useNow";
@@ -189,19 +190,9 @@ function useDashboardData(courseId: string | null) {
       .then((next) => {
         if (!cancelled && next) setData(next);
       })
-      .catch(() => {
-        // On an unreachable backend, still render the seeded view so the app
-        // never appears broken to a first-time onlooker.
-        if (!cancelled) {
-          const visible = courseId
-            ? MOCK_EXAMS_FULL.filter((e) => e.course_id === courseId)
-            : MOCK_EXAMS_FULL;
-          setData({
-            exams: visible,
-            courses: MOCK_COURSES,
-            summaries: MOCK_SUMMARIES,
-          } as DashboardData);
-        }
+      .catch((err) => {
+        // Never show sample exams in place of real ones that failed to load.
+        if (!cancelled) setError(`Dashboard data couldn't be loaded.${errorReference(err)}`);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -219,12 +210,12 @@ function useDashboardData(courseId: string | null) {
   return { data, error, loading, reload, courses: data?.courses ?? [] };
 }
 
-function DataError({ onRetry }: { onRetry: () => void }) {
+function DataError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex h-full min-h-[280px] items-center justify-center">
       <div className="text-center">
         <AlertCircle className="mx-auto h-6 w-6 text-danger" />
-        <p className="mt-2 text-sm text-ink-2">Failed to load dashboard data</p>
+        <p className="mt-2 text-sm text-ink-2">{message}</p>
         <Button size="sm" variant="secondary" onClick={onRetry} className="mt-3">
           Retry
         </Button>
@@ -793,7 +784,7 @@ function DashboardWorkspace() {
     return (
       <PageContainer className="animate-fade-in space-y-6">
         <WorkspaceHeader exams={[]} onImported={reload} />
-        <DataError onRetry={reload} />
+        <DataError message={error} onRetry={reload} />
       </PageContainer>
     );
   }

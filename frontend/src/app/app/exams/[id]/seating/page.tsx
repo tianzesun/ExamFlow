@@ -64,6 +64,8 @@ export default function SeatingPage() {
   const [totalAssignments, setTotalAssignments] = useState(0);
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  // The query the list is filtered by; follows typing after a pause, so each keystroke doesn't reload the page.
+  const [appliedQuery, setAppliedQuery] = useState("");
   const [filterRoom, setFilterRoom] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,8 +96,8 @@ export default function SeatingPage() {
           getAllRooms(),
           getExamRooms(examId),
           getAssignmentSummary(examId),
-          getAssignments(examId, { page, page_size: 50, query: searchQuery || undefined, room_id: filterRoom || undefined }),
-          getSeatingRules(examId).catch(() => DEFAULT_RULES),
+          getAssignments(examId, { page, page_size: 50, query: appliedQuery || undefined, room_id: filterRoom || undefined }),
+          getSeatingRules(examId),
         ]);
         if (cancelled) return null;
         return { exam: e, rooms: r, examRooms: er, summary: s, assignments: a, rules: sr } as const;
@@ -118,12 +120,17 @@ export default function SeatingPage() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [examId, page, searchQuery, filterRoom]);
+  }, [examId, page, appliedQuery, filterRoom]);
 
   useEffect(() => {
     const cleanup = fetchAll();
     return cleanup;
   }, [fetchAll]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleAddRoom = async () => {
     if (!selectedAddRoom) return;
@@ -225,7 +232,11 @@ export default function SeatingPage() {
     }
   };
 
-  const handleSearch = () => { setPage(1); fetchAll(); };
+  const handleSearch = () => {
+    setPage(1);
+    if (searchQuery === appliedQuery) fetchAll();
+    else setAppliedQuery(searchQuery);
+  };
   const hasAssignments = (summary?.assigned_students ?? 0) > 0;
   const unseated = summary?.unassigned_students ?? 0;
   // Existing seats keep their version after the rule changes, so show the column while any differ.
@@ -583,7 +594,7 @@ export default function SeatingPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
               <Input type="text" placeholder="Search student #, name or seat…" value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 aria-label="Search assignments"
                 className="pl-8 sm:w-72" />
@@ -604,10 +615,10 @@ export default function SeatingPage() {
         {assignments.length === 0 ? (
           <EmptyState
             icon={<Armchair className="h-5 w-5 text-ink-3" />}
-            title={searchQuery || filterRoom ? "No matching assignments" : "No assignments yet"}
-            description={searchQuery || filterRoom ? "Try a different search or room filter." : "Preview and confirm a seating assignment to see it here."}
+            title={appliedQuery || filterRoom ? "No matching assignments" : "No assignments yet"}
+            description={appliedQuery || filterRoom ? "Try a different search or room filter." : "Preview and confirm a seating assignment to see it here."}
             action={
-              canEdit && !hasAssignments && examRooms.length > 0 && !(searchQuery || filterRoom) ? (
+              canEdit && !hasAssignments && examRooms.length > 0 && !(appliedQuery || filterRoom) ? (
                 <Button onClick={handlePreview} loading={previewing}>
                   <Sparkles className="h-4 w-4" /> Preview assignment
                 </Button>

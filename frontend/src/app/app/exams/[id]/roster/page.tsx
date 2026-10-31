@@ -118,10 +118,12 @@ export default function RosterPage() {
     try {
       await removeFromRoster(examId, studentId);
       notifyExamChanged();
-      getRoster(examId, page)
-        .then((res) => { setStudents(res.students); setTotal(res.total); })
-        .catch(() => {})
-        .finally(() => setLoading(false));
+      // Removing the only student on the last page moves back a page.
+      if (students.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        fetchRoster();
+      }
     } catch (err) {
       setError(`The student couldn't be removed. Try again.${errorReference(err)}`);
     }
@@ -276,7 +278,7 @@ export default function RosterPage() {
       {/* Roster table */}
       {loading ? (
         <PageLoader />
-      ) : students.length === 0 ? (
+      ) : total === 0 ? (
         <Card>
           <EmptyState
             icon={<Users className="h-5 w-5 text-ink-3" />}

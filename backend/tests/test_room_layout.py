@@ -112,3 +112,12 @@ def test_printed_seating_map_leaves_room_for_aisles():
     x = {w[4]: w[0] for w in page.get_text("words") if w[4] in ("A03", "A04", "A02")}
     assert x["A04"] - x["A03"] > x["A03"] - x["A02"], "the aisle widens the gap between seats 3 and 4"
     assert "B06" not in page.get_text()
+
+
+def test_capacity_of_a_room_with_a_layout_is_set_by_the_layout():
+    room = _create_room(20)
+    assert _save(room["id"], rows=4, columns=6, missing=[[4, 1]], blocked=[[1, 1]]).status_code == 200
+    r = client.patch(f"/api/rooms/{room['id']}", json={"capacity": 25}, headers=ADMIN_HEADERS)
+    assert r.status_code == 409
+    layout = _layout(room["id"])
+    assert len(layout["seats"]) == 23

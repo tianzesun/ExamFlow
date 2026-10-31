@@ -1,5 +1,4 @@
 import os
-import re
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -31,11 +30,6 @@ class GenerationResultResponse(BaseModel):
     generation_version: int
 
 
-def _sanitize_filename(filename: str) -> str:
-    safe = re.sub(r'[^\w\-_\. ]', '', filename)
-    safe = safe.replace('..', '')
-    return safe[:200] if safe else "download.pdf"
-
 
 def _verify_generated_ownership(db: Session, generated_exam_id: UUID, exam_id: UUID) -> GeneratedExam:
     ge = pdf_service.get_generated_exam(db, generated_exam_id)
@@ -66,6 +60,9 @@ def generate_exams(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
+    if generation_job_service.has_active_job(db, exam_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Papers are already being generated for this exam")
     try:
         result = pdf_service.generate_all_exams(db, exam_id, user.id)
     except ValueError as e:
@@ -194,9 +191,8 @@ def download_generated(
         with open(filepath, "rb") as f:
             yield from f
 
-    safe_name = _sanitize_filename(ge.file_name)
     return StreamingResponse(
         iterfile(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+        headers=attachment_headers(ge.file_name),
     )

@@ -52,16 +52,21 @@ export default function RoomsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useState<View>("grid");
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     Promise.all([getAllRooms(), getRoomUsage().catch(() => ({}))])
       .then(([roomsRes, u]) => {
         setRooms(roomsRes.rooms ?? []);
         setTotal(roomsRes.total ?? 0);
         setUsage(u);
+        setLoadError(null);
       })
-      .catch(() => {})
+      // An empty list here would read as "no rooms yet" and invite re-creating them.
+      .catch((err) => setLoadError(`Rooms couldn't be loaded. Try again in a moment.${errorReference(err)}`))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reloadKey]);
 
   const handleDelete = async (room: Room) => {
     if (!confirm(`Delete ${room.building} ${room.room_number}? This can't be undone.`)) return;
@@ -182,6 +187,19 @@ export default function RoomsPage() {
                 <Skeleton key={i} className="h-[120px] w-full rounded-xl" />
               ))}
             </div>
+          </div>
+        ) : loadError ? (
+          <div className="surface-card">
+            <EmptyState
+              icon={<DoorOpen className="h-5 w-5 text-ink-3" />}
+              title="Rooms couldn't be loaded"
+              description={loadError}
+              action={
+                <Button variant="secondary" onClick={() => { setLoading(true); setReloadKey((k) => k + 1); }}>
+                  Retry
+                </Button>
+              }
+            />
           </div>
         ) : rooms.length === 0 ? (
           <div className="surface-card">

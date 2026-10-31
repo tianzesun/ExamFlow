@@ -99,6 +99,8 @@ export default function AdministrationPage() {
       const result = await generatePackage(examId);
       notifyExamChanged();
       setPackageInfo(result);
+      // Building the package creates any missing QR codes, so readiness has changed.
+      fetchData();
     } catch (err) {
       setError(`The package couldn't be generated. Try again.${errorReference(err)}`);
     } finally {

@@ -274,7 +274,7 @@ def preview_paper(db: Session, exam_id: UUID) -> bytes:
         db.query(Room).join(ExamRoom, ExamRoom.room_id == Room.id)
         .filter(ExamRoom.exam_id == exam_id).order_by(Room.building, Room.room_number).first()
     )
-    seats = db.query(Seat).filter(Seat.room_id == room.id).all() if room else []
+    seats = db.query(Seat).filter(Seat.room_id == room.id, Seat.is_usable).all() if room else []
     seat = min(seats, key=seat_order) if seats else SimpleNamespace(seat_code="A01")
     room = room or SimpleNamespace(building="Room", room_number="TBD")
     # A long name shows whether the stamp has room for real ones.
@@ -332,7 +332,7 @@ def generate_all_exams(
 
     templates = {v: _load_active_template(db, exam_id, v) for v in sorted({a.paper_version for a, *_ in assignments})}
     # Print the version only when the exam has several, so single-version papers look as before.
-    show_version = assignment_service.get_rules(db, exam_id).versions > 1 or len(templates) > 1
+    show_version = paper_state.shows_version(db, exam_id)
 
     # Determine generation version
     max_version = db.query(func.max(GeneratedExam.generation_version)).filter(
@@ -376,6 +376,7 @@ def generate_all_exams(
                 file_hash=file_hash,
                 status="GENERATED",
                 generation_version=new_version,
+                version_shown=show_version,
                 qr_token=qr_token,
                 qr_generated_at=utcnow(),
                 created_by=user_id,
@@ -389,12 +390,14 @@ def generate_all_exams(
         if on_progress:
             on_progress(done, len(assignments))
 
-    # Check for failures
-    if failed_count > 0:
-        # Rollback: delete any files we just created
+    def remove_written_files() -> None:
         for ge in generated_objects:
             if os.path.exists(ge.storage_key):
                 os.remove(ge.storage_key)
+
+    # Check for failures
+    if failed_count > 0:
+        remove_written_files()
         raise ValueError(
             f"Generation failed for {failed_count} student(s). "
             f"First failure near student: {failed_student}"
@@ -424,7 +427,13 @@ def generate_all_exams(
             "only_changed": only_changed,
         },
     ))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        # e.g. another run took the same generation version; its papers stand, ours were never saved.
+        db.rollback()
+        remove_written_files()
+        raise
 
     return {
         "generated": generated_count,
@@ -565,9 +574,11 @@ def build_print_file(
     data = out.tobytes(garbage=1, deflate=True)
     out.close()
 
-    now = utcnow()
-    for ge, *_ in papers:
-        ge.printed_at = ge.printed_at or now
+    # Archived exams are final, so a reprint is recorded in the audit log but doesn't touch the papers.
+    if exam.status != "ARCHIVED":
+        now = utcnow()
+        for ge, *_ in papers:
+            ge.printed_at = ge.printed_at or now
 
     db.add(AuditLog(
         user_id=user_id,

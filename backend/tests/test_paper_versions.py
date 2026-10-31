@@ -155,3 +155,60 @@ def test_bad_version_letter_is_rejected():
     assert r.status_code == 422
     rules = {"order": "student_number", "spacing": "none", "accommodation_room_id": None, "versions": 5}
     assert client.put(f"/api/exams/{exam_id}/assignments/rules", json=rules, headers=ADMIN_HEADERS).status_code == 422
+
+
+def test_switching_to_several_versions_dates_every_paper():
+    exam_id, _, _ = _create_exam_with_students(student_count=4, capacity=10)
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).status_code == 200
+    _upload(exam_id, "PAPER-ONE")
+    _generate(exam_id)
+    assert all("VERSION" not in t for t in _paper_texts(exam_id).values())
+
+    rules = {"order": "student_number", "spacing": "none", "accommodation_room_id": None, "versions": 2}
+    assert client.put(f"/api/exams/{exam_id}/assignments/rules", json=rules, headers=ADMIN_HEADERS).status_code == 200
+    assert client.post(f"/api/exams/{exam_id}/assignments/regenerate", headers=ADMIN_HEADERS).status_code == 200
+    _upload(exam_id, "PAPER-TWO", version="B")
+    status = client.get(f"/api/exams/{exam_id}/generated/status", headers=ADMIN_HEADERS).json()
+    assert status["up_to_date"] == 0
+
+    _generate(exam_id)
+    assert all("VERSION" in t for t in _paper_texts(exam_id).values())
+
+
+def test_template_with_a_non_latin_name_downloads():
+    exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
+    r = client.post(
+        f"/api/exams/{exam_id}/templates",
+        files={"file": ("期末考试 Łódź.pdf", _template("X"), "application/pdf")},
+        data={"paper_version": "A"},
+        headers=ADMIN_HEADERS,
+    )
+    assert r.status_code == 201, r.text
+    r = client.get(f"/api/exams/{exam_id}/templates/{r.json()['id']}/download", headers=ADMIN_HEADERS)
+    assert r.status_code == 200
+    assert "filename*=UTF-8''" in r.headers["content-disposition"]
+
+
+def test_full_generation_waits_for_a_running_job():
+    exam_id = _versioned_exam(students=2)
+    _upload(exam_id, "PAPER-ONE")
+    _upload(exam_id, "PAPER-TWO", version="B")
+    with mock.patch.object(generation_job_service, "run_job"):
+        assert client.post(f"/api/exams/{exam_id}/generated/jobs", headers=ADMIN_HEADERS).status_code == 202
+    assert client.post(f"/api/exams/{exam_id}/generated", headers=ADMIN_HEADERS).status_code == 409
+
+
+def test_readiness_fails_when_the_paper_file_is_gone():
+    import os
+
+    from app.database import SessionLocal
+    from app.models.exam_template import ExamTemplate
+    from app.services.template_service import get_template_path
+
+    exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
+    template_id = _upload(exam_id, "PAPER-ONE")["id"]
+    with SessionLocal() as db:
+        os.remove(get_template_path(db.get(ExamTemplate, template_id)))
+    readiness = client.get(f"/api/exams/{exam_id}/readiness", headers=ADMIN_HEADERS).json()
+    check = next(c for c in readiness["checks"] if c["name"] == "template")
+    assert check["status"] == "FAIL" and "missing" in check["message"]

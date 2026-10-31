@@ -239,3 +239,35 @@ def test_regenerate_increments_version():
     assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).json()["version"] == 1
     response = client.post(f"/api/exams/{exam_id}/assignments/regenerate", headers=ADMIN_HEADERS)
     assert response.json()["version"] == 2
+
+
+def test_assign_rejects_seat_outside_exam_rooms():
+    exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
+    student_id = client.get(f"/api/exams/{exam_id}/assignments/unassigned", headers=ADMIN_HEADERS).json()[
+        "students"][0]["student_id"]
+    other_seat = client.get(f"/api/rooms/{_create_room(5)['id']}/seats", headers=ADMIN_HEADERS).json()[0]
+
+    response = client.post(
+        f"/api/exams/{exam_id}/assignments",
+        json={"student_id": student_id, "seat_id": other_seat["id"]},
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 400
+
+
+def test_deactivated_room_gets_no_students():
+    exam_id, room_id, _ = _create_exam_with_students(student_count=2, capacity=5)
+    assert client.patch(f"/api/rooms/{room_id}", json={"is_active": False}, headers=ADMIN_HEADERS).status_code == 200
+
+    response = client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS)
+    assert response.status_code == 400
+    summary = client.get(f"/api/exams/{exam_id}/assignments/summary", headers=ADMIN_HEADERS).json()
+    assert summary["assigned_students"] == 0
+
+
+def test_changes_to_a_missing_exam_are_not_found():
+    missing = uuid.uuid4()
+    room = _create_room(5)
+    for path, body in [("rooms", {"room_id": room["id"]}), ("confirm", None), ("preview", None)]:
+        response = client.post(f"/api/exams/{missing}/assignments/{path}", json=body, headers=ADMIN_HEADERS)
+        assert response.status_code == 404, (path, response.text)

@@ -99,3 +99,16 @@ def test_database_rejects_invalid_exam_status():
             db.rollback()
     finally:
         db.close()
+
+
+def test_import_accepts_short_and_long_rows():
+    exam_id, _, _ = _create_exam_with_students(student_count=0, capacity=5)
+    a, b = (f"8{uuid.uuid4().int % 10**8:08d}" for _ in range(2))
+    csv_text = f"student_number,name,email\n{a},Short Row\n{b},Long Row,long@example.invalid,extra\n"
+    response = client.post(
+        f"/api/exams/{exam_id}/roster/import/confirm",
+        files={"file": ("roster.csv", csv_text, "text/csv")},
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["imported"] == 2

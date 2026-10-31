@@ -9,12 +9,34 @@ generating and printing again.
 
 from uuid import UUID
 
-from sqlalchemy import func, not_, select
+from sqlalchemy import Integer, cast, func, not_, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
+
+# Papers carry a VERSION badge while the exam uses several versions, or anyone still sits at a seat
+# given another version. Switching between one and several versions therefore dates every paper.
+_shows_version = or_(
+    select(Exam.id).where(
+        Exam.id == GeneratedExam.exam_id,
+        func.coalesce(cast(Exam.seating_rules["versions"].astext, Integer), 1) > 1,
+    ).correlate(GeneratedExam).exists(),
+    select(ExamAssignment.id).where(
+        ExamAssignment.exam_id == GeneratedExam.exam_id, ExamAssignment.paper_version != "A",
+    ).correlate(GeneratedExam).exists(),
+)
+
+
+def shows_version(db: Session, exam_id: UUID) -> bool:
+    """Whether papers made now for this exam carry a VERSION badge; matches _shows_version."""
+    versions = (db.query(Exam.seating_rules).filter(Exam.id == exam_id).scalar() or {}).get("versions") or 1
+    return versions > 1 or db.query(ExamAssignment.id).filter(
+        ExamAssignment.exam_id == exam_id, ExamAssignment.paper_version != "A"
+    ).first() is not None
+
 
 # Correlated to the paper explicitly, so it still works in queries that also join seats or templates.
 # The student must still hold the seat printed on the paper, and the paper's template must be the
@@ -27,6 +49,7 @@ _matches = (
         ExamAssignment.seat_id == GeneratedExam.seat_id,
         ExamTemplate.is_active == True,  # noqa: E712
         ExamTemplate.paper_version == ExamAssignment.paper_version,
+        or_(GeneratedExam.version_shown.is_(None), GeneratedExam.version_shown == _shows_version),
     )
     .correlate(GeneratedExam)
     .exists()

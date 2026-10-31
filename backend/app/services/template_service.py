@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.exam import Exam
 from app.models.exam_template import ExamTemplate
 
 PDF_MIME = "application/pdf"
@@ -23,6 +24,13 @@ def _safe_stored_name() -> str:
 
 def validate_pdf_header(content: bytes) -> bool:
     return content[:5] == b"%PDF-"
+
+
+def _lock_exam(db: Session, exam_id: UUID) -> None:
+    """Serialise template changes per exam, so two uploads at once (say A and B) can't take the
+    same revision number or leave two active papers for one version."""
+    if not db.query(Exam.id).filter(Exam.id == exam_id).with_for_update().first():
+        raise ValueError("Exam not found")
 
 
 def upload_template(
@@ -44,6 +52,7 @@ def upload_template(
         raise ValueError("Only valid PDF files are supported")
 
     file_hash = hashlib.sha256(content).hexdigest()
+    _lock_exam(db, exam_id)
 
     existing = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
@@ -90,12 +99,18 @@ def upload_template(
         created_by=user_id,
     )
     db.add(template)
+    try:
+        db.flush()
+    except Exception:
+        db.rollback()
+        os.remove(filepath)
+        raise
 
     db.add(AuditLog(
         user_id=user_id,
         action="EXAM_TEMPLATE_UPLOADED",
         entity_type="exam_template",
-        entity_id=None,
+        entity_id=template.id,
         new_values={
             "exam_id": str(exam_id),
             "version": next_version,
@@ -134,6 +149,7 @@ def activate_template(db: Session, template_id: UUID, user_id: UUID) -> ExamTemp
     template = db.query(ExamTemplate).filter(ExamTemplate.id == template_id).first()
     if not template:
         raise ValueError("Template not found")
+    _lock_exam(db, template.exam_id)
 
     # Deactivate current active
     current_active = db.query(ExamTemplate).filter(

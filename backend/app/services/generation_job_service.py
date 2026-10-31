@@ -41,6 +41,13 @@ def _expire_stale(db: Session, exam_id: UUID) -> None:
         db.commit()
 
 
+def has_active_job(db: Session, exam_id: UUID) -> bool:
+    _expire_stale(db, exam_id)
+    return db.query(GenerationJob.id).filter(
+        GenerationJob.exam_id == exam_id, GenerationJob.status.in_(ACTIVE_STATUSES)
+    ).first() is not None
+
+
 def get_latest_job(db: Session, exam_id: UUID) -> GenerationJob | None:
     _expire_stale(db, exam_id)
     return (
@@ -117,7 +124,16 @@ def run_job(job_id: UUID) -> None:
             job.status = "SUCCEEDED"
             job.generated = result["generated"]
             job.generation_version = result["generation_version"]
-            sync_exam_status(db, job.exam_id, job.created_by)
+            try:
+                sync_exam_status(db, job.exam_id, job.created_by)
+            except Exception:
+                # The papers are saved; a status refresh failing must not leave the job running.
+                db.rollback()
+                logger.exception("Exam status refresh after generation job %s failed", job_id)
+                job = db.get(GenerationJob, job_id)
+                job.status = "SUCCEEDED"
+                job.generated = result["generated"]
+                job.generation_version = result["generation_version"]
         job.finished_at = utcnow()
         db.commit()
     finally:

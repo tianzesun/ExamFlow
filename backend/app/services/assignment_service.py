@@ -207,8 +207,8 @@ def _order_students(students: list[tuple[ExamStudent, Student]], rules: SeatingR
 
 
 def _free_seats(db: Session, exam_id: UUID) -> list[tuple[Seat, Room]]:
-    """Usable seats nobody holds yet, room by room, front row first."""
-    rooms = get_exam_rooms(db, exam_id)
+    """Usable seats nobody holds yet, room by room, front row first. Rooms since deactivated are skipped."""
+    rooms = [room for room in get_exam_rooms(db, exam_id) if room.is_active]
     if not rooms:
         return []
     position = {room.id: i for i, room in enumerate(rooms)}
@@ -511,10 +511,11 @@ def search_assignments(
         .all()
     )
 
+    first = (page - 1) * page_size + 1
     return [
         {
             "id": str(a.id),
-            "assignment_order": a.version,
+            "assignment_order": first + i,
             "student_id": str(s.id),
             "student_number": s.student_number,
             "full_name": s.full_name,
@@ -527,7 +528,7 @@ def search_assignments(
             "version": a.version,
             "paper_version": a.paper_version,
         }
-        for a, s, seat, room in results
+        for i, (a, s, seat, room) in enumerate(results)
     ], total
 
 
@@ -565,6 +566,8 @@ def assign_student(
     seat = db.query(Seat).filter(Seat.id == seat_id, Seat.is_usable).first()
     if not seat:
         raise ValueError("Seat not found or not usable")
+    if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == seat.room_id).first():
+        raise ValueError("Seat is not in a room selected for this exam")
 
     # Use current max version for this exam
     max_version = db.query(func.max(ExamAssignment.version)).filter(
@@ -580,6 +583,7 @@ def assign_student(
         paper_version=version_for_seat(seat, get_rules(db, exam_id)),
     )
     db.add(assignment)
+    db.flush()
 
     student = db.query(Student).filter(Student.id == student_id).first()
     db.add(AuditLog(

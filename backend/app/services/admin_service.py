@@ -326,10 +326,10 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
     if not exam:
         raise ValueError("Exam not found")
 
-    template = db.query(ExamTemplate).filter(
+    templates = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
         ExamTemplate.is_active == True,  # noqa: E712
-    ).first()
+    ).order_by(ExamTemplate.paper_version).all()
 
     student_count = db.query(func.count(ExamStudent.id)).filter(ExamStudent.exam_id == exam_id).scalar() or 0
     assignment_count = db.query(func.count(ExamAssignment.id)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0
@@ -360,7 +360,9 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
         ("Students Assigned", str(assignment_count)),
         ("Rooms", str(room_count)),
         ("", ""),
-        ("Template", f"v{template.version}" if template else "None"),
+        ("Template", ", ".join(
+            f"{t.paper_version} v{t.version}" if len(templates) > 1 else f"v{t.version}" for t in templates
+        ) or "None"),
         ("Personalized Exams", str(doc_count)),
         ("", ""),
         ("Generated", utcnow().strftime("%Y-%m-%d %H:%M UTC")),

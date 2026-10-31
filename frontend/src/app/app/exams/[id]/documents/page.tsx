@@ -59,6 +59,10 @@ export default function DocumentsPage() {
   const [doubleSided, setDoubleSided] = useState(false);
   // Id of a job started or seen running on this visit; only its outcome is announced.
   const watchedJobId = useRef<string | null>(null);
+  // Bumped when a poll fails, so polling carries on after a dropped request.
+  const [pollRetry, setPollRetry] = useState(0);
+  // The print scope is defaulted once; after that it is the user's choice.
+  const printScopeDefaulted = useRef(false);
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
@@ -89,8 +93,11 @@ export default function DocumentsPage() {
           setPaperStatus(next.paperStatus);
           setPaperVersions(next.versions);
           // Once some papers have gone to print, default to printing only the new ones.
-          if (next.paperStatus && next.paperStatus.not_printed > 0 && next.paperStatus.not_printed < next.paperStatus.up_to_date) {
-            setPrintScope("new");
+          if (next.paperStatus && !printScopeDefaulted.current) {
+            printScopeDefaulted.current = true;
+            if (next.paperStatus.not_printed > 0 && next.paperStatus.not_printed < next.paperStatus.up_to_date) {
+              setPrintScope("new");
+            }
           }
         }
       })
@@ -138,10 +145,10 @@ export default function DocumentsPage() {
             setError(latest.error ?? "Papers could not be generated. Try again in a moment.");
           }
         })
-        .catch(() => {});
+        .catch(() => setPollRetry((n) => n + 1));
     }, 1000);
     return () => clearTimeout(timer);
-  }, [job, jobActive, examId, fetchData]);
+  }, [job, jobActive, examId, fetchData, pollRetry]);
 
   const handleValidate = async () => {
     setError(null);
@@ -226,7 +233,7 @@ export default function DocumentsPage() {
         </p>
       </div>
 
-      <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} versions={paperVersions} />
+      <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} onUploaded={fetchData} versions={paperVersions} />
 
       {error && (
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -476,7 +483,7 @@ export default function DocumentsPage() {
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
               <Input type="text" placeholder="Search student # or name…" value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                 onKeyDown={(e) => e.key === "Enter" && fetchData()}
                 aria-label="Search documents"
                 className="pl-8 md:w-72" />

@@ -25,11 +25,14 @@ export function TemplateCard({
   examId,
   canEdit,
   onChange,
+  onUploaded,
   versions = 1,
 }: {
   examId: string;
   canEdit: boolean;
   onChange?: (templates: ExamTemplate[]) => void;
+  /** After an upload or activation, which can leave papers out of date */
+  onUploaded?: () => void;
   /** Number of paper versions the seating rules alternate between */
   versions?: number;
 }) {
@@ -62,6 +65,7 @@ export function TemplateCard({
   const changed = async () => {
     await load();
     notifyExamChanged();
+    onUploaded?.();
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

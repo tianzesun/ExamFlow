@@ -1,5 +1,4 @@
 import os
-import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -12,6 +11,7 @@ from app.database import get_db
 from app.models.user import User
 from app.services import template_service
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
+from app.utils import attachment_headers
 
 router = APIRouter(tags=["templates"], dependencies=[Depends(block_writes_to_archived_exam)])
 
@@ -31,11 +31,6 @@ class TemplateResponse(BaseModel):
     crowdmark_url: str | None
     created_at: str | None
 
-
-def _sanitize_filename(filename: str) -> str:
-    safe = re.sub(r'[^\w\-_\. ]', '', filename)
-    safe = safe.replace('..', '')
-    return safe[:200] if safe else "download.pdf"
 
 
 def _verify_template_ownership(db: Session, template_id: UUID, exam_id: UUID):
@@ -138,11 +133,10 @@ def download_template(
         with open(filepath, "rb") as f:
             yield from f
 
-    safe_name = _sanitize_filename(template.original_filename)
     return StreamingResponse(
         iterfile(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+        headers=attachment_headers(template.original_filename),
     )
 
 

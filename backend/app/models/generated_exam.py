@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -37,6 +38,8 @@ class GeneratedExam(Base):
     qr_generated_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), nullable=False, default="GENERATED")
     generation_version = Column(Integer, nullable=False, default=1)
+    # Whether the paper carries a VERSION badge. Unknown (NULL) for papers made before this was recorded.
+    version_shown = Column(Boolean, nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

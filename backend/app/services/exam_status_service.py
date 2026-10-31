@@ -61,7 +61,7 @@ READ_ONLY_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
 def block_writes_to_archived_exam(request: Request, db: Session = Depends(get_db)) -> None:
-    """Router dependency: archived exams are final, so refuse any change to their data."""
+    """Router dependency: refuse changes to exams that don't exist, and to archived exams, which are final."""
     exam_id = request.path_params.get("exam_id")
     if request.method in READ_ONLY_METHODS or not exam_id:
         return
@@ -70,5 +70,7 @@ def block_writes_to_archived_exam(request: Request, db: Session = Depends(get_db
     except ValueError:
         return  # let the route's own validation reject it
     status = db.query(Exam.status).filter(Exam.id == exam_uuid).scalar()
+    if status is None:
+        raise HTTPException(status_code=404, detail="Exam not found")
     if status == "ARCHIVED":
         raise HTTPException(status_code=409, detail="This exam is archived and can no longer be changed.")

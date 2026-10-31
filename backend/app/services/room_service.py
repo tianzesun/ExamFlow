@@ -178,6 +178,8 @@ def update_room(
         old_values["room_number"] = room.room_number
         room.room_number = room_number
     if capacity is not None and capacity != room.capacity:
+        if room.layout:
+            raise ValueError("This room has a seat layout. Change its size on the room's layout instead.")
         old_values["capacity"] = room.capacity
         _sync_seats(db, room, capacity)
         room.capacity = capacity

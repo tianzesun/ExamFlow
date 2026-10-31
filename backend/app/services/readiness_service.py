@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -9,7 +10,7 @@ from app.models.exam_room import ExamRoom
 from app.models.exam_student import ExamStudent
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
-from app.services import paper_state
+from app.services import paper_state, template_service
 
 
 @dataclass
@@ -74,7 +75,12 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
     }
     needed = {v for (v,) in db.query(ExamAssignment.paper_version).filter(ExamAssignment.exam_id == exam_id).distinct()}
     missing = sorted((needed or {"A"}) - set(active))
-    if missing and needed - {"A"}:
+    # Generation reads the file, so an upload whose file is gone counts as missing too.
+    lost = sorted(v for v, t in active.items() if not os.path.exists(template_service.get_template_path(t)))
+    if lost and not missing:
+        template_message = f"The uploaded paper file is missing for version {', '.join(lost)}. Upload it again."
+        missing = lost
+    elif missing and needed - {"A"}:
         template_message = f"No paper uploaded for version {', '.join(missing)}"
     elif missing:
         template_message = "No active template"
@@ -160,10 +166,11 @@ def get_exam_summary(db: Session, exam_id: UUID) -> dict:
         *paper_state.UP_TO_DATE,
     ).scalar() or 0
 
+    # With several paper versions, report version A's upload.
     active_template = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
         ExamTemplate.is_active == True,  # noqa: E712
-    ).first()
+    ).order_by(ExamTemplate.paper_version).first()
 
     return {
         "roster_count": roster_count,
@@ -198,6 +205,7 @@ def get_exam_summaries(db: Session, exam_ids: list[UUID]) -> dict[str, dict]:
     templates = dict(
         db.query(ExamTemplate.exam_id, ExamTemplate.version)
         .filter(ExamTemplate.exam_id.in_(exam_ids), ExamTemplate.is_active == True)  # noqa: E712
+        .order_by(ExamTemplate.paper_version.desc())  # dict() keeps the last row, so version A's upload
         .all()
     )
     return {

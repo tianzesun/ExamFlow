@@ -1,5 +1,6 @@
 import csv
 import io
+import os
 from uuid import UUID
 
 from sqlalchemy import func
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.models.exam_student import ExamStudent
+from app.models.generated_exam import GeneratedExam
 from app.models.student import Student
 from app.utils import utcnow
 
@@ -15,7 +17,8 @@ def parse_csv(file_content: str) -> list[dict]:
     reader = csv.DictReader(io.StringIO(file_content))
     rows = []
     for row in reader:
-        normalized = {k.strip().lower().replace(" ", "_"): v.strip() for k, v in row.items()}
+        # Short rows give None values and long rows put the extras under a None key.
+        normalized = {k.strip().lower().replace(" ", "_"): (v or "").strip() for k, v in row.items() if k}
         rows.append(normalized)
     return rows
 
@@ -188,6 +191,8 @@ def remove_from_roster(db: Session, exam_id: UUID, student_id: UUID, user_id: UU
     if not es:
         return False
 
+    # The papers go with the roster entry (cascade); their files hold the student's name, so remove them too.
+    paper_files = [key for (key,) in db.query(GeneratedExam.storage_key).filter(GeneratedExam.exam_student_id == es.id)]
     db.delete(es)
     db.add(AuditLog(
         user_id=user_id,
@@ -197,6 +202,9 @@ def remove_from_roster(db: Session, exam_id: UUID, student_id: UUID, user_id: UU
         old_values={"student_id": str(student_id)},
     ))
     db.commit()
+    for path in paper_files:
+        if os.path.exists(path):
+            os.remove(path)
     return True
 
 
