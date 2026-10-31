@@ -28,10 +28,10 @@ logger = logging.getLogger("examflow")
 settings = get_settings()
 
 # Production safety check
-if settings.APP_ENV == "production" and settings.AUTH_DEV_MODE:
+if settings.AUTH_DEV_MODE and not settings.is_dev_environment:
     raise RuntimeError(
-        "AUTH_DEV_MODE cannot be enabled in production. "
-        "Set AUTH_DEV_MODE=false in production environment."
+        f"AUTH_DEV_MODE cannot be enabled when APP_ENV={settings.APP_ENV!r}. "
+        "Set AUTH_DEV_MODE=false, or use a development APP_ENV (development, test, pilot)."
     )
 
 # Validate production settings at startup
@@ -55,17 +55,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["*"],
-    # Content-Disposition carries the download file name the browser should save as.
-    expose_headers=["X-Request-Id", "Content-Disposition"],
-)
-
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
@@ -73,7 +62,13 @@ async def security_headers_middleware(request: Request, call_next):
     request.state.request_id = request_id
     start = time.monotonic()
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Answer here rather than in the exception handler, which runs outside this middleware and
+        # CORS: the browser could then not read the response or its X-Request-Id reference.
+        logger.exception("Unhandled error path=%s request_id=%s", request.url.path, request_id)
+        response = _internal_error(request_id)
     duration_ms = round((time.monotonic() - start) * 1000, 1)
 
     response.headers["X-Request-Id"] = request_id
@@ -83,7 +78,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
-    if settings.APP_ENV == "production":
+    if not settings.is_dev_environment:
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
 
     # CSP - without unsafe-inline/unsafe-eval where possible
@@ -112,10 +107,7 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-    logger.error("Unhandled error: %s path=%s request_id=%s", exc, request.url.path, request_id)
+def _internal_error(request_id: str) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content={
@@ -123,6 +115,26 @@ async def global_exception_handler(request: Request, exc: Exception):
             "request_id": request_id,
         },
     )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    logger.exception("Unhandled error path=%s request_id=%s", request.url.path, request_id)
+    return _internal_error(request_id)
+
+
+# Added last so it is the outermost layer: error responses get CORS headers too.
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["*"],
+    # Content-Disposition carries the download file name the browser should save as.
+    expose_headers=["X-Request-Id", "Content-Disposition"],
+)
 
 
 # Include routers

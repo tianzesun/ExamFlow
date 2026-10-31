@@ -49,7 +49,7 @@ export async function createCourse(data: {
 
 export async function updateCourse(
   id: string,
-  data: { course_code?: string; course_name?: string; department?: string }
+  data: { course_code?: string; course_name?: string; department?: string | null }
 ): Promise<Course> {
   return fetchApi<Course>(`/api/courses/${id}`, {
     method: "PATCH",

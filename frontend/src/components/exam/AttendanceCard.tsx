@@ -24,9 +24,12 @@ export function AttendanceCard({ examId, canMark }: { examId: string; canMark: b
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["key"]>("ALL");
   const [busy, setBusy] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    getFullRoster(examId).then(setStudents).catch(() => setStudents([]));
+    getFullRoster(examId)
+      .then(setStudents)
+      .catch((err) => setLoadError(`The roster couldn't be loaded. Reload the page to try again.${errorReference(err)}`));
   }, [examId]);
 
   const counts = useMemo(() => {
@@ -117,7 +120,9 @@ export function AttendanceCard({ examId, canMark }: { examId: string; canMark: b
         </div>
       </div>
 
-      {students === null ? (
+      {loadError ? (
+        <p className="px-5 py-10 text-center text-sm text-danger">{loadError}</p>
+      ) : students === null ? (
         <div className="space-y-2 p-5">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
         </div>

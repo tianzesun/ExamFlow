@@ -92,3 +92,17 @@ def test_dev_login_invalid_token():
         json={"token": "invalid-token"},
     )
     assert response.status_code == 401
+
+
+def test_dev_tokens_only_work_in_a_development_environment():
+    from unittest import mock
+
+    from app.config import get_settings
+
+    for env in ("prod", "Production", "staging"):
+        with mock.patch.object(get_settings(), "APP_ENV", env):
+            r = client.get("/api/auth/me", headers={"Authorization": "Bearer dev-admin-token"})
+            assert r.status_code == 401, env
+            assert client.get("/api/auth/dev-tokens").status_code == 403, env
+    with mock.patch.object(get_settings(), "APP_ENV", "Development"):
+        assert client.get("/api/auth/me", headers={"Authorization": "Bearer dev-admin-token"}).status_code == 200

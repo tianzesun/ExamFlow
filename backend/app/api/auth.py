@@ -40,13 +40,7 @@ def dev_login(request: DevLoginRequest, db: Session = Depends(get_db)) -> User:
     """Development login endpoint.
     In production, this would be replaced by OIDC callback.
     """
-    if settings.APP_ENV == "production":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Development login not available in production",
-        )
-
-    if not settings.AUTH_DEV_MODE:
+    if not settings.dev_auth_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Development authentication is disabled",
@@ -73,13 +67,7 @@ def get_dev_tokens():
     """Get available development tokens.
     Only available in development mode.
     """
-    if settings.APP_ENV == "production":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not available in production",
-        )
-
-    if not settings.AUTH_DEV_MODE:
+    if not settings.dev_auth_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Development authentication is disabled",

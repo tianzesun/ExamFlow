@@ -1,7 +1,9 @@
 import csv
 import html
 import io
+import logging
 import os
+import re
 import secrets
 import zipfile
 from uuid import UUID
@@ -22,6 +24,8 @@ from app.models.seat import Seat
 from app.models.student import Student
 from app.services import paper_state, room_service
 from app.utils import utcnow
+
+logger = logging.getLogger(__name__)
 
 # ── QR Code Generation ──────────────────────────────────────
 
@@ -161,15 +165,31 @@ def seat_order(seat: Seat) -> tuple:
 
 # ── Signature List PDF ──────────────────────────────────────
 
+def _exam_room(db: Session, exam_id: UUID, room_id: UUID) -> tuple[Exam, Room]:
+    """The exam and one of its rooms; LookupError when either is missing or the room isn't the exam's."""
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise LookupError("Exam not found")
+    room = (
+        db.query(Room).join(ExamRoom, ExamRoom.room_id == Room.id)
+        .filter(Room.id == room_id, ExamRoom.exam_id == exam_id).first()
+    )
+    if not room:
+        raise LookupError("Room not found for this exam")
+    return exam, room
+
+
+def _zip_part(text: str) -> str:
+    """A safe file or folder name inside the package: no separators, no "..", nothing exotic."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip(".-")[:80] or "untitled"
+
+
 def generate_signature_list_pdf(
     db: Session,
     exam_id: UUID,
     room_id: UUID,
 ) -> bytes:
-    exam = db.query(Exam).filter(Exam.id == exam_id).first()
-    room = db.query(Room).filter(Room.id == room_id).first()
-    if not exam or not room:
-        raise ValueError("Exam or room not found")
+    exam, room = _exam_room(db, exam_id, room_id)
 
     seated = sorted(_seated_students(db, exam_id, room_id), key=lambda r: seat_order(r[1]))
     if _has_versions(db, exam_id):
@@ -196,7 +216,7 @@ def seating_list_rows(db: Session, exam_id: UUID) -> list[tuple[Student, Seat, R
 def generate_seating_list_pdf(db: Session, exam_id: UUID) -> bytes:
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise ValueError("Exam not found")
+        raise LookupError("Exam not found")
     rows = seating_list_rows(db, exam_id)
     if not rows:
         raise ValueError("No students have seats yet")
@@ -237,10 +257,7 @@ def generate_seating_map_pdf(
     exam_id: UUID,
     room_id: UUID,
 ) -> bytes:
-    exam = db.query(Exam).filter(Exam.id == exam_id).first()
-    room = db.query(Room).filter(Room.id == room_id).first()
-    if not exam or not room:
-        raise ValueError("Exam or room not found")
+    exam, room = _exam_room(db, exam_id, room_id)
 
     seats = db.query(Seat).filter(Seat.room_id == room_id).order_by(Seat.row_number, Seat.column_number).all()
 
@@ -324,7 +341,7 @@ def generate_seating_map_pdf(
 def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise ValueError("Exam not found")
+        raise LookupError("Exam not found")
 
     templates = db.query(ExamTemplate).filter(
         ExamTemplate.exam_id == exam_id,
@@ -390,10 +407,11 @@ def generate_exam_package(
 ) -> tuple[bytes, str]:
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise ValueError("Exam not found")
+        raise LookupError("Exam not found")
 
-    # Generate QR tokens for any without
-    generate_qr_for_exams(db, exam_id, user_id)
+    # Generate QR tokens for any without; archived exams are final, so theirs stay as they are.
+    if exam.status != "ARCHIVED":
+        generate_qr_for_exams(db, exam_id, user_id)
 
     # Get rooms
     rooms = (
@@ -414,7 +432,7 @@ def generate_exam_package(
     if not generated:
         raise ValueError("No personalized exams generated. Generate exams first.")
 
-    safe_name = f"{exam.course_code}-{exam.exam_name}".replace(" ", "-").replace("/", "-")[:50]
+    safe_name = _zip_part(f"{exam.course_code}-{exam.exam_name}")[:50]
     zip_filename = f"{safe_name}-Administration-Package.zip"
 
     buf = io.BytesIO()
@@ -424,23 +442,26 @@ def generate_exam_package(
         zf.writestr(f"{safe_name}/Exam-Summary.pdf", summary_pdf)
 
         # Signature lists and seating maps per room
+        missing_documents = []
+        used_dirs: set[str] = set()
         for room in rooms:
-            room_dir = f"{safe_name}/Rooms/{room.building}{room.room_number}"
-            try:
-                sig_pdf = generate_signature_list_pdf(db, exam_id, room.id)
-                zf.writestr(f"{room_dir}/Signature-List.pdf", sig_pdf)
-            except Exception:
-                pass
-            try:
-                map_pdf = generate_seating_map_pdf(db, exam_id, room.id)
-                zf.writestr(f"{room_dir}/Seating-Map.pdf", map_pdf)
-            except Exception:
-                pass
+            room_name = _zip_part(f"{room.building}-{room.room_number}")
+            if room_name in used_dirs:
+                room_name = f"{room_name}-{str(room.id)[:8]}"
+            used_dirs.add(room_name)
+            room_dir = f"{safe_name}/Rooms/{room_name}"
+            for label, build in (("Signature-List", generate_signature_list_pdf),
+                                 ("Seating-Map", generate_seating_map_pdf)):
+                try:
+                    zf.writestr(f"{room_dir}/{label}.pdf", build(db, exam_id, room.id))
+                except Exception:
+                    logger.exception("Package %s for room %s of exam %s failed", label, room.id, exam_id)
+                    missing_documents.append(f"{label} for {room.building} {room.room_number}")
 
         # Personalized exams
         for ge in generated:
             if os.path.exists(ge.storage_key):
-                zf.write(ge.storage_key, f"{safe_name}/Personalized-Exams/{ge.file_name}")
+                zf.write(ge.storage_key, f"{safe_name}/Personalized-Exams/{_zip_part(ge.file_name)}")
 
         # Manifest
         manifest = (
@@ -450,6 +471,10 @@ def generate_exam_package(
             f"Rooms: {len(rooms)}\n"
             f"Generated: {utcnow().isoformat()}\n"
         )
+        if missing_documents:
+            manifest += "\nMISSING — could not be created, print these from ExamFlow:\n" + "".join(
+                f"  - {d}\n" for d in missing_documents
+            )
         zf.writestr(f"{safe_name}/README.txt", manifest)
 
     buf.seek(0)

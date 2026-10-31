@@ -81,9 +81,9 @@ export default function SeatMapPage() {
   const params = useParams();
   const { user } = useAuth();
   const examId = params.id as string;
-  const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
-
   const [exam, setExam] = useState<Exam | null>(null);
+  // Archived exams are final; the server refuses every change, so don't offer any.
+  const canEdit = (user?.role === "ADMIN" || user?.role === "STAFF") && exam?.status !== "ARCHIVED";
   const [rooms, setRooms] = useState<SeatMapRoom[]>([]);
   const [unassigned, setUnassigned] = useState<UnassignedStudent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +128,9 @@ export default function SeatMapPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Escape in the find or filter box belongs to that box.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable]")) return;
       if (e.key === "Escape") {
         setCarry(null);
         setSelectedSeatId(null);
@@ -422,7 +425,10 @@ export default function SeatMapPage() {
                   )
                 }
                 onDragStart={(e, s) => startDrag(e, { studentId: s.student_id, name: s.full_name, fromSeatId: null })}
-                onDragEnd={() => setCarry(null)}
+                onDragEnd={() => {
+                  setCarry(null);
+                  setDragOverSeatId(null);
+                }}
                 onDragOver={(e) => {
                   if (!carry?.fromSeatId) return;
                   e.preventDefault();

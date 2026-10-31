@@ -23,6 +23,15 @@ def parse_csv(file_content: str) -> list[dict]:
     return rows
 
 
+# Column sizes on the students table.
+FIELD_LIMITS = {"student_number": 50, "name": 255, "utorid": 50, "email": 255}
+
+
+def _too_long(**values: str | None) -> str | None:
+    """The first field longer than its column allows, if any."""
+    return next((f for f, v in values.items() if v and len(v) > FIELD_LIMITS[f]), None)
+
+
 def preview_roster_import(db: Session, exam_id: UUID, file_content: str) -> dict:
     rows = parse_csv(file_content)
 
@@ -66,6 +75,11 @@ def preview_roster_import(db: Session, exam_id: UUID, file_content: str) -> dict
         display_name = name or f"{first_name} {last_name}".strip()
         if not display_name:
             errors.append(f"Row {i}: Missing name (provide name or first_name + last_name)")
+            continue
+        field = _too_long(student_number=student_number, name=display_name,
+                          utorid=row.get("utorid"), email=row.get("email"))
+        if field:
+            errors.append(f"Row {i}: {field} is longer than {FIELD_LIMITS[field]} characters")
             continue
 
         valid_rows += 1
@@ -124,6 +138,9 @@ def import_roster(db: Session, exam_id: UUID, file_content: str, user_id: UUID) 
 
         utorid = row.get("utorid", "").strip().lower() or None
         email = row.get("email", "").strip() or None
+        if _too_long(student_number=student_number, name=display_name, utorid=utorid, email=email):
+            skipped += 1
+            continue
         if utorid and db.query(Student.id).filter(
             Student.utorid == utorid, Student.student_number != student_number
         ).first():

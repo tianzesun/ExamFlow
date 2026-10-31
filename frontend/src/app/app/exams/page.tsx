@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { getAllExams, type ExamFilters } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
+import { errorReference } from "@/lib/api/client";
 import type { Exam, Course } from "@/lib/types";
 import { formatDateLong, formatDateShort, formatRelative, formatTime, formatNumber, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ const BOARD_COLUMNS = [
   "READY",
   "GENERATED",
   "COMPLETED",
+  "ARCHIVED",
 ] as const;
 type ColumnStatus = (typeof BOARD_COLUMNS)[number];
 
@@ -50,6 +52,7 @@ const COLUMN_META: Record<ColumnStatus, { label: string; dot: string; hint: stri
   READY: { label: "Ready", dot: "bg-warning", hint: "Seating confirmed" },
   GENERATED: { label: "Generated", dot: "bg-violet", hint: "Papers produced" },
   COMPLETED: { label: "Completed", dot: "bg-success", hint: "Exam written" },
+  ARCHIVED: { label: "Archived", dot: "bg-ink-3/50", hint: "Final, read-only" },
 };
 
 function statusLabel(status: string): string {
@@ -121,14 +124,26 @@ function ExamsPageContent() {
   useEffect(() => {
     const filters: ExamFilters = {};
     if (courseFilter) filters.course_id = courseFilter;
-    Promise.all([getAllExams(filters), getCourses(1, 100)])
-      .then(([examRes]) => {
+    // A slower answer for the previous course must not replace this one.
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setLoading(true);
+        return getAllExams(filters);
+      })
+      .then((examRes) => {
+        if (cancelled) return;
         setExams(examRes.exams ?? []);
         setTotal(examRes.total ?? 0);
         setError(null);
       })
-      .catch(() => setError("We couldn't load exams right now. Please try again."))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (!cancelled) setError(`We couldn't load exams right now. Please try again.${errorReference(err)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [courseFilter]);
 
   const filtered = useMemo(() => {
@@ -152,6 +167,7 @@ function ExamsPageContent() {
       READY: [],
       GENERATED: [],
       COMPLETED: [],
+      ARCHIVED: [],
     };
     for (const e of filtered) {
       if (e.status in map) map[e.status as ColumnStatus].push(e);

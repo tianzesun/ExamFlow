@@ -75,9 +75,15 @@ export function formatMonthName(v: DateInput): string {
 export function formatRelative(v: DateInput, now: Date = new Date()): string {
   const d = toDate(v);
   if (!d) return "";
+  const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+  // A bare date has no time of day, so count calendar days: "today", "tomorrow", not "in 3 hours".
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const days = Math.round((d.getTime() - today.getTime()) / DAY);
+    if (Math.abs(days) < 45) return relFmt.format(days, "day");
+  }
   const diff = d.getTime() - now.getTime();
   const abs = Math.abs(diff);
-  const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
   if (abs < HOUR) return relFmt.format(Math.round(diff / MIN), "minute");
   if (abs < DAY) return relFmt.format(Math.round(diff / HOUR), "hour");
   if (abs < 45 * DAY) return relFmt.format(Math.round(diff / DAY), "day");

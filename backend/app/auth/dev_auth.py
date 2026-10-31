@@ -33,10 +33,7 @@ def verify_dev_token(token: str, db: Session) -> User | None:
     This function ONLY works in development mode.
     In production, this should never be called.
     """
-    if settings.APP_ENV == "production":
-        return None
-
-    if not settings.AUTH_DEV_MODE:
+    if not settings.dev_auth_enabled:
         return None
 
     user_data = DEV_USERS.get(token)
@@ -69,6 +66,6 @@ def verify_dev_token(token: str, db: Session) -> User | None:
 
 def get_dev_login_url() -> str:
     """Get the development login URL."""
-    if settings.APP_ENV == "production":
-        raise RuntimeError("Development auth not available in production")
+    if not settings.dev_auth_enabled:
+        raise RuntimeError("Development auth not available in this environment")
     return "/auth/dev-login"

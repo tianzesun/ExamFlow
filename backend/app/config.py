@@ -3,6 +3,10 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Environments where the built-in development sign-in may be switched on. Anything else
+# ("production", "prod", "staging", a typo) is treated as a real deployment.
+DEV_ENVIRONMENTS = frozenset({"development", "dev", "local", "test", "pilot"})
+
 
 class Settings(BaseSettings):
     APP_ENV: str = "development"
@@ -44,6 +48,15 @@ class Settings(BaseSettings):
         return self.DATABASE_URL
 
     @property
+    def is_dev_environment(self) -> bool:
+        return self.APP_ENV.strip().lower() in DEV_ENVIRONMENTS
+
+    @property
+    def dev_auth_enabled(self) -> bool:
+        """The well-known dev tokens sign in only when dev mode is on in a development environment."""
+        return self.AUTH_DEV_MODE and self.is_dev_environment
+
+    @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",")]
 
@@ -57,9 +70,9 @@ def validate_production_settings() -> list[str]:
     settings = get_settings()
     errors = []
 
-    if settings.APP_ENV == "production":
+    if not settings.is_dev_environment:
         if settings.AUTH_DEV_MODE:
-            errors.append("AUTH_DEV_MODE must be false in production")
+            errors.append(f"AUTH_DEV_MODE must be false outside development (APP_ENV={settings.APP_ENV!r})")
         if not settings.OIDC_ISSUER:
             errors.append("OIDC_ISSUER is required in production")
         if not settings.OIDC_CLIENT_ID:

@@ -125,3 +125,60 @@ def test_room_in_use_cannot_be_deleted_and_usage_reports_it():
 def test_ttb_requires_sign_in():
     assert client.post("/api/ttb/sync").status_code in (401, 403)
     assert client.get("/api/ttb/reference-data").status_code in (401, 403)
+
+
+def test_room_documents_need_one_of_the_exams_rooms():
+    exam_id, _ = _ready_exam_with_papers()
+    other_room = _create_room(5)
+    for kind in ("signature-list", "seating-map"):
+        assert client.get(f"/api/exams/{exam_id}/{kind}/{other_room['id']}", headers=ADMIN_HEADERS).status_code == 404
+        missing_exam = f"/api/exams/{uuid.uuid4()}/{kind}/{other_room['id']}"
+        assert client.get(missing_exam, headers=ADMIN_HEADERS).status_code == 404
+
+
+def test_package_folder_names_are_safe():
+    import io
+    import zipfile
+
+    exam_id, room_id = _ready_exam_with_papers()
+    client.patch(f"/api/rooms/{room_id}", json={"building": "../../X"}, headers=ADMIN_HEADERS)
+    r = client.get(f"/api/exams/{exam_id}/package/download", headers=ADMIN_HEADERS)
+    assert r.status_code == 200, r.text
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert not any(".." in n or n.startswith("/") for n in names), names
+    assert any(n.endswith("/Signature-List.pdf") for n in names)
+
+
+def test_null_in_an_update_is_refused_not_a_server_error():
+    exam_id, _ = _ready_exam_with_papers()
+    for field in ("exam_name", "exam_date", "duration_minutes"):
+        r = client.patch(f"/api/exams/{exam_id}", json={field: None}, headers=ADMIN_HEADERS)
+        assert r.status_code == 422, field
+    assert client.patch(f"/api/exams/{exam_id}", json={"notes": None}, headers=ADMIN_HEADERS).status_code == 200
+    r = client.patch(f"/api/exams/{exam_id}", json={"start_time": "09:00:00-05:00"}, headers=ADMIN_HEADERS)
+    assert r.status_code == 422
+
+
+def test_renaming_a_course_renames_its_exams():
+    exam_id, _ = _ready_exam_with_papers()
+    course_id = client.get(f"/api/exams/{exam_id}", headers=ADMIN_HEADERS).json()["course_id"]
+    code = f"REN {uuid.uuid4().hex[:6].upper()}"
+    r = client.patch(f"/api/courses/{course_id}", json={"course_code": code, "course_name": "Renamed"},
+                     headers=ADMIN_HEADERS)
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/courses/{course_id}", json={"course_code": None}, headers=ADMIN_HEADERS)
+    assert r.status_code == 422
+    exam = client.get(f"/api/exams/{exam_id}", headers=ADMIN_HEADERS).json()
+    assert (exam["course_code"], exam["course_name"]) == (code, "Renamed")
+
+
+def test_server_errors_carry_a_reference_the_browser_can_read():
+    from unittest import mock
+
+    from app.services import exam_service
+
+    with mock.patch.object(exam_service, "get_exam", side_effect=RuntimeError("boom")):
+        r = client.get(f"/api/exams/{uuid.uuid4()}", headers={**ADMIN_HEADERS, "Origin": "http://localhost:3000"})
+    assert r.status_code == 500
+    assert r.headers["x-request-id"] and r.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert "boom" not in r.text

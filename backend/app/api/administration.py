@@ -83,6 +83,8 @@ def download_signature_list(
 ):
     try:
         pdf_bytes = admin_service.generate_signature_list_pdf(db, exam_id, room_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -108,6 +110,8 @@ def download_seating_list(
         return Response(content=data, media_type="text/csv; charset=utf-8", headers=attachment_headers(f"{name}.csv"))
     try:
         pdf_bytes = admin_service.generate_seating_list_pdf(db, exam_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers(f"{name}.pdf"))
@@ -124,6 +128,8 @@ def download_seating_map(
 ):
     try:
         pdf_bytes = admin_service.generate_seating_map_pdf(db, exam_id, room_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -132,7 +138,7 @@ def download_seating_map(
 
 # ── Package Generate ────────────────────────────────────────
 
-@router.post("/api/exams/{exam_id}/package/generate")
+@router.post("/api/exams/{exam_id}/package/generate", dependencies=[Depends(block_writes_to_archived_exam)])
 def generate_package(
     exam_id: UUID,
     db: Session = Depends(get_db),
@@ -140,6 +146,8 @@ def generate_package(
 ):
     try:
         zip_bytes, filename = admin_service.generate_exam_package(db, exam_id, user.id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -156,6 +164,8 @@ def download_package(
 ):
     try:
         zip_bytes, filename = admin_service.generate_exam_package(db, exam_id, user.id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

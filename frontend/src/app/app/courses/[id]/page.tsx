@@ -27,6 +27,7 @@ const STATUS_LABEL: Record<string, string> = {
   READY: "Ready",
   GENERATED: "Generated",
   COMPLETED: "Completed",
+  ARCHIVED: "Archived",
 };
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -44,6 +45,7 @@ export default function CourseDetailPage() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [exams, setExams] = useState<Exam[] | null>(null);
+  const [examsError, setExamsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -60,7 +62,10 @@ export default function CourseDetailPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     getAllExams({ course_id: courseId })
       .then((r) => { if (!cancelled) setExams(r.exams ?? []); })
-      .catch(() => { if (!cancelled) setExams([]); });
+      // Not an empty list: that would read as "no exams" and offer to delete the course.
+      .catch((err) => {
+        if (!cancelled) setExamsError(`This course's exams couldn't be loaded. Try again in a moment.${errorReference(err)}`);
+      });
     return () => { cancelled = true; };
   }, [courseId]);
 
@@ -84,7 +89,8 @@ export default function CourseDetailPage() {
       const updated = await updateCourse(course.id, {
         course_code: form.course_code,
         course_name: form.course_name,
-        department: form.department || undefined,
+        // null clears it; leaving it out would keep the old department.
+        department: form.department.trim() || null,
       });
       setCourse(updated);
       setEditing(false);
@@ -243,7 +249,13 @@ export default function CourseDetailPage() {
               </Link>
             )}
           </div>
-          {exams === null ? (
+          {examsError ? (
+            <EmptyState
+              icon={<FileText className="h-5 w-5 text-ink-3" />}
+              title="Exams couldn't be loaded"
+              description={examsError}
+            />
+          ) : exams === null ? (
             <div className="space-y-2 p-5">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="h-10 animate-pulse rounded-md bg-surface-2" />

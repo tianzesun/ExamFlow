@@ -47,13 +47,18 @@ const inGrid = (key: string, rows: number, columns: number) => {
   return r <= rows && c <= columns;
 };
 
+/** Aisles inside the current width. Ones beyond it are kept, so typing a new width doesn't lose them. */
+function aislesIn(s: Shape) {
+  return new Set([...s.aisles].filter((a) => a < s.columns));
+}
+
 function sameShape(a: Shape, b: Shape) {
   const eq = (x: Set<string | number>, y: Set<string | number>) => x.size === y.size && [...x].every((v) => y.has(v));
   const trim = (s: Shape, set: Set<string>) => new Set([...set].filter((k) => inGrid(k, s.rows, s.columns)));
   return (
     a.rows === b.rows &&
     a.columns === b.columns &&
-    eq(a.aisles, b.aisles) &&
+    eq(aislesIn(a), aislesIn(b)) &&
     eq(trim(a, a.missing), trim(b, b.missing)) &&
     eq(trim(a, a.blocked), trim(b, b.blocked))
   );
@@ -194,7 +199,7 @@ export default function RoomLayoutPage() {
       if (!s) return s;
       const rows = Math.min(MAX_ROWS, Math.max(1, patch.rows ?? s.rows));
       const columns = Math.min(MAX_COLUMNS, Math.max(1, patch.columns ?? s.columns));
-      return { ...s, rows, columns, aisles: new Set([...s.aisles].filter((a) => a < columns)) };
+      return { ...s, rows, columns };
     });
 
   const setAisles = (aisles: number[]) => setShape((s) => (s ? { ...s, aisles: new Set(aisles) } : s));
@@ -234,8 +239,22 @@ export default function RoomLayoutPage() {
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    // In-app links don't unload the page, so ask before following one.
+    const guardLinks = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = (e.target as Element | null)?.closest?.("a[href]");
+      if (!link || link.getAttribute("target") === "_blank" || link.hasAttribute("download")) return;
+      if (!confirm("You have unsaved changes to this room. Leave without saving?")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    document.addEventListener("click", guardLinks, true);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", guardLinks, true);
+    };
   }, [dirty]);
 
   const save = async () => {
@@ -262,7 +281,7 @@ export default function RoomLayoutPage() {
         const layout = await saveRoomLayout(roomId, {
           rows: shape.rows,
           columns: shape.columns,
-          aisles_after: [...shape.aisles],
+          aisles_after: [...aislesIn(shape)],
           missing: pairs(shape.missing),
           blocked: pairs(new Set([...shape.blocked].filter((k) => !shape.missing.has(k)))),
         });
@@ -305,6 +324,7 @@ export default function RoomLayoutPage() {
   }
 
   const change = counts.inUse - room.capacity;
+  const aisles = aislesIn(shape);
   const centre = Math.ceil(shape.columns / 2);
   const everyN = (n: number) => Array.from({ length: Math.floor((shape.columns - 1) / n) }, (_, i) => (i + 1) * n);
   const aislePresets = [
@@ -314,7 +334,7 @@ export default function RoomLayoutPage() {
     ...(shape.columns >= 9 ? [{ label: "Every 4", aisles: everyN(4) }] : []),
   ];
   const activePreset = aislePresets.find(
-    (p) => p.aisles.length === shape.aisles.size && p.aisles.every((a) => shape.aisles.has(a)),
+    (p) => p.aisles.length === aisles.size && p.aisles.every((a) => aisles.has(a)),
   )?.label;
 
   return (
@@ -392,7 +412,7 @@ export default function RoomLayoutPage() {
             <FloorPlan
               rows={shape.rows}
               columns={shape.columns}
-              aisles={shape.aisles}
+              aisles={aisles}
               stateOf={stateOf}
               lockOf={lockOf}
               {...(canEdit
@@ -414,7 +434,7 @@ export default function RoomLayoutPage() {
             <p className="tnum mt-2 text-4xl font-semibold tracking-tight">{formatNumber(counts.inUse)}</p>
             <p className="tnum mt-1 text-sm text-white/70">
               {shape.rows} rows × {shape.columns} seats
-              {shape.aisles.size > 0 && ` · ${plural(shape.aisles.size, "aisle")}`}
+              {aisles.size > 0 && ` · ${plural(aisles.size, "aisle")}`}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-lg bg-white/10 px-3 py-2">
@@ -476,8 +496,8 @@ export default function RoomLayoutPage() {
                   ))}
                 </div>
                 <p className="text-xs text-ink-3">
-                  {shape.aisles.size > 0
-                    ? `After seat ${[...shape.aisles].sort((a, b) => a - b).join(", ")}.`
+                  {aisles.size > 0
+                    ? `After seat ${[...aisles].sort((a, b) => a - b).join(", ")}.`
                     : "No aisles."}{" "}
                   Aisles show on the seat map and the printed seating map.
                 </p>

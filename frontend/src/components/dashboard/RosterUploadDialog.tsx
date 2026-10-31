@@ -35,7 +35,8 @@ export function RosterUploadDialog({
 
   if (!open) return null;
 
-  const canSubmit = !!examId && !!file && !uploading;
+  // The exam must be one on offer now: the course may have changed since it was picked.
+  const canSubmit = exams.some((e) => e.id === examId) && !!file && !uploading;
 
   const reset = () => {
     setExamId("");
@@ -45,8 +46,14 @@ export function RosterUploadDialog({
     setUploading(false);
   };
 
+  // The dialog stays mounted, so closing it in any way must forget the exam and file.
+  const close = () => {
+    reset();
+    onOpenChange(false);
+  };
+
   const handleImport = async () => {
-    if (!examId || !file) return;
+    if (!canSubmit || !file) return;
     setUploading(true);
     setError(null);
     setResult(null);
@@ -65,13 +72,13 @@ export function RosterUploadDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-ink/40"
-        onClick={() => onOpenChange(false)}
+        onClick={close}
       />
       <div className="relative w-full max-w-md rounded-lg border border-line bg-surface p-5 shadow-lg animate-scale-in">
         <div className="flex items-start justify-between">
           <h2 className="text-sm font-semibold text-ink">Import roster</h2>
           <button
-            onClick={() => onOpenChange(false)}
+            onClick={close}
             className="rounded-md p-1 text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink"
           >
             <X className="h-4 w-4" />
@@ -89,8 +96,7 @@ export function RosterUploadDialog({
               Imported {result.imported} · skipped {result.skipped}
               <button
                 onClick={() => {
-                  reset();
-                  onOpenChange(false);
+                  close();
                 }}
                 className="ml-auto font-medium text-ink-2 hover:text-ink"
               >
@@ -129,7 +135,7 @@ export function RosterUploadDialog({
               </div>
               {error && <p className="text-xs text-danger">{error}</p>}
               <div className="flex justify-end gap-2 pt-1">
-                <Button variant="secondary" onClick={() => onOpenChange(false)}>
+                <Button variant="secondary" onClick={close}>
                   Cancel
                 </Button>
                 <Button onClick={handleImport} disabled={!canSubmit} loading={uploading}>

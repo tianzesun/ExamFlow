@@ -20,6 +20,7 @@ import { getCourses } from "@/lib/api/courses";
 import { getAllExams } from "@/lib/api/exams";
 import { syncTTBCourses } from "@/lib/api/ttb";
 import { errorReference } from "@/lib/api/client";
+import { useAuth } from "@/lib/auth/context";
 import type { ReactNode } from "react";
 import type { Course, Exam } from "@/lib/types";
 import { formatNumber, plural } from "@/lib/format";
@@ -73,6 +74,7 @@ const STATUS_LABEL: Record<string, string> = {
   READY: "Ready",
   GENERATED: "Generated",
   COMPLETED: "Completed",
+  ARCHIVED: "Archived",
 };
 
 export default function CoursesPage() {
@@ -86,18 +88,20 @@ export default function CoursesPage() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const loadData = () => {
-    getCourses(1, 100)
-      .then((cs) => {
+    // Courses and their exam counts load together, so a failure never reads as "no courses" or "0 exams".
+    Promise.all([getCourses(1, 100), getAllExams()])
+      .then(([cs, es]) => {
         setCourses(cs.courses ?? []);
         setTotal(cs.total ?? 0);
+        setExams(es.exams ?? []);
+        setLoadError(null);
       })
-      .catch(() => {})
+      .catch((err) => setLoadError(`Courses couldn't be loaded. Try again in a moment.${errorReference(err)}`))
       .finally(() => setLoading(false));
-    getAllExams()
-      .then((es) => setExams(es.exams ?? []))
-      .catch(() => {});
   };
 
   useEffect(() => {
@@ -108,7 +112,7 @@ export default function CoursesPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const result = await syncTTBCourses("20269");
+      const result = await syncTTBCourses();
       setSyncResult({ ok: true, message: `Synced ${plural(result.synced, "course")} from the Timetable Builder.` });
       loadData();
     } catch (err) {
@@ -185,10 +189,12 @@ export default function CoursesPage() {
         description="Courses available for exam scheduling, grouped by department."
         actions={
           <>
-            <Button variant="secondary" onClick={handleSync} disabled={syncing}>
-              <RefreshCw className={cn(syncing && "animate-spin")} />
-              {syncing ? "Syncing…" : "Sync from TTB"}
-            </Button>
+            {user?.role === "ADMIN" && (
+              <Button variant="secondary" onClick={handleSync} disabled={syncing}>
+                <RefreshCw className={cn(syncing && "animate-spin")} />
+                {syncing ? "Syncing…" : "Sync from TTB"}
+              </Button>
+            )}
             <Link href="/app/courses/new">
               <Button>
                 <Plus /> Create course
@@ -234,6 +240,19 @@ export default function CoursesPage() {
           {Array.from({ length: 3 }).map((_, i) => (
             <SkeletonRow key={i} lines={4} />
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="surface-card">
+          <EmptyState
+            icon={<BookOpen className="h-5 w-5 text-ink-3" />}
+            title="Courses couldn't be loaded"
+            description={loadError}
+            action={
+              <Button variant="secondary" onClick={() => { setLoading(true); loadData(); }}>
+                Retry
+              </Button>
+            }
+          />
         </div>
       ) : courses.length === 0 ? (
         <div className="surface-card">

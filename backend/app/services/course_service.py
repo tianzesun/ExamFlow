@@ -67,6 +67,12 @@ def update_course(db: Session, course_id: UUID, data: CourseUpdate, user_id: UUI
 
     for field, value in update_data.items():
         setattr(course, field, value)
+    # Exams keep a copy of the code and name (they're stamped on papers); archived exams stay as they were.
+    renamed = {f: update_data[f] for f in ("course_code", "course_name") if f in old_values}
+    if renamed:
+        db.query(Exam).filter(Exam.course_id == course_id, Exam.status != "ARCHIVED").update(
+            renamed, synchronize_session=False
+        )
 
     if old_values:
         db.add(AuditLog(
