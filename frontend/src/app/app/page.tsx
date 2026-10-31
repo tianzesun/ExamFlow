@@ -47,11 +47,6 @@ import {
 } from "@/components";
 import { PageTransition } from "@/components/page-transition";
 import { RosterUploadDialog } from "@/components/dashboard/RosterUploadDialog";
-import {
-  MOCK_EXAMS_FULL,
-  MOCK_COURSES,
-  MOCK_SUMMARIES,
-} from "@/lib/mock-dashboard";
 
 const STATUS_ORDER: readonly string[] = [
   "DRAFT",
@@ -157,29 +152,19 @@ function useDashboardData(courseId: string | null) {
           getAllExams(),
           getCourses(1, 100),
         ]);
-        // Fall back to realistic seed data when the backend is unpopulated so
-        // the dashboard reads like a shipping product on first run.
-        const allExams = examRes.exams;
-        const usingMock = allExams.length === 0;
-        const sourceExams = usingMock ? MOCK_EXAMS_FULL : allExams;
-        const courses = usingMock
-          ? MOCK_COURSES
-          : courseRes.courses.map((c) => ({
-              id: c.id,
-              course_code: c.course_code,
-              course_name: c.course_name,
-            }));
+        const courses = courseRes.courses.map((c) => ({
+          id: c.id,
+          course_code: c.course_code,
+          course_name: c.course_name,
+        }));
 
         const visible = courseId
-          ? sourceExams.filter((e) => e.course_id === courseId)
-          : sourceExams;
+          ? examRes.exams.filter((e) => e.course_id === courseId)
+          : examRes.exams;
 
-        let summaries: Record<string, ExamSummary>;
-        if (usingMock) {
-          summaries = MOCK_SUMMARIES;
-        } else {
-          summaries = await getExamSummaries(visible.map((e) => e.id)).catch(() => ({}));
-        }
+        const summaries: Record<string, ExamSummary> = visible.length
+          ? await getExamSummaries(visible.map((e) => e.id)).catch(() => ({}))
+          : {};
 
         return {
           exams: visible,
