@@ -752,7 +752,7 @@ function ActivityFeed({
 // ── Main workspace ─────────────────────────────────────────────────────────
 
 function DashboardWorkspace() {
-  const { selectedCourseId } = useCourseContext();
+  const { selectedCourseId, setSelectedCourseId, courses } = useCourseContext();
   const { data, error, loading, reload } = useDashboardData(
     selectedCourseId
   );
@@ -777,6 +777,33 @@ function DashboardWorkspace() {
 
   const { exams, summaries } = data;
 
+  const course = courses.find((c) => c.id === selectedCourseId);
+  if (exams.length === 0 && course) {
+    return (
+      <PageContainer className="animate-fade-in space-y-6">
+        <WorkspaceHeader exams={exams} onImported={reload} />
+        <Card>
+          <EmptyState
+            icon={<FileText className="h-5 w-5 text-ink-3" />}
+            title={`No exams for ${course.course_code} yet`}
+            description="Schedule an exam for this course, or show every course to see the rest."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Link href={`/app/exams/new?course_id=${encodeURIComponent(course.id)}`}>
+                  <Button>
+                    <Plus /> Create exam for {course.course_code}
+                  </Button>
+                </Link>
+                <Button variant="secondary" onClick={() => setSelectedCourseId(null)}>
+                  Show all courses
+                </Button>
+              </div>
+            }
+          />
+        </Card>
+      </PageContainer>
+    );
+  }
   if (exams.length === 0) {
     return (
       <PageContainer className="animate-fade-in space-y-6">
