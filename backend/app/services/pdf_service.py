@@ -48,10 +48,12 @@ def write_text(page: pymupdf.Page, rect: pymupdf.Rect, text: str, size: float = 
     if bold:
         content = f"<b>{content}</b>"
     colour = colour or ("#555" if grey else "#000")
-    page.insert_htmlbox(
-        rect, f'<p style="font-size:{size}pt; text-align:{align}; color:{colour}">{content}</p>',
-        css=_CSS, scale_low=0.5,
-    )
+    html_text = f'<p style="font-size:{size}pt; text-align:{align}; color:{colour}">{content}</p>'
+    spare, _ = page.insert_htmlbox(rect, html_text, css=_CSS, scale_low=0.5)
+    if spare < 0:
+        # Too long even at half size; nothing was written. A paper must never lose its room or seat,
+        # so shrink as far as it takes.
+        page.insert_htmlbox(rect, html_text, css=_CSS, scale_low=0)
 
 
 def verify_url(token: str) -> str:

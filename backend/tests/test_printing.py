@@ -144,3 +144,12 @@ def test_preview_paper_uses_sample_student_and_exam_room():
 def test_preview_paper_needs_a_template():
     exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
     assert client.get(f"/api/exams/{exam_id}/generated/preview", headers=ADMIN_HEADERS).status_code == 400
+
+
+def test_stamp_keeps_a_long_room_name_and_the_seat():
+    # Building and room number may be 150 characters together; the room must never drop off the paper.
+    room = SimpleNamespace(building="Environmental Science and Chemistry Building " * 2, room_number="EV-142" * 6)
+    student = SimpleNamespace(full_name="Test Student", student_number="1000000001")
+    pdf = pdf_service.generate_one_student_pdf(_template(1, 200), EXAM, student, room, SEAT, "token")
+    text = " ".join(pymupdf.open(stream=pdf)[0].get_text().split())
+    assert "Environmental Science" in text and "EV-142" in text and SEAT.seat_code in text
