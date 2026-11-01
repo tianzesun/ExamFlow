@@ -1,10 +1,10 @@
 """Which generated papers still match the student's seat and the active template.
 
 A paper stays valid (its QR code verifies) until it is replaced, but it is only
-up to date while the student sits in the seat printed on it and the template it
-was made from is still the active one for the student's paper version. Seating changes and a new template
-therefore make just the affected papers out of date, and only those need
-generating and printing again.
+up to date while the student sits in the seat printed on it, the template it
+was made from is still the active one for the student's paper version, and the stamp
+shows what Admin › Settings asks for. Seating changes and a new template therefore make
+just the affected papers out of date, and only those need generating and printing again.
 """
 
 from uuid import UUID
@@ -16,6 +16,8 @@ from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
+from app.models.system_setting import SystemSetting
+from app.services.settings_service import DEFAULT_STAMP, KEY
 
 # Papers carry a VERSION badge while the exam uses several versions, or anyone still sits at a seat
 # given another version. Switching between one and several versions therefore dates every paper.
@@ -27,6 +29,13 @@ _shows_version = or_(
     select(ExamAssignment.id).where(
         ExamAssignment.exam_id == GeneratedExam.exam_id, ExamAssignment.paper_version != "A",
     ).correlate(GeneratedExam).exists(),
+)
+
+
+# The stamp Admin › Settings asks for now; papers from before it was recorded used the default.
+_stamp_matches = func.coalesce(GeneratedExam.stamp_style, DEFAULT_STAMP) == func.coalesce(
+    select(SystemSetting.value["stamp_style"].astext).where(SystemSetting.key == KEY).scalar_subquery(),
+    DEFAULT_STAMP,
 )
 
 
@@ -50,6 +59,7 @@ _matches = (
         ExamTemplate.is_active == True,  # noqa: E712
         ExamTemplate.paper_version == ExamAssignment.paper_version,
         or_(GeneratedExam.version_shown.is_(None), GeneratedExam.version_shown == _shows_version),
+        _stamp_matches,
     )
     .correlate(GeneratedExam)
     .exists()

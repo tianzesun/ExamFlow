@@ -40,6 +40,9 @@ class GeneratedExam(Base):
     generation_version = Column(Integer, nullable=False, default=1)
     # Whether the paper carries a VERSION badge. Unknown (NULL) for papers made before this was recorded.
     version_shown = Column(Boolean, nullable=True)
+    # What the stamp showed (settings_service.PaperStamp.fingerprint); empty on papers made before it was recorded,
+    # which used the default.
+    stamp_style = Column(String(50), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

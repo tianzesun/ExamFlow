@@ -13,7 +13,7 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -37,6 +37,23 @@ class DefaultSeating(BaseModel):
     versions: int = Field(1, ge=1, le=4)
 
 
+class PaperStamp(BaseModel):
+    """What is printed on each student's paper besides the room, seat and QR code, which are always there."""
+
+    # Off for anonymous marking: the paper then carries the student number instead of the name.
+    show_name: bool = True
+    show_utorid: bool = False
+    # A slim line on every page after the first, so a page that comes loose can be matched to its student.
+    every_page: bool = True
+
+    def fingerprint(self) -> str:
+        """Recorded on each paper, so changing what is printed makes papers made before out of date."""
+        return f"name={int(self.show_name)};utorid={int(self.show_utorid)};pages={int(self.every_page)}"
+
+
+DEFAULT_STAMP = PaperStamp().fingerprint()
+
+
 class SystemSettings(BaseModel):
     # Given to courses the Timetable Builder sync adds.
     department_name: str = Field("Computer Science", min_length=1, max_length=120)
@@ -47,6 +64,31 @@ class SystemSettings(BaseModel):
     default_seating: DefaultSeating = Field(default_factory=DefaultSeating)
     # Largest exam paper PDF that may be uploaded.
     max_upload_mb: int = Field(50, ge=1, le=200)
+    paper_stamp: PaperStamp = Field(default_factory=PaperStamp)
+    # Printed above the title of signature lists, seating lists, seating maps and the exam summary.
+    document_heading: str = Field("", max_length=150)
+    # What the new-exam form starts with.
+    default_duration_minutes: int = Field(120, ge=15, le=600)
+    default_start_time: str = ""  # HH:MM, or empty for none
+
+    @computed_field
+    @property
+    def stamp_style(self) -> str:
+        # Stored with the settings so paper_state can compare it to each paper's in SQL.
+        return self.paper_stamp.fingerprint()
+
+    @field_validator("document_heading")
+    @classmethod
+    def _tidy_heading(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("default_start_time")
+    @classmethod
+    def _start_time(cls, v: str) -> str:
+        v = v.strip()
+        if v and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
+            raise ValueError("The default start time is like 09:00, or empty")
+        return v
 
     @field_validator("department_name")
     @classmethod
@@ -228,7 +270,7 @@ def update_system_settings(db: Session, new: SystemSettings, user_id: UUID) -> S
     row = db.get(SystemSetting, KEY)
     old = SystemSettings(**(row.value if row else {}))
     before, after = old.model_dump(mode="json"), new.model_dump(mode="json")
-    changed = [k for k in after if before.get(k) != after[k]]
+    changed = [k for k in SystemSettings.model_fields if before.get(k) != after[k]]
     if not changed:
         return old
     if row:

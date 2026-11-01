@@ -28,6 +28,11 @@ export async function getExam(id: string): Promise<Exam> {
   return fetchApi<Exam>(`/api/exams/${id}`);
 }
 
+/** What the new-exam form starts with (set in Admin › Settings). */
+export async function getExamDefaults(): Promise<{ duration_minutes: number; start_time: string }> {
+  return fetchApi("/api/exams/defaults");
+}
+
 export async function createExam(data: {
   course_id: string;
   exam_name: string;

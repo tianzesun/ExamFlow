@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.exam import ExamCreate, ExamListResponse, ExamResponse, ExamUpdate
 from app.services import access_service, exam_service
 from app.services.access_service import require_exam_access
+from app.services.settings_service import get_system_settings
 
 router = APIRouter(prefix="/api/exams", tags=["exams"], dependencies=[Depends(require_exam_access)])
 
@@ -48,6 +49,13 @@ def create_exam(
         return exam
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/defaults")
+def get_exam_defaults(db: Session = Depends(get_db), _user: User = Depends(require_role("ADMIN", "STAFF"))) -> dict:
+    """What the new-exam form starts with (Admin › Settings)."""
+    settings = get_system_settings(db)
+    return {"duration_minutes": settings.default_duration_minutes, "start_time": settings.default_start_time}
 
 
 @router.get("/{exam_id}", response_model=ExamResponse)

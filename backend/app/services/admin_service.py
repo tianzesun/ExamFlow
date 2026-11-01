@@ -23,6 +23,7 @@ from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
 from app.services import paper_state, room_service
+from app.services.settings_service import get_system_settings
 from app.utils import utcnow
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ PAGE_MARGIN = 40
 
 _TABLE_CSS = """
 * {font-family: sans-serif; font-size: 9pt; color: #000;}
+p.org {font-size: 8.5pt; color: #444; margin: 0 0 3pt 0;}
 h1 {font-size: 14pt; margin: 0 0 2pt 0;}
 p.sub {font-size: 9.5pt; color: #333; margin: 0 0 8pt 0;}
 table {border-collapse: collapse; width: 100%;}
@@ -96,6 +98,12 @@ def _exam_when(exam: Exam) -> str:
     return when
 
 
+def _org(db: Session) -> str:
+    """The heading from Admin › Settings, as HTML to put above a document's title (empty if none)."""
+    heading = get_system_settings(db).document_heading
+    return f'<p class="org">{html.escape(heading)}</p>' if heading else ""
+
+
 def table_pdf(
     title: str,
     subtitle: str,
@@ -104,11 +112,12 @@ def table_pdf(
     rows_per_page: int = 32,
     tall_rows: bool = False,
     pad_last_page: bool = False,
+    heading: str = "",
 ) -> bytes:
     """Lay rows out as a paginated table, repeating the heading on every page.
 
     columns are (heading, width in percent). Text goes through HTML so names in
-    any script print correctly.
+    any script print correctly. heading is HTML from _org, printed above the title.
     """
     pages = [rows[i:i + rows_per_page] for i in range(0, len(rows), rows_per_page)] or [[]]
     if pad_last_page:
@@ -127,7 +136,7 @@ def table_pdf(
         )
         page.insert_htmlbox(
             pymupdf.Rect(PAGE_MARGIN, PAGE_MARGIN, width - PAGE_MARGIN, height - PAGE_MARGIN - 20),
-            f'<h1>{html.escape(title)}</h1><p class="sub">{html.escape(subtitle)}</p>'
+            f'{heading}<h1>{html.escape(title)}</h1><p class="sub">{html.escape(subtitle)}</p>'
             f'<table class="{"tall" if tall_rows else ""}"><tr>{head}</tr>{body}</table>',
             css=_TABLE_CSS, scale_low=0.6,
         )
@@ -207,7 +216,7 @@ def generate_signature_list_pdf(
     return table_pdf(
         f"{exam.course_code} — {exam.exam_name}",
         f"Signature list · {_room_label(room)} · {_exam_when(exam)}",
-        columns, rows, rows_per_page=24, tall_rows=True, pad_last_page=True,
+        columns, rows, rows_per_page=24, tall_rows=True, pad_last_page=True, heading=_org(db),
     )
 
 
@@ -234,7 +243,7 @@ def generate_seating_list_pdf(db: Session, exam_id: UUID) -> bytes:
     return table_pdf(
         f"{exam.course_code} — {exam.exam_name}",
         f"Seating list · {_exam_when(exam)} · {len(rows)} students",
-        columns, table,
+        columns, table, heading=_org(db),
     )
 
 
@@ -286,14 +295,17 @@ def generate_seating_map_pdf(
 
     doc = pymupdf.open()
     page = doc.new_page(width=page_width, height=page_height)
+    heading = _org(db)
     page.insert_htmlbox(
-        pymupdf.Rect(margin, margin, page_width - margin, margin + 44),
-        f"<h1>{html.escape(exam.course_code)} — {html.escape(exam.exam_name)}</h1>"
+        pymupdf.Rect(margin, margin, page_width - margin, margin + (58 if heading else 44)),
+        f"{heading}<h1>{html.escape(exam.course_code)} — {html.escape(exam.exam_name)}</h1>"
         f'<p class="sub">Seating map · {html.escape(_room_label(room))} · {html.escape(_exam_when(exam))}'
         f" · {len(assignments)} seated</p>",
         css=_TABLE_CSS,
     )
     y = margin + 50
+    if heading:
+        y += 12  # the heading line pushes the title down
 
     # FRONT indicator
     front = pymupdf.Rect(margin, y, page_width - margin, y + 18)
@@ -367,6 +379,10 @@ def generate_exam_summary_pdf(db: Session, exam_id: UUID) -> bytes:
     page = doc.new_page(width=page_width, height=page_height)
     y = margin
 
+    org = get_system_settings(db).document_heading
+    if org:
+        page.insert_htmlbox(pymupdf.Rect(margin, y - 12, page_width - margin, y + 4), _org(db), css=_TABLE_CSS)
+        y += 16
     page.insert_text(pymupdf.Point(margin, y), "EXAM ADMINISTRATION SUMMARY", fontsize=16, color=(0, 0, 0))
     y += 30
 

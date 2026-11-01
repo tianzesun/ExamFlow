@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, Calendar, Clock, DoorOpen, FileText, Printer, Timer, Users } from "lucide-react";
-import { createExam } from "@/lib/api/exams";
+import { createExam, getExamDefaults } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
 import { errorReference } from "@/lib/api/client";
 import type { Course } from "@/lib/types";
@@ -53,6 +53,14 @@ function NewExamForm() {
 
   useEffect(() => {
     getCourses(1, 100).then((d) => setCourses(d.courses)).catch(() => {});
+    // Start from the defaults in Admin › Settings, unless the user has already typed a time or duration.
+    getExamDefaults()
+      .then((d) => setForm((f) => ({
+        ...f,
+        start_time: f.start_time || d.start_time,
+        duration_minutes: f.duration_minutes === 120 ? d.duration_minutes : f.duration_minutes,
+      })))
+      .catch(() => {});
   }, []);
 
   const course = courses.find((c) => c.id === form.course_id);

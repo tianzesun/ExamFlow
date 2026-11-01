@@ -62,6 +62,13 @@ export interface SystemSettings {
   ttb_subjects: string[];
   default_seating: { order: string; spacing: string; versions: number };
   max_upload_mb: number;
+  /** What each paper's stamp shows besides room, seat and QR code */
+  paper_stamp: { show_name: boolean; show_utorid: boolean; every_page: boolean };
+  /** Printed above the title of exam-day documents; empty for none */
+  document_heading: string;
+  default_duration_minutes: number;
+  /** HH:MM, or empty */
+  default_start_time: string;
 }
 
 /** How the server is set up; shown, not editable. */

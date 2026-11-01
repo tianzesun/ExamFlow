@@ -25,6 +25,7 @@ from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
 from app.services import assignment_service, paper_state
+from app.services.settings_service import PaperStamp, get_system_settings
 from app.utils import utcnow
 
 MARGIN = 36
@@ -78,15 +79,18 @@ def _content_top(page: pymupdf.Page) -> float:
     return min(tops, default=page.rect.height)
 
 
-def _place_pages(template: pymupdf.Document) -> pymupdf.Document:
-    """Copy the paper, keeping room for the stamp at the top of every page.
+def _place_pages(template: pymupdf.Document, every_page: bool = True) -> pymupdf.Document:
+    """Copy the paper, keeping room for the stamp at the top of every stamped page.
 
     A page with an empty top margin is copied as is; otherwise its content is
     scaled down just enough to clear the band, so nothing is ever printed over.
     """
     out = pymupdf.open()
     for i, page in enumerate(template):
-        band = FIRST_BAND if i == 0 else OTHER_BAND
+        band = FIRST_BAND if i == 0 else OTHER_BAND if every_page else 0
+        if not band:
+            out.insert_pdf(template, from_page=i, to_page=i)
+            continue
         if _content_top(page) >= band + CONTENT_GAP:
             out.insert_pdf(template, from_page=i, to_page=i)
         else:
@@ -96,8 +100,20 @@ def _place_pages(template: pymupdf.Document) -> pymupdf.Document:
     return out
 
 
+def _who(student: Student, stamp: PaperStamp) -> tuple[str, str]:
+    """The large line naming the student, and the smaller line under it."""
+    utorid = getattr(student, "utorid", None)
+    details = [f"Student number: {student.student_number}"] if stamp.show_name else []
+    if stamp.show_utorid and utorid:
+        details.append(f"UTORid: {utorid}")
+    main = student.full_name if stamp.show_name else f"Student number {student.student_number}"
+    return main, " · ".join(details)
+
+
 def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Room, seat: Seat,
-                      qr_token: str | None, paper_version: str | None = None) -> None:
+                      qr_token: str | None, paper_version: str | None = None,
+                      stamp: PaperStamp | None = None) -> None:
+    stamp = stamp or PaperStamp()
     w = page.rect.width
     right = w - MARGIN
     top = 14
@@ -128,25 +144,29 @@ def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Ro
         text_right = badge.x0 - 10
     write_text(page, pymupdf.Rect(MARGIN, top, text_right, top + 16), f"{exam.course_code} — {exam.exam_name}", 9,
                grey=True)
-    write_text(page, pymupdf.Rect(MARGIN, top + 14, text_right, top + 40), student.full_name, 15, bold=True)
-    write_text(page, pymupdf.Rect(MARGIN, top + 40, text_right, top + 56), f"Student number: {student.student_number}",
-               10)
+    main, details = _who(student, stamp)
+    write_text(page, pymupdf.Rect(MARGIN, top + 14, text_right, top + 40), main, 15, bold=True)
+    if details:
+        write_text(page, pymupdf.Rect(MARGIN, top + 40, text_right, top + 56), details, 10)
 
     y = FIRST_BAND - 2
     page.draw_line(pymupdf.Point(MARGIN, y), pymupdf.Point(w - MARGIN, y), color=(0, 0, 0), width=0.75)
 
 
 def _stamp_other_page(page: pymupdf.Page, student: Student, room: Room, seat: Seat, number: int, total: int,
-                      paper_version: str | None = None) -> None:
+                      paper_version: str | None = None, stamp: PaperStamp | None = None) -> None:
     """A slim line so a page that comes loose can be matched to its student."""
+    stamp = stamp or PaperStamp()
     w = page.rect.width
-    version = f" · Version {paper_version}" if paper_version else ""
-    write_text(
-        page, pymupdf.Rect(MARGIN, 6, w - MARGIN - 80, 18),
-        f"{student.full_name} · {student.student_number} · {room.building} {room.room_number} · Seat {seat.seat_code}"
-        f"{version}",
-        8,
-    )
+    utorid = getattr(student, "utorid", None)
+    parts = [student.full_name] if stamp.show_name else []
+    parts.append(student.student_number)
+    if stamp.show_utorid and utorid:
+        parts.append(utorid)
+    parts += [f"{room.building} {room.room_number}", f"Seat {seat.seat_code}"]
+    if paper_version:
+        parts.append(f"Version {paper_version}")
+    write_text(page, pymupdf.Rect(MARGIN, 6, w - MARGIN - 80, 18), " · ".join(parts), 8)
     write_text(page, pymupdf.Rect(w - MARGIN - 80, 6, w - MARGIN, 18), f"Page {number} of {total}", 8,
                align="right", grey=True)
     page.draw_line(pymupdf.Point(MARGIN, OTHER_BAND - 2), pymupdf.Point(w - MARGIN, OTHER_BAND - 2),
@@ -161,20 +181,23 @@ def generate_one_student_pdf(
     seat: Seat,
     qr_token: str | None = None,
     paper_version: str | None = None,
+    stamp: PaperStamp | None = None,
 ) -> bytes:
-    """Stamp the template for one student. paper_version is printed only when the exam has several."""
+    """Stamp the template for one student. paper_version is printed only when the exam has several;
+    stamp says what else to print (Admin › Settings)."""
+    stamp = stamp or PaperStamp()
     template = pymupdf.open(stream=template_bytes, filetype="pdf")
     try:
         if len(template) == 0:
             raise ValueError("Template PDF has no pages")
-        doc = _place_pages(template)
+        doc = _place_pages(template, stamp.every_page)
     finally:
         template.close()
 
     try:
-        _stamp_first_page(doc[0], exam, student, room, seat, qr_token, paper_version)
-        for i in range(1, len(doc)):
-            _stamp_other_page(doc[i], student, room, seat, i + 1, len(doc), paper_version)
+        _stamp_first_page(doc[0], exam, student, room, seat, qr_token, paper_version, stamp)
+        for i in range(1, len(doc) if stamp.every_page else 1):
+            _stamp_other_page(doc[i], student, room, seat, i + 1, len(doc), paper_version, stamp)
         # Only embed the glyphs used; whole fallback fonts add megabytes per paper.
         doc.subset_fonts()
         return doc.tobytes(garbage=4, deflate=True)
@@ -280,11 +303,13 @@ def preview_paper(db: Session, exam_id: UUID) -> bytes:
     seat = min(seats, key=seat_order) if seats else SimpleNamespace(seat_code="A01")
     room = room or SimpleNamespace(building="Room", room_number="TBD")
     # A long name shows whether the stamp has room for real ones.
-    student = SimpleNamespace(full_name="Alexandra Sample-Studentname", student_number="1000000000")
+    student = SimpleNamespace(full_name="Alexandra Sample-Studentname", student_number="1000000000",
+                              utorid="samplea1")
 
     version = "A" if assignment_service.get_rules(db, exam_id).versions > 1 else None
-    doc = pymupdf.open(stream=generate_one_student_pdf(template_bytes, exam, student, room, seat, "preview", version),
-                       filetype="pdf")
+    stamp = get_system_settings(db).paper_stamp
+    doc = pymupdf.open(stream=generate_one_student_pdf(template_bytes, exam, student, room, seat, "preview", version,
+                                                       stamp), filetype="pdf")
     try:
         for page in doc:
             centre = pymupdf.Point(page.rect.width / 2, page.rect.height / 2)
@@ -335,6 +360,7 @@ def generate_all_exams(
     templates = {v: _load_active_template(db, exam_id, v) for v in sorted({a.paper_version for a, *_ in assignments})}
     # Print the version only when the exam has several, so single-version papers look as before.
     show_version = paper_state.shows_version(db, exam_id)
+    stamp = get_system_settings(db).paper_stamp
 
     # Determine generation version
     max_version = db.query(func.max(GeneratedExam.generation_version)).filter(
@@ -356,7 +382,7 @@ def generate_all_exams(
             qr_token = secrets.token_urlsafe(32)
             template, template_bytes = templates[assignment.paper_version]
             pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat, qr_token,
-                                                 assignment.paper_version if show_version else None)
+                                                 assignment.paper_version if show_version else None, stamp)
             file_hash = hashlib.sha256(pdf_bytes).hexdigest()
 
             file_name = f"{exam.course_code}-{student.student_number}-v{new_version}.pdf"
@@ -379,6 +405,7 @@ def generate_all_exams(
                 status="GENERATED",
                 generation_version=new_version,
                 version_shown=show_version,
+                stamp_style=stamp.fingerprint(),
                 qr_token=qr_token,
                 qr_generated_at=utcnow(),
                 created_by=user_id,

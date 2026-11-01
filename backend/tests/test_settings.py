@@ -1,6 +1,7 @@
 """Admin › Settings: what an administrator changes, and where it takes effect."""
 
 import uuid
+from types import SimpleNamespace
 from unittest import mock
 
 import pymupdf
@@ -9,8 +10,9 @@ from app.auth import entra
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models.course import Course
-from app.services import settings_service, ttb_service
+from app.services import pdf_service, settings_service, ttb_service
 from tests import test_entra
+from tests.test_exam_day import _ready_exam_with_papers
 from tests.test_seat_map import ADMIN_HEADERS, INSTRUCTOR_HEADERS, _create_exam_with_students, client
 
 STAFF_HEADERS = {"Authorization": "Bearer dev-staff-token"}
@@ -165,3 +167,58 @@ def test_sign_in_cannot_be_switched_off_without_test_accounts():
     assert r.status_code == 400 and "nobody" in r.json()["detail"]
     assert _save_sign_in(off).status_code == 200  # test accounts still work here
     assert client.get("/api/auth/config").json()["entra"] is None
+
+
+# ── What's printed on papers and exam-day documents ─────────
+
+def _stamped(stamp: settings_service.PaperStamp, pages: int = 2) -> pymupdf.Document:
+    doc = pymupdf.open()
+    for i in range(pages):
+        doc.new_page().insert_text((72, 300), f"Question {i + 1}", fontsize=14)
+    student = SimpleNamespace(full_name="Visible Name", student_number="1000000042", utorid="visiblen")
+    exam = SimpleNamespace(course_code="TEST101", exam_name="Final")
+    return pymupdf.open(stream=pdf_service.generate_one_student_pdf(
+        doc.tobytes(), exam, student, SimpleNamespace(building="IC", room_number="130"),
+        SimpleNamespace(seat_code="C07"), "token", None, stamp,
+    ))
+
+
+def test_anonymous_papers_carry_the_number_not_the_name():
+    doc = _stamped(settings_service.PaperStamp(show_name=False, show_utorid=True))
+    text = doc[0].get_text() + doc[1].get_text()
+    assert "Visible Name" not in text
+    assert "1000000042" in doc[0].get_text() and "visiblen" in doc[0].get_text() and "C07" in doc[0].get_text()
+    assert "1000000042" in doc[1].get_text() and "visiblen" in doc[1].get_text()
+
+
+def test_later_pages_can_go_unstamped():
+    doc = _stamped(settings_service.PaperStamp(every_page=False))
+    assert "Visible Name" in doc[0].get_text()
+    assert doc[1].get_text().strip() == "Question 2"
+
+
+def test_changing_the_stamp_makes_papers_out_of_date():
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    status = lambda: client.get(f"/api/exams/{exam_id}/generated/status", headers=ADMIN_HEADERS).json()  # noqa: E731
+    assert status()["up_to_date"] == 2
+    assert _save(paper_stamp={"show_name": False, "show_utorid": False, "every_page": True}).status_code == 200
+    assert status()["outdated"] == 2
+    # Back to what the papers show: up to date again, nothing to reprint.
+    assert _save(paper_stamp={"show_name": True, "show_utorid": False, "every_page": True}).status_code == 200
+    assert status()["up_to_date"] == 2
+
+
+def test_document_heading_on_exam_day_documents():
+    assert _save(document_heading="  University of Toronto ·  Computer Science ").status_code == 200
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    pdf = client.get(f"/api/exams/{exam_id}/seating-list", headers=ADMIN_HEADERS).content
+    assert "University of Toronto · Computer Science" in pymupdf.open(stream=pdf)[0].get_text()
+
+
+def test_new_exam_form_defaults():
+    assert _save(default_duration_minutes=180, default_start_time="14:00").status_code == 200
+    r = client.get("/api/exams/defaults", headers=STAFF_HEADERS)
+    assert r.json() == {"duration_minutes": 180, "start_time": "14:00"}
+    assert client.get("/api/exams/defaults", headers=INSTRUCTOR_HEADERS).status_code == 403
+    assert _save(default_start_time="25:00").status_code == 422
+    assert _save(default_duration_minutes=5).status_code == 422

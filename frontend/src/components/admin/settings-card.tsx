@@ -48,6 +48,8 @@ export function SettingsCard() {
   };
   const dirty = JSON.stringify(next) !== JSON.stringify(saved);
   const set = <K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => setForm({ ...form, [key]: value });
+  const setStamp = (key: keyof SystemSettings["paper_stamp"], value: boolean) =>
+    set("paper_stamp", { ...form.paper_stamp, [key]: value });
   const setSeating = (key: keyof SystemSettings["default_seating"], value: string) =>
     set("default_seating", { ...form.default_seating, [key]: key === "versions" ? Number(value) : value });
 
@@ -55,7 +57,7 @@ export function SettingsCard() {
     setSaving(true);
     try {
       load(await saveSystemSettings(next));
-      toast.success("Settings saved. They apply from the next sync, new exam or upload.");
+      toast.success("Settings saved.");
     } catch (err) {
       // A value the server refused says why; anything else stays generic.
       const reason = err instanceof ApiError && err.status === 422 ? err.message.replace(/Value error, /g, "") : null;
@@ -71,8 +73,9 @@ export function SettingsCard() {
         <div className="border-b border-line px-5 py-3.5">
           <h2 className="text-sm font-semibold text-ink">Settings</h2>
           <p className="text-xs text-ink-3">
-            Changes apply from the next timetable sync, new exam or upload. Courses, exams and papers already in
-            ExamFlow stay as they are. Every change is recorded under Activity.
+            Changes apply from the next timetable sync, new exam, upload or document. Courses and exams already in
+            ExamFlow stay as they are; papers follow the paper settings when next updated. Every change is recorded
+            under Activity.
           </p>
         </div>
 
@@ -88,7 +91,11 @@ export function SettingsCard() {
               hint="Separate with commas, e.g. CSC, MAT. Only courses starting with these are synced." />
           </Group>
 
-          <Group title="Seating for new exams" text="Each exam starts with these rules; staff can still change them on its Seating page.">
+          <Group title="New exams" text="What a new exam starts with; staff can still change each exam, including its seating rules on the Seating page.">
+            <Input label="Duration (minutes)" type="number" min={15} max={600} value={form.default_duration_minutes}
+              onChange={(e) => set("default_duration_minutes", Number(e.target.value))} />
+            <Input label="Start time" type="time" value={form.default_start_time}
+              onChange={(e) => set("default_start_time", e.target.value)} hint="Leave empty for none." />
             <Select label="Seat order" id="default-order" options={ORDER_OPTIONS} value={form.default_seating.order}
               onChange={(e) => setSeating("order", e.target.value)} />
             <Select label="Spacing" id="default-spacing" options={SPACING_OPTIONS} value={form.default_seating.spacing}
@@ -97,11 +104,31 @@ export function SettingsCard() {
               value={String(form.default_seating.versions)} onChange={(e) => setSeating("versions", e.target.value)} />
           </Group>
 
-          <Group title="Exam papers" text="Limits on what can be uploaded.">
+          <Group
+            title="Exam papers"
+            text="What is printed on each student's paper. Room, seat and the QR code are always printed. Changing this makes papers already made out of date, so they are regenerated with the next update."
+          >
+            <div className="space-y-2.5 md:col-span-2">
+              <Check checked={form.paper_stamp.show_name} onChange={(v) => setStamp("show_name", v)}
+                label="Print the student's name"
+                text="Turn off for anonymous marking: the paper then shows the student number instead." />
+              <Check checked={form.paper_stamp.show_utorid} onChange={(v) => setStamp("show_utorid", v)}
+                label="Print the student's UTORid" text="Next to the student number." />
+              <Check checked={form.paper_stamp.every_page} onChange={(v) => setStamp("every_page", v)}
+                label="Stamp every page"
+                text="A slim line on each later page, so a page that comes loose can be matched to its student." />
+            </div>
             <Input label="Largest exam paper upload (MB)" type="number" min={1} max={200}
               value={form.max_upload_mb}
               onChange={(e) => set("max_upload_mb", Number(e.target.value))}
               hint="Between 1 and 200 MB." />
+          </Group>
+
+          <Group title="Exam-day documents" text="Signature lists, seating lists, seating maps and the exam summary.">
+            <Input label="Heading" value={form.document_heading} maxLength={150}
+              placeholder="University of Toronto · Department of Computer Science"
+              onChange={(e) => set("document_heading", e.target.value)}
+              hint="Printed above each document's title. Leave empty for none." />
           </Group>
         </div>
 
@@ -133,6 +160,21 @@ export function SettingsCard() {
         </dl>
       </section>
     </div>
+  );
+}
+
+function Check({ checked, onChange, label, text }: {
+  checked: boolean; onChange: (v: boolean) => void; label: string; text: string;
+}) {
+  return (
+    <label className="flex cursor-pointer select-none items-start gap-2.5">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
+      <span>
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        <span className="block text-xs text-ink-3">{text}</span>
+      </span>
+    </label>
   );
 }
 
