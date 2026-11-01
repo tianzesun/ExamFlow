@@ -15,7 +15,8 @@ import { FloorPlan, FloorPlanLegend, cellKey, type CellState } from "./FloorPlan
 /**
  * Choose a room for an exam while seeing its floor plan: which seats exist, which aren't
  * in use, and which the exam's spacing rule keeps empty, so staff can tell how many
- * students it really holds before adding it.
+ * students it really holds before adding it. With moving, it picks the room a room's
+ * students move to instead, and only rooms that hold them all can be chosen.
  */
 export function RoomChooser({
   open,
@@ -27,6 +28,7 @@ export function RoomChooser({
   examRoomIds,
   registered,
   onAdd,
+  moving,
 }: {
   open: boolean;
   onClose: () => void;
@@ -41,6 +43,8 @@ export function RoomChooser({
   /** Students registered for the exam */
   registered: number;
   onAdd: (roomId: string) => Promise<void>;
+  /** Choosing where a room's students move: the room they leave and how many there are. */
+  moving?: { from: string; students: number };
 }) {
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
@@ -81,14 +85,16 @@ export function RoomChooser({
     const l = layouts[id];
     return n + (l && l !== "error" ? planOf(l, spacing, frontRowEmpty).allowed : 0);
   }, 0);
-  const studentsNeedingRoom = examRoomsLoaded ? Math.max(0, registered - seatsInExamRooms) : 0;
+  const studentsNeedingRoom = moving ? moving.students : examRoomsLoaded ? Math.max(0, registered - seatsInExamRooms) : 0;
 
   const layout = current ? layouts[current.id] : undefined;
   const plan = useMemo(() => (layout && layout !== "error" ? planOf(layout, spacing, frontRowEmpty) : null), [layout, spacing, frontRowEmpty]);
   const spacingLabel = SPACING_OPTIONS.find((o) => o.value === spacing)?.label ?? "Fill every seat";
 
+  const tooSmall = !!moving && !!plan && plan.allowed < moving.students;
+
   const add = async () => {
-    if (!current) return;
+    if (!current || tooSmall) return;
     setAdding(true);
     try {
       await onAdd(current.id);
@@ -96,7 +102,9 @@ export function RoomChooser({
       setQuery("");
       onClose();
     } catch (err) {
-      toast.error(`${current.building} ${current.room_number} couldn't be added. Try again.${errorReference(err)}`);
+      toast.error(moving
+        ? `The students couldn't be moved to ${current.building} ${current.room_number}. Try again.${errorReference(err)}`
+        : `${current.building} ${current.room_number} couldn't be added. Try again.${errorReference(err)}`);
     } finally {
       setAdding(false);
     }
@@ -106,10 +114,13 @@ export function RoomChooser({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-6xl">
         <DialogHeader className="border-b border-line px-5 py-4">
-          <DialogTitle className="text-base font-semibold text-ink">Add a room</DialogTitle>
+          <DialogTitle className="text-base font-semibold text-ink">
+            {moving ? `Move students from ${moving.from}` : "Add a room"}
+          </DialogTitle>
           <DialogDescription className="text-xs text-ink-3">
+            {moving && <>Pick the room the {plural(moving.students, "student")} move to. They keep their order, front row first; nobody else moves, and {moving.from} leaves this exam. </>}
             Pick a room to see its seats. Seating follows this exam&apos;s spacing rule: <b className="font-medium text-ink-2">{spacingLabel}</b>{frontRowEmpty && <>, with the front row empty</>}.
-            {studentsNeedingRoom > 0 && <> {plural(studentsNeedingRoom, "student")} still need a room.</>}
+            {!moving && studentsNeedingRoom > 0 && <> {plural(studentsNeedingRoom, "student")} still need a room.</>}
           </DialogDescription>
         </DialogHeader>
 
@@ -205,7 +216,11 @@ export function RoomChooser({
                         : "border-warning/20 bg-warning/10 text-warning",
                     )}
                   >
-                    {plan.allowed >= studentsNeedingRoom
+                    {moving
+                      ? plan.allowed >= studentsNeedingRoom
+                        ? `Room for all ${plural(studentsNeedingRoom, "student")} from ${moving.from}.`
+                        : `Holds ${formatNumber(plan.allowed)} of the ${plural(studentsNeedingRoom, "student")} from ${moving.from}; choose a larger room.`
+                      : plan.allowed >= studentsNeedingRoom
                       ? `Enough room for the ${plural(studentsNeedingRoom, "student")} still without one.`
                       : `Holds ${formatNumber(plan.allowed)} of the ${plural(studentsNeedingRoom, "student")} still without a room; you'll need another room too.`}
                   </p>
@@ -234,8 +249,8 @@ export function RoomChooser({
                   <FloorPlanLegend spacing={spacing !== "none" || frontRowEmpty} seated={false} highlightSeats taken={!!plan?.taken} />
                   <div className="flex gap-2">
                     <Button variant="ghost" onClick={onClose} disabled={adding}>Cancel</Button>
-                    <Button onClick={add} loading={adding}>
-                      Add {current.building} {current.room_number}
+                    <Button onClick={add} loading={adding} disabled={tooSmall}>
+                      {moving ? `Move to ${current.building} ${current.room_number}` : `Add ${current.building} ${current.room_number}`}
                     </Button>
                   </div>
                 </div>

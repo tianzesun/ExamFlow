@@ -90,6 +90,71 @@ def remove_exam_room(db: Session, exam_id: UUID, room_id: UUID, user_id: UUID | 
     return True
 
 
+def move_room(db: Session, exam_id: UUID, from_room_id: UUID, to_room_id: UUID, user_id: UUID) -> dict:
+    """Move everyone seated in one room to another, then drop the first room from the exam.
+
+    For a room booking that changes after seating: students keep their front-to-back order, the
+    exam's seating rules apply in the new room, and nobody else moves, so only their papers need
+    reprinting. The new room is added to the exam if it isn't in it yet.
+    """
+    if from_room_id == to_room_id:
+        raise ValueError("Choose a different room")
+    if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == from_room_id).first():
+        raise LookupError("Room not selected for this exam")
+    source = db.get(Room, from_room_id)
+    target = db.query(Room).filter(Room.id == to_room_id, Room.is_active).first()
+    if not target:
+        raise ValueError("Room not found or not active")
+    rules = get_rules(db, exam_id)
+    if rules.accommodation_room_id == to_room_id:
+        raise ValueError("That is the accommodation room; only students with accommodations sit there")
+
+    moving = (
+        db.query(ExamAssignment, Seat)
+        .join(Seat, Seat.id == ExamAssignment.seat_id)
+        .filter(ExamAssignment.exam_id == exam_id, Seat.room_id == from_room_id)
+        .all()
+    )
+    moving.sort(key=lambda pair: (pair[1].row_number or 0, pair[1].column_number or 0, pair[1].seat_code))
+
+    added = not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == to_room_id).first()
+    if added:
+        db.add(ExamRoom(exam_id=exam_id, room_id=to_room_id))
+        db.flush()
+    seats = [seat for seat, room in _free_seats(db, exam_id) if room.id == to_room_id and _usable(seat, rules)]
+    if len(seats) < len(moving):
+        db.rollback()
+        hint = " with this exam's seating rules" if rules.spacing != "none" or rules.front_row_empty else ""
+        raise ValueError(
+            f"{_room(target)} has {_n(len(seats), 'free seat')}{hint} for {_n(len(moving), 'student')}. "
+            "Choose a larger room."
+        )
+
+    version = (db.query(func.max(ExamAssignment.version)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0) + 1
+    for (assignment, _), seat in zip(moving, seats):
+        assignment.seat_id = seat.id
+        assignment.version = version
+        assignment.paper_version = version_for_seat(seat, rules)
+    db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == from_room_id).delete()
+    if rules.accommodation_room_id == from_room_id:
+        exam = db.get(Exam, exam_id)
+        exam.seating_rules = {**exam.seating_rules, "accommodation_room_id": str(to_room_id)}
+    db.add(AuditLog(
+        user_id=user_id,
+        action="EXAM_ROOM_REPLACED",
+        entity_type="exam",
+        entity_id=exam_id,
+        old_values={"room_id": str(from_room_id), "room": _room(source)},
+        new_values={"room_id": str(to_room_id), "room": _room(target), "students_moved": len(moving)},
+    ))
+    db.commit()
+    return {"moved": len(moving), "room_added": added}
+
+
+def _room(room: Room) -> str:
+    return f"{room.building} {room.room_number}"
+
+
 def get_exam_rooms(db: Session, exam_id: UUID) -> list[Room]:
     return (
         db.query(Room)

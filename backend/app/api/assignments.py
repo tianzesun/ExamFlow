@@ -106,6 +106,25 @@ def remove_exam_room(
     sync_exam_status(db, exam_id, user.id)
 
 
+@router.post("/rooms/{room_id}/move")
+def move_room(
+    exam_id: UUID,
+    room_id: UUID,
+    data: ExamRoomRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Move everyone in room_id to data.room_id, and drop room_id from the exam."""
+    try:
+        result = assignment_service.move_room(db, exam_id, room_id, data.room_id, user.id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
+    return result
+
+
 # ── Summary ─────────────────────────────────────────────────
 
 @router.get("/summary", response_model=AssignmentSummaryResponse)

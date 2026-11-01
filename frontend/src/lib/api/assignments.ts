@@ -45,6 +45,15 @@ export async function getExamRooms(examId: string): Promise<ExamRoom[]> {
   return fetchApi(`/api/exams/${examId}/assignments/rooms`);
 }
 
+/** Move everyone seated in fromRoomId to toRoomId, keeping their order, and drop fromRoomId from the exam. */
+export async function moveExamRoom(examId: string, fromRoomId: string, toRoomId: string): Promise<{ moved: number; room_added: boolean }> {
+  return fetchApi(`/api/exams/${examId}/assignments/rooms/${fromRoomId}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ room_id: toRoomId }),
+  });
+}
+
 export async function addExamRoom(examId: string, roomId: string): Promise<void> {
   await fetchApi(`/api/exams/${examId}/assignments/rooms`, {
     method: "POST",

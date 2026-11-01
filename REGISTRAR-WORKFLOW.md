@@ -84,6 +84,10 @@ its seats instead of packing the first room, and **Front row › Leave the front
 free for proctors and latecomers. Both keep each room to one block of names or numbers, so door signs
 still work.
 
+If a room booking changes after seating, use the move button beside the room on the Seating page:
+pick the new room from its floor plan and everyone in the old room moves there in the same order.
+Nobody else moves, so only those students' papers need regenerating and reprinting.
+
 ### 8. Review Seating
 
 1. Review the seating list

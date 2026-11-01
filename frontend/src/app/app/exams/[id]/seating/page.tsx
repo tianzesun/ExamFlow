@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getExam } from "@/lib/api/exams";
 import { getAllRooms, Room } from "@/lib/api/rooms";
 import {
-  getExamRooms, addExamRoom, removeExamRoom,
+  getExamRooms, addExamRoom, removeExamRoom, moveExamRoom,
   getAssignmentSummary, previewAssignment, confirmAssignment, regenerateAssignment, seatRemainingStudents,
   getAssignments, AssignmentSummary, Assignment, AssignmentPreview,
   getSeatingRules, saveSeatingRules, SeatingRules,
@@ -25,7 +26,7 @@ import { EmptyState } from "@/components/empty-state";
 import { DownloadButton } from "@/components/download-button";
 import { getSeatingListUrl } from "@/lib/api/administration";
 import {
-  AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, Armchair,
+  AlertCircle, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, Armchair, ArrowRightLeft,
   ChevronLeft, ChevronRight, DoorOpen, RefreshCw, Search, Sparkles, Users, UserX,
   FileSpreadsheet, FileText, LayoutGrid, Printer, Shuffle, SlidersHorizontal,
 } from "lucide-react";
@@ -66,6 +67,8 @@ export default function SeatingPage() {
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [seatingRemaining, setSeatingRemaining] = useState(false);
   const [choosingRoom, setChoosingRoom] = useState(false);
+  // The room whose students are moving to another, while its chooser is open.
+  const [movingFrom, setMovingFrom] = useState<{ id: string; label: string; students: number } | null>(null);
   const [rules, setRules] = useState<SeatingRules>(DEFAULT_RULES);
   const [savingRules, setSavingRules] = useState(false);
 
@@ -127,8 +130,16 @@ export default function SeatingPage() {
     fetchAll();
   };
 
+  const handleMoveRoom = async (toRoomId: string) => {
+    if (!movingFrom) return;
+    const { moved } = await moveExamRoom(examId, movingFrom.id, toRoomId);
+    toast.success(`${plural(moved, "student")} moved. Their papers need regenerating before printing.`);
+    notifyExamChanged();
+    fetchAll();
+  };
+
   const handleRemoveRoom = async (roomId: string) => {
-    if (!confirm("Remove this room? Existing assignments in this room must be removed first.")) return;
+    if (!confirm("Remove this room from the exam? If students sit in it, move them to another room first.")) return;
     setError(null);
     try {
       await removeExamRoom(examId, roomId);
@@ -542,7 +553,7 @@ export default function SeatingPage() {
               <Th className="text-right">Used</Th>
               <Th className="text-right">Free</Th>
               <Th className="w-[28%]">Utilization</Th>
-              {canEdit && <Th className="w-12"><span className="sr-only">Actions</span></Th>}
+              {canEdit && <Th className="w-24"><span className="sr-only">Actions</span></Th>}
             </TableHead>
             <TableBody>
               {examRooms.map((r) => {
@@ -570,7 +581,15 @@ export default function SeatingPage() {
                       </div>
                     </Td>
                     {canEdit && (
-                      <Td className="py-1.5 text-right">
+                      <Td className="py-1.5 text-right whitespace-nowrap">
+                        {used > 0 && (
+                          <Button variant="ghost" size="sm" className="px-2 text-ink-3 hover:text-ink"
+                            onClick={() => setMovingFrom({ id: r.id, label: `${r.building} ${r.room_number}`, students: used })}
+                            aria-label={`Move the students in ${r.building} ${r.room_number} to another room`}
+                            title="Move these students to another room">
+                            <ArrowRightLeft className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" className="px-2 text-ink-3 hover:text-danger"
                           onClick={() => handleRemoveRoom(r.id)} aria-label={`Remove ${r.building} ${r.room_number}`}>
                           <Trash2 className="h-3.5 w-3.5" />
@@ -596,6 +615,20 @@ export default function SeatingPage() {
           examRoomIds={examRooms.map((r) => r.id)}
           registered={summary?.registered_students ?? 0}
           onAdd={handleAddRoom}
+        />
+      )}
+      {canEdit && movingFrom && (
+        <RoomChooser
+          open
+          onClose={() => setMovingFrom(null)}
+          examId={examId}
+          rooms={availableRooms}
+          spacing={rules.spacing}
+          frontRowEmpty={rules.front_row_empty}
+          examRoomIds={[]}
+          registered={0}
+          onAdd={handleMoveRoom}
+          moving={{ from: movingFrom.label, students: movingFrom.students }}
         />
       )}
 

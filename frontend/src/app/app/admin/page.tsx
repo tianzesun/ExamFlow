@@ -56,6 +56,7 @@ const ACTION_LABEL: Record<string, string> = {
   ACCOMMODATION_UPDATED: "Changed accommodations",
   EXAM_ROOM_ADDED: "Added a room to an exam",
   EXAM_ROOM_REMOVED: "Removed a room from an exam",
+  EXAM_ROOM_REPLACED: "Moved an exam's students to another room",
   SEATING_RULES_UPDATED: "Changed seating rules",
   SEATING_ASSIGNMENT_CREATED: "Seated students",
   SEATING_ASSIGNMENT_REGENERATED: "Reseated everyone",
