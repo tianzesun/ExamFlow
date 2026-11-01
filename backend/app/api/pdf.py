@@ -13,6 +13,7 @@ from app.models.user import User
 from app.rate_limit import per_user
 from app.services import generation_job_service, paper_state, pdf_service
 from app.services.access_service import require_exam_access
+from app.services.download_audit import record_download
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 from app.utils import attachment_headers
 
@@ -192,13 +193,15 @@ def download_generated(
     exam_id: UUID,
     generated_exam_id: UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     ge = _verify_generated_ownership(db, generated_exam_id, exam_id)
 
     filepath = ge.storage_key
     if not os.path.exists(filepath):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    record_download(db, user, "PAPER_DOWNLOADED", exam_id, file_name=ge.file_name,
+                    generation_version=ge.generation_version)
 
     def iterfile():
         with open(filepath, "rb") as f:

@@ -84,6 +84,11 @@ def _room_label(room: Room) -> str:
     return f"{room.building} {room.room_number}"
 
 
+def room_label(db: Session, room_id: UUID) -> str | None:
+    room = db.query(Room).filter(Room.id == room_id).first()
+    return _room_label(room) if room else None
+
+
 def _exam_when(exam: Exam) -> str:
     when = exam.exam_date.strftime("%A, %B %-d, %Y") if exam.exam_date else ""
     if exam.start_time:

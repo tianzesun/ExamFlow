@@ -182,3 +182,23 @@ def test_server_errors_carry_a_reference_the_browser_can_read():
     assert r.status_code == 500
     assert r.headers["x-request-id"] and r.headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert "boom" not in r.text
+
+
+def test_every_exam_document_download_is_recorded():
+    exam_id, room_id = _ready_exam_with_papers()
+    paper = _papers(exam_id)[0]
+    template = client.get(f"/api/exams/{exam_id}/templates", headers=ADMIN_HEADERS).json()[0]
+    for path in (
+        f"/generated/{paper['id']}/download", f"/templates/{template['id']}/download",
+        f"/signature-list/{room_id}", f"/seating-map/{room_id}", "/seating-list", "/seating-list?format=csv",
+    ):
+        assert client.get(f"/api/exams/{exam_id}{path}", headers=ADMIN_HEADERS).status_code == 200, path
+
+    entries = client.get("/api/admin/activity", params={"page_size": 200}, headers=ADMIN_HEADERS).json()["entries"]
+    mine = [e for e in entries if e["entity_id"] == exam_id and e["action"].endswith("_DOWNLOADED")]
+    actions = sorted(e["action"] for e in mine)
+    assert actions.count("PAPER_DOWNLOADED") == 1 and actions.count("TEMPLATE_DOWNLOADED") == 1
+    documents = sorted(e["new_values"]["document"] for e in mine if e["action"] == "EXAM_DAY_DOCUMENT_DOWNLOADED")
+    assert documents == ["seating list", "seating list", "seating map", "signature list"]
+    room_entry = next(e for e in mine if e["new_values"].get("document") == "signature list")
+    assert room_entry["new_values"]["room"] and room_entry["user"]["name"] == "Dev Admin"

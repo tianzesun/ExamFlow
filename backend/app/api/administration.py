@@ -13,6 +13,7 @@ from app.models.user import User
 from app.rate_limit import per_address, per_user
 from app.services import admin_service
 from app.services.access_service import require_exam_access
+from app.services.download_audit import record_download
 from app.services.exam_status_service import block_writes_to_archived_exam
 from app.utils import attachment_headers
 
@@ -81,7 +82,7 @@ def download_signature_list(
     exam_id: UUID,
     room_id: UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     try:
         pdf_bytes = admin_service.generate_signature_list_pdf(db, exam_id, room_id)
@@ -89,6 +90,8 @@ def download_signature_list(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    record_download(db, user, "EXAM_DAY_DOCUMENT_DOWNLOADED", exam_id, document="signature list",
+                    room=admin_service.room_label(db, room_id))
 
     return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers("Signature-List.pdf"))
 
@@ -100,7 +103,7 @@ def download_seating_list(
     exam_id: UUID,
     format: str = Query("pdf", pattern="^(pdf|csv)$"),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
@@ -109,6 +112,7 @@ def download_seating_list(
     if format == "csv":
         # BOM so Excel opens accented names correctly.
         data = "\ufeff" + admin_service.generate_seating_list_csv(db, exam_id)
+        record_download(db, user, "EXAM_DAY_DOCUMENT_DOWNLOADED", exam_id, document="seating list", format="csv")
         return Response(content=data, media_type="text/csv; charset=utf-8", headers=attachment_headers(f"{name}.csv"))
     try:
         pdf_bytes = admin_service.generate_seating_list_pdf(db, exam_id)
@@ -116,6 +120,7 @@ def download_seating_list(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    record_download(db, user, "EXAM_DAY_DOCUMENT_DOWNLOADED", exam_id, document="seating list", format="pdf")
     return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers(f"{name}.pdf"))
 
 
@@ -126,7 +131,7 @@ def download_seating_map(
     exam_id: UUID,
     room_id: UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     try:
         pdf_bytes = admin_service.generate_seating_map_pdf(db, exam_id, room_id)
@@ -134,6 +139,8 @@ def download_seating_map(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    record_download(db, user, "EXAM_DAY_DOCUMENT_DOWNLOADED", exam_id, document="seating map",
+                    room=admin_service.room_label(db, room_id))
 
     return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers("Seating-Map.pdf"))
 

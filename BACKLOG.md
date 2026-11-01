@@ -49,7 +49,7 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Log all file download events
 - **Impact:** Track document access
 - **Scope:** PDF/template endpoints
-- **Status:** Partly done. The all-papers print file and the exam package are audited; single-paper, template and room-document downloads are not
+- **Status:** Done — every exam document download is in the audit log under its exam: print file, package, single papers, uploaded exam papers, signature lists, seating maps and seating lists (Admin › Activity)
 
 ### P1-003: Background Workers
 - **Description:** Move document generation to background workers

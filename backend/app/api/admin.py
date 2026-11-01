@@ -30,8 +30,9 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
                       "EXAM_DELETED", "EXAM_STATUS_"),
     "students": ("ROSTER_", "STUDENT_", "ACCOMMODATION_"),
     "seating": ("SEAT", "EXAM_ROOM_"),
-    "papers": ("EXAM_TEMPLATE_", "PERSONALIZED_EXAMS_", "PRINT_FILE_", "QR_GENERATED"),
-    "exam_day": ("ATTENDANCE_", "EXAM_PACKAGE_", "QR_VERIF"),
+    "papers": ("EXAM_TEMPLATE_", "TEMPLATE_DOWNLOADED", "PERSONALIZED_EXAMS_", "PAPER_DOWNLOADED", "PRINT_FILE_",
+               "QR_GENERATED"),
+    "exam_day": ("ATTENDANCE_", "EXAM_PACKAGE_", "EXAM_DAY_", "QR_VERIF"),
     "rooms": ("ROOM_",),
 }
 
