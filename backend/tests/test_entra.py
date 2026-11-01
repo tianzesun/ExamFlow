@@ -93,3 +93,43 @@ def test_unsigned_token_is_rejected():
 def test_sign_in_page_config_names_the_api_scope():
     config = client.get("/api/auth/config").json()
     assert config["entra"] == {"tenant_id": TENANT, "client_id": CLIENT, "scopes": [f"api://{CLIENT}/access_as_user"]}
+
+
+def _activity(action: str) -> list[dict]:
+    from tests.test_seat_map import ADMIN_HEADERS
+
+    r = client.get("/api/admin/activity", params={"category": "access", "page_size": 200}, headers=ADMIN_HEADERS)
+    return [e for e in r.json()["entries"] if e["action"] == action]
+
+
+def test_a_finished_utorid_sign_in_is_in_the_activity_log():
+    token = _token(name="Signed In Person")
+    r = client.post("/api/auth/signed-in", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200 and r.json()["display_name"] == "Signed In Person"
+    entry = next(e for e in _activity("USER_SIGNED_IN") if e["user"]["name"] == "Signed In Person")
+    assert entry["new_values"] == {"source": "UTORid"}
+
+    # Calls made with the session's tokens aren't sign-ins.
+    _me(token)
+    assert sum(e["user"]["name"] == "Signed In Person" for e in _activity("USER_SIGNED_IN")) == 1
+
+    assert client.post("/api/auth/signed-out", headers={"Authorization": f"Bearer {token}"}).status_code == 204
+    assert any(e["user"]["name"] == "Signed In Person" for e in _activity("USER_SIGNED_OUT"))
+
+
+def test_a_refused_utorid_sign_in_records_who_tried():
+    r = client.post(
+        "/api/auth/signed-in",
+        headers={"Authorization": f"Bearer {_token(roles=None, preferred_username='no.role@example.invalid')}"},
+    )
+    assert r.status_code == 403 and "access to ExamFlow" in r.json()["detail"]
+    entry = next(e for e in _activity("USER_SIGN_IN_REFUSED") if e["new_values"]["email"] == "no.role@example.invalid")
+    assert entry["user"] is None and entry["new_values"]["reason"] == "no ExamFlow role"
+
+
+def test_an_invalid_token_is_not_recorded():
+    before = len(_activity("USER_SIGN_IN_REFUSED"))
+    forged = {"Authorization": f"Bearer {_token(key=OTHER_KEY)}"}
+    assert client.post("/api/auth/signed-in", headers=forged).status_code == 401
+    assert client.post("/api/auth/signed-in").status_code == 401
+    assert len(_activity("USER_SIGN_IN_REFUSED")) == before

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { CurrentUser } from "./types";
-import { getCurrentUser, clearToken } from "../api/auth";
+import { getCurrentUser, clearToken, recordSignOut } from "../api/auth";
 import { ApiError } from "../api/client";
 import { signOutEntra } from "./entra";
 
@@ -44,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Recorded while the token still works; signing out goes ahead even if this fails.
+    await recordSignOut().catch(() => {});
     setUser(null);
     setDenied(null);
     clearToken();

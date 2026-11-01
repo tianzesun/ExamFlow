@@ -16,7 +16,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { clearToken, devLogin, getDevTokens } from "@/lib/api/auth";
+import { clearToken, devLogin, getDevTokens, recordSignIn } from "@/lib/api/auth";
 import { errorReference } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/context";
 import { completeEntraSignIn, getAuthConfig, startEntraSignIn, type AuthConfig } from "@/lib/auth/entra";
@@ -85,6 +85,7 @@ function LoginScreen() {
         });
         // Only go on if the account may use ExamFlow; otherwise stay and show why not.
         if (returnTo) {
+          await recordSignIn().catch(() => {}); // the audit log notes it, including a refusal
           if (await refreshUser()) router.replace(safeNext(returnTo));
           return;
         }

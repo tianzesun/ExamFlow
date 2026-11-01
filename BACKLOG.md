@@ -43,7 +43,7 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Log authentication events (login, logout, failed attempts)
 - **Impact:** Complete audit trail
 - **Scope:** Auth module, audit logging
-- **Status:** Not started
+- **Status:** Done — Admin › Activity › Sign-in and access shows each sign-in (UTORid or test account), each sign-out, and refused sign-ins (a UTORid without an ExamFlow role, with its email; or an account switched off in ExamFlow). Token renewals during a session aren't counted as sign-ins; invalid tokens aren't logged.
 
 ### P1-002: File Download Audit
 - **Description:** Log all file download events

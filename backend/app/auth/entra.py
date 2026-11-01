@@ -28,6 +28,11 @@ LEEWAY_SECONDS = 60
 class NoExamFlowRoleError(Exception):
     """A valid university sign-in without an ExamFlow app role assigned."""
 
+    def __init__(self, email: str | None = None):
+        super().__init__(email)
+        # Who was refused, so the sign-in record can say whom to give a role.
+        self.email = email
+
 
 def looks_like_jwt(token: str) -> bool:
     return token.count(".") == 2
@@ -89,12 +94,12 @@ def verify_entra_token(token: str, db: Session) -> User | None:
         logger.info("Rejected Entra token: %s", e)
         return None
 
+    email = claims.get("preferred_username") or claims.get("email") or claims.get("upn")
     role = role_from_claims(claims)
     if not role:
-        raise NoExamFlowRoleError()
+        raise NoExamFlowRoleError(email)
 
     external_id = f"entra:{claims['oid']}"
-    email = claims.get("preferred_username") or claims.get("email") or claims.get("upn")
     name = claims.get("name") or email or "University user"
     user = db.query(User).filter(User.external_id == external_id).first()
     if not user:

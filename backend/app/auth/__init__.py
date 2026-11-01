@@ -8,6 +8,21 @@ from app.models.user import User
 security = HTTPBearer(auto_error=False)
 
 
+NO_ROLE_DETAIL = "Your UTORid doesn't have access to ExamFlow yet. Ask the exam office to give you a role."
+
+
+def authenticate(token: str, db: Session) -> User | None:
+    """The user a bearer token belongs to, or None if it isn't valid.
+
+    Raises NoExamFlowRoleError for a valid UTORid sign-in without an ExamFlow role.
+    """
+    from app.auth.dev_auth import verify_dev_token
+    from app.auth.entra import looks_like_jwt, verify_entra_token
+
+    # UTORid sign-ins carry an Entra access token (a JWT); test accounts a short fixed token.
+    return verify_entra_token(token, db) if looks_like_jwt(token) else verify_dev_token(token, db)
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
@@ -18,18 +33,12 @@ def get_current_user(
             detail="Not authenticated",
         )
 
-    from app.auth.dev_auth import verify_dev_token
-    from app.auth.entra import NoExamFlowRoleError, looks_like_jwt, verify_entra_token
+    from app.auth.entra import NoExamFlowRoleError
 
-    token = credentials.credentials
     try:
-        # UTORid sign-ins carry an Entra access token (a JWT); test accounts a short fixed token.
-        user = verify_entra_token(token, db) if looks_like_jwt(token) else verify_dev_token(token, db)
+        user = authenticate(credentials.credentials, db)
     except NoExamFlowRoleError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your UTORid doesn't have access to ExamFlow yet. Ask the exam office to give you a role.",
-        ) from None
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=NO_ROLE_DETAIL) from None
 
     if not user:
         raise HTTPException(

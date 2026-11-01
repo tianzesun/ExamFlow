@@ -8,19 +8,16 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| Dev token authentication only | No real user identity verification | Restrict network access |
 | UTORid sign-in needs Entra set-up | Can't be used until the app registration and roles exist in the UofT tenant | See SSO-INTEGRATION.md |
-| No session expiry | Sessions persist indefinitely | Manual logout required |
-| No server-side logout | Client-side session clear only | Browser cookie clear |
-| No multi-factor authentication | MFA handled by IdP (not implemented) | Acceptable for pilot |
+| Test accounts in development | Fixed tokens, no real identity | Turned off outside development (`dev_auth_enabled`) |
+| Session length, MFA and sign-out belong to Entra | ExamFlow keeps no session of its own | Set in Entra ID; tokens end with the browser tab |
 
 ## Authorization
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| All authenticated users can read all exams | No exam-level scoping for reads | Acceptable for pilot |
-| No course-level access control | Instructors see all exams | Intentional design |
-| No instructor-specific restrictions | Instructors have full read access | Acceptable for pilot |
+| Course access is by sign-in email | An instructor whose email changes loses their courses | Exam office re-adds them on the course page |
+| Roles come from Entra app roles | Changing a role means a change in Entra | Admins can switch a person off in ExamFlow at once |
 
 ## Crowdmark Integration
 
@@ -36,10 +33,7 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| Synchronous generation | Large exams may be slow | Acceptable for <1000 students |
-| No background workers | Generation blocks HTTP request | Acceptable for pilot |
-| No progress indication | User sees loading spinner only | Acceptable for small exams |
-| No generation retry | Failed generation requires manual retry | Acceptable for pilot |
+| Generation runs in the API process | A very large exam competes with other requests | Background job with progress bar; move to a worker queue if load grows |
 
 ## Data Management
 
@@ -48,7 +42,7 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 | No data retention policy | Data retained indefinitely | Manual cleanup |
 | No exam archival automation | Manual status change required | Workflow documented |
 | No bulk operations | One exam at a time | Acceptable for pilot |
-| No data export | Cannot export to SIS | Out of scope |
+| Roster-only export | The seating list exports as CSV; a plain roster export doesn't exist | Use the seating list CSV |
 
 ## User Management
 
@@ -80,7 +74,6 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| No integration tests against PostgreSQL | Tests use SQLite | Acceptable for pilot |
 | No end-to-end browser tests | Manual testing only | Acceptable for pilot |
 | No load testing | Manual performance check | Acceptable for pilot |
 | No security scanning | Manual security review | Acceptable for pilot |
@@ -106,9 +99,6 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 
 | Item | Priority | Phase |
 |------|:--------:|-------|
-| OIDC/SSO integration | P0 | Production |
-| Session expiry | P1 | Production |
-| Background workers | P2 | Future |
 | S3 storage | P2 | Future |
 | API documentation | P2 | Future |
 | Integration tests | P2 | Future |

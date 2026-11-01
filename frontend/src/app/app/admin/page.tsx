@@ -32,6 +32,9 @@ const CATEGORY_LABEL: Record<string, string> = {
 /** Plain-language names for audit actions; anything new falls back to a tidied action code. */
 const ACTION_LABEL: Record<string, string> = {
   USER_PROVISIONED: "Signed in for the first time",
+  USER_SIGNED_IN: "Signed in",
+  USER_SIGNED_OUT: "Signed out",
+  USER_SIGN_IN_REFUSED: "Was refused sign-in",
   USER_ROLE_CHANGED: "Role changed in Entra",
   USER_ACTIVATED: "Switched a person on",
   USER_DEACTIVATED: "Switched a person off",
@@ -89,6 +92,12 @@ const ENTITY_LABEL: Record<string, string> = {
   exam_template: "Exam paper",
   generated_exam: "Paper",
 };
+
+/** A refused UTORid sign-in has no ExamFlow user; the email says who tried. */
+function refusedEmail(entry: ActivityEntry): string | null {
+  const email = entry.action === "USER_SIGN_IN_REFUSED" ? entry.new_values?.email : null;
+  return typeof email === "string" && email ? email : null;
+}
 
 /** "key: value" pairs from the change, for the details line. */
 function details(entry: ActivityEntry): string {
@@ -290,7 +299,7 @@ function ActivityCard() {
                 <span className="tnum text-xs text-ink-3">{formatDateTime(e.at)}</span>
                 <div className="min-w-0">
                   <p className="text-sm text-ink">
-                    <span className="font-medium">{e.user?.name ?? "No sign-in"}</span>{" "}
+                    <span className="font-medium">{e.user?.name ?? refusedEmail(e) ?? "No sign-in"}</span>{" "}
                     <span className="text-ink-2">{actionLabel(e.action).replace(/^\w/, (c) => c.toLowerCase())}</span>
                     {e.entity_label && <> · <span className="font-medium">{e.entity_label}</span></>}
                     {!e.entity_label && e.entity_type && ENTITY_LABEL[e.entity_type] && (

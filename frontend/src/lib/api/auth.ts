@@ -22,6 +22,16 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   return fetchApi<CurrentUser>("/api/auth/me");
 }
 
+/** Record in the audit log that a UTORid sign-in just finished (not each token renewal). */
+export async function recordSignIn(): Promise<void> {
+  await fetchApi<CurrentUser>("/api/auth/signed-in", { method: "POST" });
+}
+
+/** Record in the audit log that this person is signing out. */
+export async function recordSignOut(): Promise<void> {
+  await fetchApi<void>("/api/auth/signed-out", { method: "POST" });
+}
+
 export async function devLogin(token: string): Promise<CurrentUser> {
   const user = await fetchApi<CurrentUser>("/api/auth/login", {
     method: "POST",

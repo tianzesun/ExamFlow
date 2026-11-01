@@ -27,9 +27,21 @@ def test_switching_someone_off_blocks_them_at_once():
     assert client.get("/api/auth/me", headers=INSTRUCTOR_HEADERS).status_code == 403
     # Signing in again doesn't switch them back on.
     assert client.get("/api/auth/me", headers=INSTRUCTOR_HEADERS).status_code == 403
+    # A test-account sign-in is refused too, and the refusal is in the log.
+    assert client.post("/api/auth/login", json={"token": "dev-instructor-token"}).status_code == 403
+    log = client.get("/api/admin/activity", params={"category": "access"}, headers=ADMIN_HEADERS).json()["entries"]
+    assert log[0]["action"] == "USER_SIGN_IN_REFUSED" and log[0]["user"]["id"] == instructor["id"]
 
     client.patch(f"/api/admin/users/{instructor['id']}", json={"is_active": True}, headers=ADMIN_HEADERS)
     assert client.get("/api/auth/me", headers=INSTRUCTOR_HEADERS).status_code == 200
+
+
+def test_test_account_sign_in_and_out_are_logged():
+    me = client.post("/api/auth/login", json={"token": "dev-staff-token"}).json()
+    assert client.post("/api/auth/signed-out", headers={"Authorization": "Bearer dev-staff-token"}).status_code == 204
+    log = client.get("/api/admin/activity", params={"user_id": me["id"]}, headers=ADMIN_HEADERS).json()["entries"]
+    assert [e["action"] for e in log[:2]] == ["USER_SIGNED_OUT", "USER_SIGNED_IN"]
+    assert log[1]["new_values"] == {"source": "test account"}
 
 
 def test_admins_cannot_switch_themselves_off():
