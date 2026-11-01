@@ -3,7 +3,10 @@
 ## Security
 
 - [ ] AUTH_DEV_MODE=false in production
-- [ ] UTORid sign-in configured (ENTRA_TENANT_ID, ENTRA_CLIENT_ID; app registration and roles as in SSO-INTEGRATION.md)
+- [ ] Entra app registration requested ([doc/requests/ENTRA-APP-REGISTRATION-REQUEST.md](doc/requests/ENTRA-APP-REGISTRATION-REQUEST.md)) and roles assigned
+- [ ] UTORid sign-in configured (ENTRA_TENANT_ID, ENTRA_CLIENT_ID; see SSO-INTEGRATION.md)
+- [ ] Information Risk Assessment completed (uoft.me/Information-Risk-Assessment), using DATA-CLASSIFICATION.md and SECURITY-REVIEW.md
+- [ ] Pilot run with the exam office ([PILOT-TEST-SCRIPT.md](PILOT-TEST-SCRIPT.md)) and findings addressed
 - [ ] CORS_ALLOWED_ORIGINS set to production domain only
 - [ ] HTTPS enforced (Strict-Transport-Security header)
 - [ ] No secrets committed to git

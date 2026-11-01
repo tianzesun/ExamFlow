@@ -1,141 +1,111 @@
-# Data Classification Guide
+# Data Classification and Inventory
 
-## Purpose
+What ExamFlow stores, where it goes and who can see it. Written as input to the university's
+Information Risk Assessment (uoft.me/Information-Risk-Assessment). The levels are **proposed**,
+using the University of Toronto's data classification (L1 public to L4 highly restricted), and
+need confirming with Information Security.
 
-This document classifies data handled by ExamFlow according to sensitivity and institutional policy.
+*Last checked against the code: 2026-10-31.*
 
-## Classification Levels
+## Summary
 
-| Level | Description | Handling Requirements |
-|-------|-------------|----------------------|
-| **CONFIDENTIAL** | Sensitive exam content and student PII | Encrypted at rest, access controlled, audit logged |
-| **RESTRICTED** | Internal operational data | Access controlled, audit logged |
-| **INTERNAL** | System configuration and metadata | Access controlled |
+ExamFlow holds identifying student information (L3): names, student numbers, UTORids, emails,
+where each student sits and exam accommodations. Staff identities come from Entra ID. Nothing is
+sent outside the university except the sign-in itself, which goes to the university's own Entra
+tenant on Microsoft's service.
 
-## Data Classification Table
+The one item that could become **L4** is the free-text **accommodation notes** field. Staff are
+told on screen not to record medical details there; see [Risks to confirm](#risks-to-confirm).
 
-### Exam Content
+## Inventory
 
-| Data Item | Classification | Storage | Access Control | Retention |
-|-----------|---------------|---------|----------------|-----------|
-| Exam template (original) | CONFIDENTIAL | Filesystem (./storage) | Authenticated + exam ownership | Per institutional policy |
-| Personalized exam PDFs | CONFIDENTIAL | Filesystem (./storage) | Authenticated + exam ownership | Per institutional policy |
-| Exam questions | NOT STORED | Crowdmark only | N/A | N/A |
-| Exam answers | NOT STORED | Crowdmark only | N/A | N/A |
+### Students
 
-### Student Information
+| Data | Proposed level | Where | Who can see it |
+|------|:--------------:|-------|----------------|
+| Full name, student number | L3 | PostgreSQL `students`; printed on each paper and on seating and signature lists | ADMIN, STAFF; INSTRUCTOR/TA for their courses |
+| UTORid, email (if in the imported roster) | L3 | PostgreSQL `students` | as above |
+| Room and seat for each exam | L3 | PostgreSQL `exam_assignments`; on papers and lists | as above |
+| Extra time (minutes) | L3 | PostgreSQL `exam_students` | as above |
+| Accommodation notes (free text) | L3, **L4 if medical details are entered** | PostgreSQL `exam_students` | ADMIN, STAFF only |
+| Attendance (present/absent, time, who checked them in) | L3 | PostgreSQL `exam_students` | ADMIN, STAFF; INSTRUCTOR/TA for their courses |
 
-| Data Item | Classification | Storage | Access Control | Retention |
-|-----------|---------------|---------|----------------|-----------|
-| Student name | CONFIDENTIAL | PostgreSQL | Authenticated + exam scope | Per institutional policy |
-| Student ID number | CONFIDENTIAL | PostgreSQL | Authenticated + exam scope | Per institutional policy |
-| Student email | NOT STORED | N/A | N/A | N/A |
-| Student demographics | NOT STORED | N/A | N/A | N/A |
+Not stored: dates of birth, addresses, phone numbers, grades, financial data, exam answers.
 
-### Seating & Assignment
+### Exam documents
 
-| Data Item | Classification | Storage | Access Control | Retention |
-|-----------|---------------|---------|----------------|-----------|
-| Room assignment | RESTRICTED | PostgreSQL | Authenticated + exam scope | Per institutional policy |
-| Seat assignment | RESTRICTED | PostgreSQL | Authenticated + exam scope | Per institutional policy |
-| Seating map | RESTRICTED | Filesystem (generated) | Authenticated + exam scope | Per institutional policy |
-| Signature list | RESTRICTED | Filesystem (generated) | Authenticated + exam scope | Per institutional policy |
+| Data | Proposed level | Where | Who can see it |
+|------|:--------------:|-------|----------------|
+| Uploaded exam paper (from Crowdmark) | L3 (assessment content before the exam) | Server filesystem `storage/exams/<exam>/templates/` | ADMIN, STAFF; INSTRUCTOR/TA for their courses |
+| Personalized papers (name, number, room, seat, QR code) | L3 | `storage/exams/<exam>/generated/` | as above |
+| Seating lists, signature lists, seating maps, exam-day package | L3 | Generated on request, not stored | as above |
+| QR token on each paper | L2 | PostgreSQL `generated_exams` | Public check at `/verify/<token>`: answers only whether the paper is current, with course code, exam name and date, **no student details** |
 
-### QR & Verification
+### Staff and access
 
-| Data Item | Classification | Storage | Access Control | Retention |
-|-----------|---------------|---------|----------------|-----------|
-| QR token | RESTRICTED | PostgreSQL | Public (verify endpoint) | Per institutional policy |
-| QR verification log | INTERNAL | PostgreSQL (audit_logs) | Admin/Staff only | Per institutional policy |
+| Data | Proposed level | Where | Who can see it |
+|------|:--------------:|-------|----------------|
+| Staff name, sign-in email, ExamFlow role | L2 | PostgreSQL `users` (created at first sign-in from the Entra token) | ADMIN |
+| Course access list (instructor/TA emails per course) | L2 | PostgreSQL `course_access` | ADMIN, STAFF; people on the course |
+| Audit log | L3 (entries can name students and staff) | PostgreSQL `audit_logs` | ADMIN only (Admin › Activity) |
 
-### System Data
+The audit log records changes, downloads and QR checks with who, when and what. Some entries hold
+a student number (seat changes, papers downloaded), staff emails (course access) and, for QR
+checks, the checking device's IP address.
 
-| Data Item | Classification | Storage | Access Control | Retention |
-|-----------|---------------|---------|----------------|-----------|
-| User accounts | INTERNAL | PostgreSQL | Admin only | Indefinite |
-| Audit logs | INTERNAL | PostgreSQL | Admin only | Per institutional policy |
-| Application config | INTERNAL | Environment vars | Server only | N/A |
-| Database credentials | CONFIDENTIAL | Environment vars | Server only | Rotated per policy |
+### Course and timetable data
 
-## Data Minimization
+Course codes, names and meeting times from the Timetable Builder are public (L1).
 
-ExamFlow stores only the minimum data required for exam administration:
+## Where data goes
 
-- **No birth dates**
-- **No personal addresses**
-- **No phone numbers**
-- **No financial information**
-- **No health information**
-- **No grades or academic records**
+| Flow | What | Protection |
+|------|------|------------|
+| Browser ⇄ ExamFlow | Everything above | HTTPS, set up at the university proxy |
+| Browser ⇄ Microsoft Entra ID (UofT tenant) | Sign-in only; ExamFlow receives an access token | Microsoft's service, the university's tenant policies (MFA, Conditional Access) |
+| ExamFlow → Microsoft | Fetches Entra's public signing keys | HTTPS, certificate checks on |
+| ExamFlow → Timetable Builder | Requests public course data | HTTPS |
+| Staff → Crowdmark | Staff export the exam PDF from Crowdmark and upload it by hand | ExamFlow doesn't connect to Crowdmark |
+| ExamFlow ⇄ PostgreSQL | All records | Server network; TLS depends on the database setup |
 
-Student data is limited to:
-- Student number (for identification on exam day)
-- Full name (for identification on exam day)
+**In the browser:** a UTORid sign-in's tokens are kept in `sessionStorage` and end when the tab
+closes. Test accounts (development and pilot only) keep a fixed token in `localStorage`.
 
-## Data Retention
+**In server logs:** each request is logged with its path, status, time and request ID. Paths
+contain record IDs, not names. A server error logs a full traceback, which can include values
+from the failing request.
 
-### Current Policy
+## Access control
 
-No specific retention periods are defined. All data is retained until manually deleted.
+- Every page and API needs a sign-in, except the health check and the QR check.
+- Roles come from Entra app roles; there is no default role. ADMIN and STAFF see every course.
+  INSTRUCTOR and TA see only the courses the exam office added them to, and read-only except for
+  attendance. See [AUTHORIZATION-MATRIX.md](AUTHORIZATION-MATRIX.md).
+- An administrator can switch a person off in ExamFlow at once (Admin › People).
+- Rate limits guard sign-in, uploads, generation and the QR check ([OPERATIONS.md](OPERATIONS.md)).
 
-### Recommended Policy (Requires Institutional Approval)
+## Retention: decisions needed
 
-| Data Type | Recommended Retention | Action After Retention |
-|-----------|----------------------|----------------------|
-| Exam templates | 2 years after exam | Archive |
-| Personalized exams | 1 year after exam | Delete |
-| Seating assignments | 2 years after exam | Archive |
-| Signature lists | 2 years after exam | Archive |
-| Audit logs | 5 years | Archive |
-| User accounts | While active | Deactivate |
+Nothing is deleted automatically today.
 
-### Data Disposition
+| Data | Today | Suggested (needs approval) |
+|------|-------|----------------------------|
+| Personalized papers (files) | Kept until the exam is deleted or the student removed from it | Delete 1 year after the exam |
+| Uploaded exam papers | Kept until the exam is deleted | 2 years after the exam |
+| Seating, attendance, accommodations | Kept with the exam | 2 years after the exam |
+| Student records (name, number, UTORid, email) | Shared across exams; **never deleted**, even when every exam they were in is deleted | Delete when no exam refers to them |
+| Audit log | Kept indefinitely | Per university records schedule |
+| Staff accounts | Kept; can be switched off | Switch off when the Entra role is removed |
 
-When retention period expires:
-1. Data is moved to archive storage
-2. After additional period, data is securely deleted
-3. Deletion is logged in audit trail
+## Risks to confirm
 
-## Data in Transit
-
-| Connection | Protection |
-|-----------|------------|
-| Browser → ExamFlow | HTTPS (TLS 1.2+) |
-| ExamFlow → Database | SSL/TLS (configurable) |
-| ExamFlow → Filesystem | Local (no network) |
-
-## Data at Rest
-
-| Storage | Protection |
-|---------|------------|
-| PostgreSQL | Encrypted at rest (institutional) |
-| Filesystem | Filesystem permissions (chmod) |
-| Backups | Encrypted backups (institutional) |
-
-## Access Logging
-
-All access to confidential data is logged:
-- Who accessed the data
-- When it was accessed
-- What action was performed
-- Which resource was accessed
-
-## Data Exposure Prevention
-
-ExamFlow prevents data exposure through:
-1. Authentication required for all endpoints (except health check and QR verify)
-2. Role-based authorization (ADMIN, STAFF, INSTRUCTOR)
-3. Object-level authorization (exam ownership verification)
-4. No student data in application logs
-5. No student data in error messages
-6. No student data in browser console
-
-## Institutional Confirmation Required
-
-The following require institutional confirmation:
-- Specific retention periods
-- Encryption at rest requirements
-- Backup retention policy
-- Data disposal procedures
-- Breach notification requirements
-- Cross-border data transfer restrictions
+1. **Accommodation notes.** Free text, ADMIN and STAFF only, with an on-screen warning not to
+   enter medical details. If medical information is entered anyway, the data becomes L4. Options:
+   accept with training; replace free text with fixed choices (e.g. "separate room", "computer");
+   or remove the field and keep only extra time.
+2. **Storage at rest.** Papers are files on the server's disk; the database and files rely on the
+   host's disk encryption and backups, which aren't part of ExamFlow. This needs confirming for
+   the production server.
+3. **Retention.** No automatic deletion yet (table above).
+4. **Tracebacks in logs** can contain request values; logs need the same protection as the
+   database.
