@@ -7,6 +7,17 @@ ExamFlow uses Role-Based Access Control (RBAC) with three roles:
 - **STAFF** — Exam management access
 - **INSTRUCTOR** — Read-only access
 
+## Which courses each role sees
+
+ADMIN and STAFF (the exam office) see every course and exam. INSTRUCTOR and TA see only the
+courses they have been added to, and everything under them: exams, rosters, seating, papers and
+exam-day documents. The exam office adds people on the course page under **People with access**,
+by the email they sign in with, so access can be set up before someone first signs in.
+
+The ✓ marks below apply within the courses a person can see. Asking for an exam or course outside
+them answers **404 Not found**, the same as one that doesn't exist. Rooms hold no student data and
+stay visible to every role.
+
 ## Roles
 
 | Role | Description |
@@ -142,4 +153,8 @@ Access to resources is scoped by exam ownership:
 3. Room creation/deletion is ADMIN only
 4. QR verification is public by design (for proctor use)
 5. Audit logs are ADMIN only
-6. Object-level authorization prevents cross-exam access
+6. Object-level authorization prevents cross-exam access: every route under `/api/exams/{exam_id}`
+   and `/api/courses/{course_id}` checks course access (`app/services/access_service.py`), and the
+   exam, course and summary lists only include visible courses
+7. Granting and removing course access is ADMIN or STAFF only and is audited
+   (`COURSE_ACCESS_GRANTED`, `COURSE_ACCESS_REVOKED`)

@@ -16,12 +16,13 @@ from app.schemas.student import (
     RosterStats,
 )
 from app.services import roster_service
+from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 
 router = APIRouter(
     prefix="/api/exams/{exam_id}/roster",
     tags=["roster"],
-    dependencies=[Depends(block_writes_to_archived_exam)],
+    dependencies=[Depends(require_exam_access), Depends(block_writes_to_archived_exam)],
 )
 
 

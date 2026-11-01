@@ -71,8 +71,12 @@ def get_exams(
     status: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    course_ids: set[UUID] | None = None,
 ) -> tuple[list[Exam], int]:
+    """course_ids limits the list to those courses (None: every course)."""
     query = db.query(Exam)
+    if course_ids is not None:
+        query = query.filter(Exam.course_id.in_(course_ids))
 
     if course_id:
         query = query.filter(Exam.course_id == course_id)

@@ -1,15 +1,21 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
+from app.models.audit_log import AuditLog
+from app.models.course_access import CourseAccess
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseListResponse, CourseResponse, CourseUpdate
-from app.services import course_service
+from app.services import access_service, course_service
+from app.services.access_service import require_course_access
 
-router = APIRouter(prefix="/api/courses", tags=["courses"])
+router = APIRouter(prefix="/api/courses", tags=["courses"], dependencies=[Depends(require_course_access)])
 
 
 @router.get("", response_model=CourseListResponse)
@@ -17,9 +23,11 @@ def list_courses(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    courses, total = course_service.get_courses(db, skip=(page - 1) * page_size, limit=page_size)
+    courses, total = course_service.get_courses(
+        db, skip=(page - 1) * page_size, limit=page_size, course_ids=access_service.visible_course_ids(db, user)
+    )
     return CourseListResponse(courses=courses, total=total)
 
 
@@ -76,3 +84,84 @@ def delete_course(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+
+# ── People with access ──────────────────────────────────────
+
+class PersonRequest(BaseModel):
+    # The address the person signs in with (for UTORid sign-in, their Microsoft account).
+    email: str = Field(..., min_length=3, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _trim(cls, value):
+        # Pasted addresses often carry spaces.
+        return value.strip() if isinstance(value, str) else value
+
+
+def _person(access: CourseAccess, users: dict[str, User]) -> dict:
+    user = users.get(access.email)
+    return {
+        "id": str(access.id),
+        "email": access.email,
+        # Filled in once the person has signed in.
+        "display_name": user.display_name if user else None,
+        "role": user.role if user else None,
+        "added_at": access.created_at.isoformat(),
+    }
+
+
+def _users_by_email(db: Session, emails: list[str]) -> dict[str, User]:
+    users = db.query(User).filter(func.lower(User.email).in_(emails)).all() if emails else []
+    return {u.email.lower(): u for u in users}
+
+
+@router.get("/{course_id}/people")
+def list_people(
+    course_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Instructors and TAs who can see this course. The exam office sees every course anyway."""
+    people = access_service.course_people(db, course_id)
+    users = _users_by_email(db, [p.email for p in people])
+    return {"people": [_person(p, users) for p in people]}
+
+
+@router.post("/{course_id}/people", status_code=status.HTTP_201_CREATED)
+def add_person(
+    course_id: UUID,
+    data: PersonRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    if not course_service.get_course(db, course_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    email = access_service.normalise_email(data.email)
+    access = CourseAccess(course_id=course_id, email=email, added_by=user.id)
+    db.add(access)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{email} already has access") from None
+    db.add(AuditLog(user_id=user.id, action="COURSE_ACCESS_GRANTED", entity_type="course", entity_id=course_id,
+                    new_values={"email": email}))
+    db.commit()
+    return _person(access, _users_by_email(db, [email]))
+
+
+@router.delete("/{course_id}/people/{access_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_person(
+    course_id: UUID,
+    access_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    access = db.query(CourseAccess).filter(CourseAccess.id == access_id, CourseAccess.course_id == course_id).first()
+    if not access:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    db.add(AuditLog(user_id=user.id, action="COURSE_ACCESS_REVOKED", entity_type="course", entity_id=course_id,
+                    old_values={"email": access.email}))
+    db.delete(access)
+    db.commit()

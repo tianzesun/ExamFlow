@@ -8,12 +8,13 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
 from app.services import assignment_service
+from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 
 router = APIRouter(
     prefix="/api/exams/{exam_id}/assignments",
     tags=["assignments"],
-    dependencies=[Depends(block_writes_to_archived_exam)],
+    dependencies=[Depends(require_exam_access), Depends(block_writes_to_archived_exam)],
 )
 
 

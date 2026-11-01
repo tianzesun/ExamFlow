@@ -20,6 +20,7 @@ import { errorReference } from "@/lib/api/client";
 import type { Exam, Course } from "@/lib/types";
 import { formatDateLong, formatDateShort, formatRelative, formatTime, formatNumber, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { isExamOffice, useAuth } from "@/lib/auth/context";
 import {
   Badge,
   Button,
@@ -93,6 +94,7 @@ export default function ExamsPage() {
 }
 
 function ExamsPageContent() {
+  const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -178,13 +180,14 @@ function ExamsPageContent() {
     return map;
   }, [filtered]);
 
-  const createAction = (
+  const office = isExamOffice(user);
+  const createAction = office ? (
     <Link href="/app/exams/new">
       <Button>
         <Plus /> Create exam
       </Button>
     </Link>
-  );
+  ) : undefined;
 
   return (
     <PageTransition>
@@ -280,7 +283,7 @@ function ExamsPageContent() {
             <EmptyState
               icon={<FileText className="h-5 w-5 text-ink-3" />}
               title="No exams yet"
-              description="Create your first exam to start configuring rooms and seating."
+              description={office ? "Create your first exam to start configuring rooms and seating." : "You haven't been added to any courses yet. Ask the exam office to add you to your courses."}
               action={createAction}
             />
           </div>

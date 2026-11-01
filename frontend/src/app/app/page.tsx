@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCourseContext } from "@/lib/course-context";
-import { useAuth } from "@/lib/auth/context";
+import { isExamOffice, useAuth } from "@/lib/auth/context";
 import { getAllExams } from "@/lib/api/exams";
 import { getExamSummaries } from "@/lib/api/readiness";
 import { getCourses } from "@/lib/api/courses";
@@ -254,7 +254,7 @@ function WorkspaceHeader({
               </span>
             </div>}
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {isExamOffice(user) && <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
               variant="ghost"
               className="hero-chip text-white hover:bg-white/15 hover:text-white"
@@ -269,7 +269,7 @@ function WorkspaceHeader({
                 <Plus /> Create exam
               </Button>
             </Link>
-          </div>
+          </div>}
         </div>
       </section>
 
@@ -753,6 +753,7 @@ function ActivityFeed({
 
 function DashboardWorkspace() {
   const { selectedCourseId, setSelectedCourseId, courses } = useCourseContext();
+  const office = isExamOffice(useAuth().user);
   const { data, error, loading, reload } = useDashboardData(
     selectedCourseId
   );
@@ -786,14 +787,18 @@ function DashboardWorkspace() {
           <EmptyState
             icon={<FileText className="h-5 w-5 text-ink-3" />}
             title={`No exams for ${course.course_code} yet`}
-            description="Schedule an exam for this course, or show every course to see the rest."
+            description={office
+              ? "Schedule an exam for this course, or show every course to see the rest."
+              : "The exam office hasn't scheduled one yet. Show every course to see the rest."}
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Link href={`/app/exams/new?course_id=${encodeURIComponent(course.id)}`}>
-                  <Button>
-                    <Plus /> Create exam for {course.course_code}
-                  </Button>
-                </Link>
+                {office && (
+                  <Link href={`/app/exams/new?course_id=${encodeURIComponent(course.id)}`}>
+                    <Button>
+                      <Plus /> Create exam for {course.course_code}
+                    </Button>
+                  </Link>
+                )}
                 <Button variant="secondary" onClick={() => setSelectedCourseId(null)}>
                   Show all courses
                 </Button>
@@ -812,13 +817,17 @@ function DashboardWorkspace() {
           <EmptyState
             icon={<FileText className="h-5 w-5 text-ink-3" />}
             title="No exams yet"
-            description="Schedule your first exam to start tracking rosters, seating and packages."
+            description={office
+              ? "Schedule your first exam to start tracking rosters, seating and packages."
+              : "You haven't been added to any courses yet. Ask the exam office to add you to your courses."}
             action={
-              <Link href="/app/exams/new">
-                <Button>
-                  <Plus /> Create exam
-                </Button>
-              </Link>
+              office ? (
+                <Link href="/app/exams/new">
+                  <Button>
+                    <Plus /> Create exam
+                  </Button>
+                </Link>
+              ) : undefined
             }
           />
         </Card>

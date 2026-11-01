@@ -60,3 +60,27 @@ export async function updateCourse(
 export async function deleteCourse(id: string): Promise<void> {
   return fetchApi<void>(`/api/courses/${id}`, { method: "DELETE" });
 }
+
+/** An instructor or TA who can see a course. Name and role appear once they have signed in. */
+export interface CoursePerson {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string | null;
+  added_at: string;
+}
+
+export async function getCoursePeople(courseId: string): Promise<CoursePerson[]> {
+  return (await fetchApi<{ people: CoursePerson[] }>(`/api/courses/${courseId}/people`)).people;
+}
+
+export async function addCoursePerson(courseId: string, email: string): Promise<CoursePerson> {
+  return fetchApi<CoursePerson>(`/api/courses/${courseId}/people`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function removeCoursePerson(courseId: string, accessId: string): Promise<void> {
+  return fetchApi<void>(`/api/courses/${courseId}/people/${accessId}`, { method: "DELETE" });
+}

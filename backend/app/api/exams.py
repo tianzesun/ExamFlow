@@ -7,9 +7,10 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
 from app.schemas.exam import ExamCreate, ExamListResponse, ExamResponse, ExamUpdate
-from app.services import exam_service
+from app.services import access_service, exam_service
+from app.services.access_service import require_exam_access
 
-router = APIRouter(prefix="/api/exams", tags=["exams"])
+router = APIRouter(prefix="/api/exams", tags=["exams"], dependencies=[Depends(require_exam_access)])
 
 
 @router.get("", response_model=ExamListResponse)
@@ -21,7 +22,7 @@ def list_exams(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     exams, total = exam_service.get_exams(
         db,
@@ -31,6 +32,7 @@ def list_exams(
         status=status_filter,
         page=page,
         page_size=page_size,
+        course_ids=access_service.visible_course_ids(db, user),
     )
     return ExamListResponse(exams=exams, total=total, page=page, page_size=page_size)
 

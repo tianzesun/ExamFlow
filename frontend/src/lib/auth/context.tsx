@@ -65,6 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** The exam office (ADMIN, STAFF) sees every course and does the scheduling; others only view their courses. */
+export function isExamOffice(user: CurrentUser | null): boolean {
+  return user?.role === "ADMIN" || user?.role === "STAFF";
+}
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

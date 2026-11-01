@@ -20,7 +20,7 @@ import { getCourses } from "@/lib/api/courses";
 import { getAllExams } from "@/lib/api/exams";
 import { syncTTBCourses } from "@/lib/api/ttb";
 import { errorReference } from "@/lib/api/client";
-import { useAuth } from "@/lib/auth/context";
+import { isExamOffice, useAuth } from "@/lib/auth/context";
 import type { ReactNode } from "react";
 import type { Course, Exam } from "@/lib/types";
 import { formatNumber, plural } from "@/lib/format";
@@ -195,11 +195,13 @@ export default function CoursesPage() {
                 {syncing ? "Syncing…" : "Sync from TTB"}
               </Button>
             )}
-            <Link href="/app/courses/new">
-              <Button>
-                <Plus /> Create course
-              </Button>
-            </Link>
+            {isExamOffice(user) && (
+              <Link href="/app/courses/new">
+                <Button>
+                  <Plus /> Create course
+                </Button>
+              </Link>
+            )}
           </>
         }
       />
@@ -259,13 +261,17 @@ export default function CoursesPage() {
           <EmptyState
             icon={<BookOpen className="h-5 w-5 text-ink-3" />}
             title="No courses yet"
-            description="Sync courses from the Timetable Builder or add one manually."
+            description={isExamOffice(user)
+              ? "Sync courses from the Timetable Builder or add one manually."
+              : "You haven't been added to any courses yet. Ask the exam office to add you to your courses."}
             action={
-              <Link href="/app/courses/new">
-                <Button>
-                  <Plus /> Create course
-                </Button>
-              </Link>
+              isExamOffice(user) ? (
+                <Link href="/app/courses/new">
+                  <Button>
+                    <Plus /> Create course
+                  </Button>
+                </Link>
+              ) : undefined
             }
           />
         </div>

@@ -7,6 +7,8 @@ import Link from "next/link";
 import { deleteCourse, getCourse, updateCourse } from "@/lib/api/courses";
 import { errorReference } from "@/lib/api/client";
 import { getAllExams } from "@/lib/api/exams";
+import { useAuth } from "@/lib/auth/context";
+import { CoursePeopleCard } from "@/components/course/CoursePeopleCard";
 import {
   Button,
   Input,
@@ -42,6 +44,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export default function CourseDetailPage() {
   const params = useParams();
   const courseId = params.id as string;
+  const { user } = useAuth();
+  // The exam office edits courses and decides who else can see them.
+  const isExamOffice = user?.role === "ADMIN" || user?.role === "STAFF";
 
   const [course, setCourse] = useState<Course | null>(null);
   const [exams, setExams] = useState<Exam[] | null>(null);
@@ -143,93 +148,99 @@ export default function CourseDetailPage() {
         meta={course.department ? <Badge>{course.department}</Badge> : <Badge variant="warning">No department</Badge>}
         actions={
           <>
-            {!editing && exams !== null && exams.length === 0 && (
+            {isExamOffice && !editing && exams !== null && exams.length === 0 && (
               <Button variant="ghost" className="text-ink-3 hover:text-danger" onClick={handleDelete} title="Only courses without exams can be deleted">
                 <Trash2 /> Delete
               </Button>
             )}
-            {!editing && (
+            {isExamOffice && !editing && (
               <Button variant="secondary" onClick={startEdit}>
                 <Pencil /> Edit
               </Button>
             )}
-            <Link href={newExamHref}>
-              <Button>
-                <Plus /> Create exam
-              </Button>
-            </Link>
+            {isExamOffice && (
+              <Link href={newExamHref}>
+                <Button>
+                  <Plus /> Create exam
+                </Button>
+              </Link>
+            )}
           </>
         }
       />
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
-        {/* Details / edit */}
-        <section className="surface-card lg:col-span-1">
-          <div className="border-b border-line px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-ink">{editing ? "Edit course" : "Details"}</h2>
-            <p className="text-xs text-ink-3">
-              {editing ? "Changes apply to all exams for this course." : "Course record and history."}
-            </p>
-          </div>
+        <div className="space-y-6 lg:col-span-1">
+          {/* Details / edit */}
+          <section className="surface-card">
+            <div className="border-b border-line px-5 py-3.5">
+              <h2 className="text-sm font-semibold text-ink">{editing ? "Edit course" : "Details"}</h2>
+              <p className="text-xs text-ink-3">
+                {editing ? "Changes apply to all exams for this course." : "Course record and history."}
+              </p>
+            </div>
 
-          {editing ? (
-            <form onSubmit={handleSave}>
-              <div className="space-y-4 px-5 py-4">
-                <Input
-                  label="Course code"
-                  value={form.course_code}
-                  onChange={(e) => setForm({ ...form, course_code: e.target.value })}
-                  className="font-mono"
-                  required
-                />
-                <Input
-                  label="Course name"
-                  value={form.course_name}
-                  onChange={(e) => setForm({ ...form, course_name: e.target.value })}
-                  required
-                />
-                <Input
-                  label="Department"
-                  value={form.department}
-                  placeholder="e.g. Computer Science"
-                  onChange={(e) => setForm({ ...form, department: e.target.value })}
-                />
-                {saveError && (
-                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    {saveError}
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
-                <Button type="button" variant="secondary" size="sm" onClick={cancelEdit}>
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" loading={saving}>
-                  Save changes
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-4 px-5 py-4 lg:grid-cols-1">
-              <Field label="Course code">
-                <span className="font-mono text-xs">{course.course_code}</span>
-              </Field>
-              <Field label="Department">{course.department ?? <span className="text-ink-3">Not set</span>}</Field>
-              <Field label="Created">
-                <span className="tnum">{formatDateTime(course.created_at)}</span>
-              </Field>
-              <Field label="Last updated">
-                <span className="tnum">{formatDateTime(course.updated_at)}</span>
-              </Field>
-              <Field label="Course ID">
-                <span className="font-mono text-xs text-ink-2" title={course.id}>
-                  {course.id}
-                </span>
-              </Field>
-            </dl>
-          )}
-        </section>
+            {editing ? (
+              <form onSubmit={handleSave}>
+                <div className="space-y-4 px-5 py-4">
+                  <Input
+                    label="Course code"
+                    value={form.course_code}
+                    onChange={(e) => setForm({ ...form, course_code: e.target.value })}
+                    className="font-mono"
+                    required
+                  />
+                  <Input
+                    label="Course name"
+                    value={form.course_name}
+                    onChange={(e) => setForm({ ...form, course_name: e.target.value })}
+                    required
+                  />
+                  <Input
+                    label="Department"
+                    value={form.department}
+                    placeholder="e.g. Computer Science"
+                    onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  />
+                  {saveError && (
+                    <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      {saveError}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
+                  <Button type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" loading={saving}>
+                    Save changes
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-4 px-5 py-4 lg:grid-cols-1">
+                <Field label="Course code">
+                  <span className="font-mono text-xs">{course.course_code}</span>
+                </Field>
+                <Field label="Department">{course.department ?? <span className="text-ink-3">Not set</span>}</Field>
+                <Field label="Created">
+                  <span className="tnum">{formatDateTime(course.created_at)}</span>
+                </Field>
+                <Field label="Last updated">
+                  <span className="tnum">{formatDateTime(course.updated_at)}</span>
+                </Field>
+                <Field label="Course ID">
+                  <span className="font-mono text-xs text-ink-2" title={course.id}>
+                    {course.id}
+                  </span>
+                </Field>
+              </dl>
+            )}
+          </section>
+
+          <CoursePeopleCard courseId={course.id} canManage={isExamOffice} />
+        </div>
 
         {/* Exams for this course */}
         <section className="surface-card overflow-hidden lg:col-span-2">
@@ -265,13 +276,15 @@ export default function CourseDetailPage() {
             <EmptyState
               icon={<FileText className="h-5 w-5 text-ink-3" />}
               title="No exams for this course"
-              description="Create an exam to start assigning rooms and seats."
+              description={isExamOffice ? "Create an exam to start assigning rooms and seats." : "The exam office hasn't scheduled one yet."}
               action={
-                <Link href={newExamHref}>
-                  <Button>
-                    <Plus /> Create exam
-                  </Button>
-                </Link>
+                isExamOffice ? (
+                  <Link href={newExamHref}>
+                    <Button>
+                      <Plus /> Create exam
+                    </Button>
+                  </Link>
+                ) : undefined
               }
             />
           ) : (

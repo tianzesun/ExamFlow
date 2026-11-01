@@ -67,7 +67,7 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Scope read access to exam ownership
 - **Impact:** Better security for multi-tenant use
 - **Scope:** All read endpoints
-- **Status:** Not started
+- **Status:** Done — instructors and TAs see only courses the exam office added them to (by sign-in email, on the course page), with those courses' exams and students. ADMIN and STAFF see everything.
 
 ---
 

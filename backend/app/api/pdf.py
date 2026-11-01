@@ -11,10 +11,14 @@ from app.database import get_db
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import generation_job_service, paper_state, pdf_service
+from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
 from app.utils import attachment_headers
 
-router = APIRouter(tags=["generated-exams"], dependencies=[Depends(block_writes_to_archived_exam)])
+router = APIRouter(
+    tags=["generated-exams"],
+    dependencies=[Depends(require_exam_access), Depends(block_writes_to_archived_exam)],
+)
 
 
 class GeneratedExamListResponse(BaseModel):

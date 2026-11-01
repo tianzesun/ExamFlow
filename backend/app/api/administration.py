@@ -11,10 +11,11 @@ from app.models.exam import Exam
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.services import admin_service
+from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam
 from app.utils import attachment_headers
 
-router = APIRouter(tags=["administration"])
+router = APIRouter(tags=["administration"], dependencies=[Depends(require_exam_access)])
 
 
 # ── QR Generate ─────────────────────────────────────────────

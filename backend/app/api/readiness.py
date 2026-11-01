@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.services import readiness_service
+from app.services import access_service, readiness_service
+from app.services.access_service import require_exam_access
 
-router = APIRouter(tags=["readiness"])
+router = APIRouter(tags=["readiness"], dependencies=[Depends(require_exam_access)])
 
 
 class CheckResultResponse(BaseModel):
@@ -66,10 +67,10 @@ class ExamSummariesRequest(BaseModel):
 def get_exam_summaries(
     data: ExamSummariesRequest,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Summaries for many exams in one request (the dashboard and exam list)."""
-    return readiness_service.get_exam_summaries(db, data.exam_ids)
+    return readiness_service.get_exam_summaries(db, access_service.visible_exam_ids(db, user, data.exam_ids))
 
 
 @router.get("/api/exams/{exam_id}/summary", response_model=ExamSummaryResponse)

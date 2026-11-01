@@ -35,9 +35,15 @@ def create_course(db: Session, data: CourseCreate, user_id: UUID) -> Course:
     return course
 
 
-def get_courses(db: Session, skip: int = 0, limit: int = 50) -> tuple[list[Course], int]:
-    total = db.query(func.count(Course.id)).scalar()
-    courses = db.query(Course).order_by(Course.course_code).offset(skip).limit(limit).all()
+def get_courses(
+    db: Session, skip: int = 0, limit: int = 50, course_ids: set[UUID] | None = None
+) -> tuple[list[Course], int]:
+    """course_ids limits the list to those courses (None: every course)."""
+    query = db.query(Course)
+    if course_ids is not None:
+        query = query.filter(Course.id.in_(course_ids))
+    total = query.with_entities(func.count(Course.id)).scalar()
+    courses = query.order_by(Course.course_code).offset(skip).limit(limit).all()
     return courses, total
 
 

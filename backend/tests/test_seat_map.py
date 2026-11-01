@@ -24,12 +24,20 @@ def _create_room(capacity: int) -> dict:
     return response.json()
 
 
-def _create_exam_with_students(student_count: int, capacity: int) -> tuple[str, str, list[str]]:
+def _create_exam_with_students(
+    student_count: int, capacity: int, instructor_access: bool = True
+) -> tuple[str, str, list[str]]:
+    """An exam with a room and a roster. The test instructor is added to the course unless asked not to,
+    so tests can check what instructors may and may not do."""
     course = client.post(
         "/api/courses",
         json={"course_code": f"SEAT {_suffix()}", "course_name": "Seating Test"},
         headers=ADMIN_HEADERS,
     ).json()
+    if instructor_access:
+        assert client.post(
+            f"/api/courses/{course['id']}/people", json={"email": "instructor@example.local"}, headers=ADMIN_HEADERS
+        ).status_code == 201
     exam = client.post(
         "/api/exams",
         json={
