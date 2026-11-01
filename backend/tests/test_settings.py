@@ -81,7 +81,8 @@ def test_courses_are_kept_to_the_chosen_prefixes():
 
 
 def test_new_exams_start_with_the_default_seating_rules():
-    rules = {"order": "random", "spacing": "every_other_seat", "versions": 2}
+    rules = {"order": "random", "spacing": "every_other_seat", "versions": 2, "fill": "evenly",
+             "front_row_empty": True}
     assert _save(default_seating=rules).status_code == 200
     exam_id, _, _ = _create_exam_with_students(4, 20)
     got = client.get(f"/api/exams/{exam_id}/assignments/rules", headers=ADMIN_HEADERS).json()

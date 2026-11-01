@@ -34,7 +34,8 @@ def _preview_order(exam_id: str) -> list[str]:
 def test_rules_default_and_round_trip():
     exam_id, _, _ = _create_exam_with_students(student_count=1, capacity=5)
     r = client.get(f"/api/exams/{exam_id}/assignments/rules", headers=INSTRUCTOR_HEADERS)
-    assert r.json() == {"order": "student_number", "spacing": "none", "accommodation_room_id": None, "versions": 1}
+    assert r.json() == {"order": "student_number", "spacing": "none", "accommodation_room_id": None, "versions": 1,
+                        "fill": "in_turn", "front_row_empty": False}
     assert _rules(exam_id, order="name", spacing="every_other_seat").status_code == 200
     assert client.get(f"/api/exams/{exam_id}/assignments/rules", headers=ADMIN_HEADERS).json()["order"] == "name"
     assert _rules(exam_id, order="alphabetical").status_code == 422
@@ -154,3 +155,47 @@ def test_accommodation_room_too_small_is_reported():
     _rules(exam_id, accommodation_room_id=quiet["id"])
     r = client.post(f"/api/exams/{exam_id}/assignments/preview", headers=ADMIN_HEADERS)
     assert r.status_code == 400 and "accommodation room" in r.json()["detail"]
+
+
+# ── Filling rooms evenly, and the front row ─────────────────
+
+def _rooms_used(exam_id: str) -> list[int]:
+    rooms = client.get(f"/api/exams/{exam_id}/assignments/seat-map", headers=ADMIN_HEADERS).json()["rooms"]
+    return sorted(sum(1 for s in r["seats"] if s["occupant"]) for r in rooms)
+
+
+def _second_room(exam_id: str, capacity: int) -> str:
+    room = _create_room(capacity)["id"]
+    assert client.post(f"/api/exams/{exam_id}/assignments/rooms", json={"room_id": room},
+                       headers=ADMIN_HEADERS).status_code == 201
+    return room
+
+
+def test_filling_in_turn_packs_the_first_room():
+    exam_id, _, _ = _create_exam_with_students(student_count=6, capacity=10)
+    _second_room(exam_id, 10)
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).status_code == 200
+    assert _rooms_used(exam_id) == [0, 6]
+
+
+def test_filling_evenly_shares_students_by_room_size():
+    exam_id, _, _ = _create_exam_with_students(student_count=9, capacity=10)
+    _second_room(exam_id, 20)
+    _rules(exam_id, fill="evenly")
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).status_code == 200
+    assert _rooms_used(exam_id) == [3, 6]
+
+
+def test_front_row_left_empty():
+    exam_id, _, _ = _create_exam_with_students(student_count=4, capacity=20)
+    _rules(exam_id, front_row_empty=True)
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).status_code == 200
+    room = client.get(f"/api/exams/{exam_id}/assignments/seat-map", headers=ADMIN_HEADERS).json()["rooms"][0]
+    assert all(s["row_number"] != 1 for s in room["seats"] if s["occupant"])
+
+
+def test_front_row_counts_when_seats_run_short():
+    exam_id, _, _ = _create_exam_with_students(student_count=10, capacity=10)  # one row of ten
+    _rules(exam_id, front_row_empty=True)
+    r = client.post(f"/api/exams/{exam_id}/assignments/preview", headers=ADMIN_HEADERS)
+    assert r.status_code == 400 and "front row empty" in r.json()["detail"]

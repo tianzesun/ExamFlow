@@ -15,9 +15,18 @@ export const VERSION_OPTIONS = [
   { value: "3", label: "Three (A, B, C)" },
   { value: "4", label: "Four (A–D)" },
 ];
+export const FILL_OPTIONS = [
+  { value: "in_turn", label: "Fill each room in turn" },
+  { value: "evenly", label: "Spread evenly across rooms" },
+];
+export const FRONT_ROW_OPTIONS = [
+  { value: "use", label: "Seat students in the front row" },
+  { value: "empty", label: "Leave the front row empty" },
+];
 
 /** Whether automatic seating may use a seat under a spacing rule; matches the backend's _seat_allowed. */
-export function seatAllowed(row: number, col: number, spacing: string): boolean {
+export function seatAllowed(row: number, col: number, spacing: string, frontRowEmpty = false): boolean {
+  if (frontRowEmpty && row === 1) return false;
   if (spacing === "every_other_seat") return (row + col) % 2 === 0;
   if (spacing === "every_other_seat_and_row") return row % 2 === 1 && col % 2 === 1;
   return true;

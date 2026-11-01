@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { CheckCircle2, CircleSlash } from "lucide-react";
 import { ApiError, errorReference } from "@/lib/api/client";
 import { getSystemSettings, saveSystemSettings, type DeploymentInfo, type SystemSettings } from "@/lib/api/admin";
-import { ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
+import { FILL_OPTIONS, FRONT_ROW_OPTIONS, ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
 import { Button, Input, Select, Skeleton } from "@/components";
 import { Group } from "./settings-group";
 import { SignInSettingsCard } from "./sign-in-settings";
@@ -51,7 +51,10 @@ export function SettingsCard() {
   const setStamp = (key: keyof SystemSettings["paper_stamp"], value: boolean) =>
     set("paper_stamp", { ...form.paper_stamp, [key]: value });
   const setSeating = (key: keyof SystemSettings["default_seating"], value: string) =>
-    set("default_seating", { ...form.default_seating, [key]: key === "versions" ? Number(value) : value });
+    set("default_seating", {
+      ...form.default_seating,
+      [key]: key === "versions" ? Number(value) : key === "front_row_empty" ? value === "empty" : value,
+    });
 
   const save = async () => {
     setSaving(true);
@@ -102,6 +105,11 @@ export function SettingsCard() {
               onChange={(e) => setSeating("spacing", e.target.value)} />
             <Select label="Paper versions" id="default-versions" options={VERSION_OPTIONS}
               value={String(form.default_seating.versions)} onChange={(e) => setSeating("versions", e.target.value)} />
+            <Select label="Rooms" id="default-fill" options={FILL_OPTIONS} value={form.default_seating.fill}
+              onChange={(e) => setSeating("fill", e.target.value)} />
+            <Select label="Front row" id="default-front-row" options={FRONT_ROW_OPTIONS}
+              value={form.default_seating.front_row_empty ? "empty" : "use"}
+              onChange={(e) => setSeating("front_row_empty", e.target.value)} />
           </Group>
 
           <Group

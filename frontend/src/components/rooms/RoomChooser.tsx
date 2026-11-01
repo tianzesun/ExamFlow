@@ -23,6 +23,7 @@ export function RoomChooser({
   examId,
   rooms,
   spacing,
+  frontRowEmpty = false,
   examRoomIds,
   registered,
   onAdd,
@@ -33,6 +34,8 @@ export function RoomChooser({
   /** Rooms that can still be added to the exam */
   rooms: Room[];
   spacing: string;
+  /** The exam keeps row 1 free, so those seats don't count either. */
+  frontRowEmpty?: boolean;
   /** Rooms already in the exam; their seats under the spacing rule count towards the students. */
   examRoomIds: string[];
   /** Students registered for the exam */
@@ -76,12 +79,12 @@ export function RoomChooser({
   const examRoomsLoaded = examRoomIds.every((id) => layouts[id]);
   const seatsInExamRooms = examRoomIds.reduce((n, id) => {
     const l = layouts[id];
-    return n + (l && l !== "error" ? planOf(l, spacing).allowed : 0);
+    return n + (l && l !== "error" ? planOf(l, spacing, frontRowEmpty).allowed : 0);
   }, 0);
   const studentsNeedingRoom = examRoomsLoaded ? Math.max(0, registered - seatsInExamRooms) : 0;
 
   const layout = current ? layouts[current.id] : undefined;
-  const plan = useMemo(() => (layout && layout !== "error" ? planOf(layout, spacing) : null), [layout, spacing]);
+  const plan = useMemo(() => (layout && layout !== "error" ? planOf(layout, spacing, frontRowEmpty) : null), [layout, spacing, frontRowEmpty]);
   const spacingLabel = SPACING_OPTIONS.find((o) => o.value === spacing)?.label ?? "Fill every seat";
 
   const add = async () => {
@@ -105,7 +108,7 @@ export function RoomChooser({
         <DialogHeader className="border-b border-line px-5 py-4">
           <DialogTitle className="text-base font-semibold text-ink">Add a room</DialogTitle>
           <DialogDescription className="text-xs text-ink-3">
-            Pick a room to see its seats. Seating follows this exam&apos;s spacing rule: <b className="font-medium text-ink-2">{spacingLabel}</b>.
+            Pick a room to see its seats. Seating follows this exam&apos;s spacing rule: <b className="font-medium text-ink-2">{spacingLabel}</b>{frontRowEmpty && <>, with the front row empty</>}.
             {studentsNeedingRoom > 0 && <> {plural(studentsNeedingRoom, "student")} still need a room.</>}
           </DialogDescription>
         </DialogHeader>
@@ -180,7 +183,7 @@ export function RoomChooser({
                   {plan && (
                     <div className="flex flex-wrap gap-2">
                       <Stat icon={Armchair} label="Seats" value={plan.usable} />
-                      {spacing !== "none" && <Stat icon={Users} label="Students with spacing" value={plan.allowed} strong />}
+                      {(spacing !== "none" || frontRowEmpty) && <Stat icon={Users} label="Students with spacing" value={plan.allowed} strong />}
                       {plan.blocked > 0 && <Stat label="Not in use" value={plan.blocked} />}
                       {plan.taken > 0 && <Stat label="Used by another exam" value={plan.taken} />}
                       <Stat label="Rows × seats" text={`${plan.rows} × ${plan.columns}`} />
@@ -228,7 +231,7 @@ export function RoomChooser({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-5 py-3">
-                  <FloorPlanLegend spacing={spacing !== "none"} seated={false} highlightSeats taken={!!plan?.taken} />
+                  <FloorPlanLegend spacing={spacing !== "none" || frontRowEmpty} seated={false} highlightSeats taken={!!plan?.taken} />
                   <div className="flex gap-2">
                     <Button variant="ghost" onClick={onClose} disabled={adding}>Cancel</Button>
                     <Button onClick={add} loading={adding}>
@@ -259,7 +262,7 @@ function Stat({ icon: Icon, label, value, text, strong }: {
 }
 
 /** Each position's state, and the counts shown above the plan. */
-function planOf(layout: RoomLayout, spacing: string) {
+function planOf(layout: RoomLayout, spacing: string, frontRowEmpty: boolean) {
   const cells = new Map<string, CellState>();
   let usable = 0, allowed = 0, blocked = 0, taken = 0;
   for (const s of layout.seats) {
@@ -274,7 +277,7 @@ function planOf(layout: RoomLayout, spacing: string) {
       taken++;
     } else {
       usable++;
-      if (seatAllowed(s.row, s.column, spacing)) allowed++;
+      if (seatAllowed(s.row, s.column, spacing, frontRowEmpty)) allowed++;
       else state = "spaced";
     }
     cells.set(cellKey(s.row, s.column), state);

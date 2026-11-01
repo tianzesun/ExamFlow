@@ -35,6 +35,8 @@ class DefaultSeating(BaseModel):
     order: Literal["student_number", "name", "random"] = "student_number"
     spacing: Literal["none", "every_other_seat", "every_other_seat_and_row"] = "none"
     versions: int = Field(1, ge=1, le=4)
+    fill: Literal["in_turn", "evenly"] = "in_turn"
+    front_row_empty: bool = False
 
 
 class PaperStamp(BaseModel):

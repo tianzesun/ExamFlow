@@ -79,6 +79,11 @@ This document describes the complete workflow for exam administrators using Exam
    - Conflicts (should be 0)
 5. Click Confirm Assignment
 
+Seating rules worth knowing: **Rooms › Spread evenly across rooms** gives each room the same share of
+its seats instead of packing the first room, and **Front row › Leave the front row empty** keeps row 1
+free for proctors and latecomers. Both keep each room to one block of names or numbers, so door signs
+still work.
+
 ### 8. Review Seating
 
 1. Review the seating list

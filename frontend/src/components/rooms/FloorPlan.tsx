@@ -143,7 +143,7 @@ export function FloorPlan({
                 const desc =
                   state === "missing" ? `${code}: no seat`
                     : state === "blocked" ? `${code}: not in use`
-                    : state === "spaced" ? `${code}: kept empty by the spacing rule`
+                    : state === "spaced" ? `${code}: kept empty by the seating rules`
                     : state === "taken" ? `${code}: used by another exam at the same time`
                     : `${code}: seat`;
                 return (
@@ -212,7 +212,7 @@ export function FloorPlanLegend({ spacing = false, seated = true, highlightSeats
       cls: highlightSeats ? "border-accent/45 bg-accent-subtle" : "border-line-strong bg-surface",
       label: spacing ? "Seat a student can use" : "Seat",
     },
-    ...(spacing ? [{ cls: "border-line bg-surface-2/60", label: "Kept empty by spacing" }] : []),
+    ...(spacing ? [{ cls: "border-line bg-surface-2/60", label: "Kept empty by the rules" }] : []),
     ...(taken ? [{ cls: "border-warning/40 bg-warning/15", label: "Another exam at the same time" }] : []),
     { cls: "seat-blocked border-line", label: "Not in use" },
     { cls: "border-dashed border-line", label: "No seat" },

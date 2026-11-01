@@ -69,6 +69,10 @@ export interface SeatingRules {
   accommodation_room_id: string | null;
   /** Paper versions (1–4) alternated by seat so neighbours write different papers */
   versions: number;
+  /** in_turn fills each room before the next; evenly gives each room the same share of its seats */
+  fill: "in_turn" | "evenly";
+  /** Keep row 1 free in every room */
+  front_row_empty: boolean;
 }
 
 export interface AssignmentPreview {

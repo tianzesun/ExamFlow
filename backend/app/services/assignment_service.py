@@ -114,6 +114,11 @@ class SeatingRules(BaseModel):
     accommodation_room_id: UUID | None = None
     # How many paper versions (A, B, ...) to alternate between, so neighbours write different papers.
     versions: int = Field(1, ge=1, le=4)
+    # in_turn fills each room before the next; evenly gives every room the same share of its seats,
+    # so no room is packed while another is nearly empty. Either way each room holds one block of the order.
+    fill: Literal["in_turn", "evenly"] = "in_turn"
+    # Keep row 1 free in every room, for proctors and latecomers.
+    front_row_empty: bool = False
 
 
 def get_rules(db: Session, exam_id: UUID) -> SeatingRules:
@@ -176,13 +181,34 @@ def version_for_seat(seat: Seat, rules: SeatingRules) -> str:
     return PAPER_VERSIONS[index % rules.versions]
 
 
-def _seat_allowed(seat: Seat, spacing: str) -> bool:
+def _seat_allowed(seat: Seat, spacing: str, front_row_empty: bool = False) -> bool:
     row, col = seat.row_number, seat.column_number
+    if front_row_empty and row == 1:
+        return False
     if spacing == "none" or row is None or col is None:
         return True
     if spacing == "every_other_seat":
         return (row + col) % 2 == 0
     return row % 2 == 1 and col % 2 == 1
+
+
+def _usable(seat: Seat, rules: SeatingRules) -> bool:
+    return _seat_allowed(seat, rules.spacing, rules.front_row_empty)
+
+
+def _spread(seats: list[tuple[Seat, Room]], count: int, fill: str) -> list[tuple[Seat, Room]]:
+    """The seats count students take, in order. Filling evenly gives each room a share in proportion
+    to its free seats (largest remainder), keeping each room's seats front row first."""
+    if fill != "evenly" or count >= len(seats):
+        return seats[:count]
+    by_room: dict[UUID, list[tuple[Seat, Room]]] = {}
+    for pair in seats:
+        by_room.setdefault(pair[1].id, []).append(pair)
+    exact = {room: count * len(pairs) / len(seats) for room, pairs in by_room.items()}
+    share = {room: int(x) for room, x in exact.items()}
+    for room in sorted(exact, key=lambda r: share[r] - exact[r])[:count - sum(share.values())]:
+        share[room] += 1
+    return [pair for room, pairs in by_room.items() for pair in pairs[:share[room]]]
 
 
 # ── Seats other exams hold at the same time ─────────────────
@@ -287,8 +313,10 @@ def _plan(
     rules = SeatingRules(**(exam.seating_rules or {})) if exam else SeatingRules()
     students = _order_students(students, rules, exam.assignment_seed if exam else None)
     free = _free_seats(db, exam_id)
-    seats = [(seat, room) for seat, room in free if _seat_allowed(seat, rules.spacing)]
+    seats = [(seat, room) for seat, room in free if _usable(seat, rules)]
     spacing_hint = " with the current spacing" if rules.spacing != "none" else ""
+    if rules.front_row_empty:
+        spacing_hint += " with the front row empty" if not spacing_hint else " and the front row empty"
 
     accommodation_room = rules.accommodation_room_id
     if accommodation_room not in {r.id for r in get_exam_rooms(db, exam_id)}:
@@ -300,6 +328,7 @@ def _plan(
                 f"Not enough seats: {_n(len(students), 'student')} need a seat and {_n(len(seats), 'seat')} free"
                 f"{spacing_hint}. Add a room{' or reduce the spacing' if spacing_hint else ''}."
             )
+        seats = _spread(seats, len(students), rules.fill)
         return [(es, st, seat, room) for (es, st), (seat, room) in zip(students, seats)]
 
     special = [r for r in students if needs_accommodation(r[0])]
@@ -317,6 +346,7 @@ def _plan(
             f"{_n(len(regular_seats), 'seat')} free{spacing_hint}. Add a room"
             f"{' or reduce the spacing' if spacing_hint else ''}."
         )
+    regular_seats = _spread(regular_seats, len(regular), rules.fill)
     return (
         [(es, st, seat, room) for (es, st), (seat, room) in zip(special, special_seats)]
         + [(es, st, seat, room) for (es, st), (seat, room) in zip(regular, regular_seats)]
@@ -344,7 +374,7 @@ def preview_assignment(db: Session, exam_id: UUID) -> dict:
     rules = get_rules(db, exam_id)
     students = _get_sorted_students(db, exam_id)
     free = _free_seats(db, exam_id)
-    available = sum(1 for seat, _ in free if _seat_allowed(seat, rules.spacing))
+    available = sum(1 for seat, _ in free if _usable(seat, rules))
     plan = _plan(db, exam_id, students)
     rooms = get_exam_rooms(db, exam_id)
     return {

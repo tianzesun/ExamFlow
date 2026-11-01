@@ -31,11 +31,13 @@ import {
 } from "lucide-react";
 
 import { notifyExamChanged } from "@/components/exam/workspace";
-import { ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
+import { FILL_OPTIONS, FRONT_ROW_OPTIONS, ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
 import { RoomChooser } from "@/components/rooms/RoomChooser";
 type PreviewData = AssignmentPreview;
 
-const DEFAULT_RULES: SeatingRules = { order: "student_number", spacing: "none", accommodation_room_id: null, versions: 1 };
+const DEFAULT_RULES: SeatingRules = {
+  order: "student_number", spacing: "none", accommodation_room_id: null, versions: 1, fill: "in_turn", front_row_empty: false,
+};
 
 export default function SeatingPage() {
   const params = useParams();
@@ -354,7 +356,7 @@ export default function SeatingPage() {
             </div>
             {savingRules && <span className="text-xs text-ink-3">Saving…</span>}
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-1.5">
               <Select
                 label="Order"
@@ -423,6 +425,36 @@ export default function SeatingPage() {
                   : "Everyone writes the same paper."}
               </p>
             </div>
+            <div className="space-y-1.5">
+              <Select
+                label="Rooms"
+                id="seating-fill"
+                value={rules.fill}
+                onChange={(e) => handleRulesChange({ ...rules, fill: e.target.value as SeatingRules["fill"] })}
+                options={FILL_OPTIONS}
+                disabled={!canEdit || savingRules}
+              />
+              <p className="text-xs text-ink-3">
+                {rules.fill === "evenly"
+                  ? "Every room gets the same share of its seats, so proctors have room to move and no room is packed."
+                  : "Fills the first room before the next, so later rooms may stay empty."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Select
+                label="Front row"
+                id="seating-front-row"
+                value={rules.front_row_empty ? "empty" : "use"}
+                onChange={(e) => handleRulesChange({ ...rules, front_row_empty: e.target.value === "empty" })}
+                options={FRONT_ROW_OPTIONS}
+                disabled={!canEdit || savingRules}
+              />
+              <p className="text-xs text-ink-3">
+                {rules.front_row_empty
+                  ? "Row 1 stays free in every room, for proctors and students who arrive late."
+                  : "Seats in row 1 are used like any other."}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -438,7 +470,7 @@ export default function SeatingPage() {
             <p className="tnum text-xs text-ink-2">
               {plural(preview.students, "student")} · {plural(preview.rooms, "room")} · {plural(preview.available_seats, "seat")} ·{" "}
               <span className="font-medium text-ink">{formatNumber(preview.assigned)} assigned</span> · {formatNumber(preview.unused)} unused
-              {preview.spaced_out_seats > 0 && <> · {formatNumber(preview.spaced_out_seats)} left empty for spacing</>}
+              {preview.spaced_out_seats > 0 && <> · {formatNumber(preview.spaced_out_seats)} left empty by the rules</>}
               {preview.rules.accommodation_room_id && <> · {plural(preview.accommodation_students, "student")} in the accommodation room</>}
             </p>
           </div>
@@ -560,6 +592,7 @@ export default function SeatingPage() {
           examId={examId}
           rooms={availableRooms}
           spacing={rules.spacing}
+          frontRowEmpty={rules.front_row_empty}
           examRoomIds={examRooms.map((r) => r.id)}
           registered={summary?.registered_students ?? 0}
           onAdd={handleAddRoom}

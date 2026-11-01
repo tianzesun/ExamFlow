@@ -60,7 +60,7 @@ export interface SystemSettings {
   department_name: string;
   ttb_division: string;
   ttb_subjects: string[];
-  default_seating: { order: string; spacing: string; versions: number };
+  default_seating: { order: string; spacing: string; versions: number; fill: string; front_row_empty: boolean };
   max_upload_mb: number;
   /** What each paper's stamp shows besides room, seat and QR code */
   paper_stamp: { show_name: boolean; show_utorid: boolean; every_page: boolean };

@@ -182,7 +182,7 @@ Administrators change these in ExamFlow itself; each change is in Admin › Acti
 | Department name | Computer Science | Courses the timetable sync adds |
 | Division code | ARTSC | Timetable sync |
 | Course code prefixes | CSC | Timetable sync (only courses starting with these) |
-| Seating for new exams (order, spacing, paper versions) | By student number, every seat, one version | New exams; each exam can change its own |
+| Seating for new exams (order, spacing, paper versions, rooms, front row) | By student number, every seat, one version, each room in turn, front row used | New exams; each exam can change its own |
 | Largest exam paper upload | 50 MB | Exam paper uploads (1–200 MB) |
 | Paper stamp: student name, UTORid, every page | Name on, UTORid off, every page on | Generated papers. Room, seat and QR code are always printed. A change makes existing papers out of date, so "Update papers" regenerates them |
 | Exam-day document heading | None | Signature lists, seating lists, seating maps, door signs, exam summary |
