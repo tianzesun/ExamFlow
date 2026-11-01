@@ -6,7 +6,6 @@ import os
 import re
 import secrets
 import zipfile
-from datetime import datetime, timedelta
 from uuid import UUID
 
 import pymupdf
@@ -385,15 +384,6 @@ def _range_text(by: str | None, room: dict) -> str:
     return f"{what} {room['from']}{dots} to {room['to']}{dots}"
 
 
-def _exam_times(exam: Exam) -> str:
-    when = exam.exam_date.strftime("%A, %B %-d") if exam.exam_date else ""
-    if exam.start_time and exam.exam_date:
-        start = datetime.combine(exam.exam_date, exam.start_time)
-        end = start + timedelta(minutes=exam.duration_minutes)
-        when += f" · {start.strftime('%-I:%M %p')} to {end.strftime('%-I:%M %p')}"
-    return when
-
-
 _SIGN_CSS = """
 * {font-family: sans-serif; color: #000; text-align: center;}
 p.org {font-size: 13pt; color: #444; margin: 0 0 10pt 0;}
@@ -422,7 +412,7 @@ def generate_room_signs_pdf(db: Session, exam_id: UUID) -> bytes:
     org = get_system_settings(db).document_heading
     top = (f'<p class="org">{html.escape(org)}</p>' if org else "") + (
         f'<p class="exam">{html.escape(exam.course_code)} — {html.escape(exam.exam_name)}</p>'
-        f'<p class="when">{html.escape(_exam_times(exam))}</p>'
+        f'<p class="when">{html.escape(paper_state.exam_times(exam))}</p>'
     )
     width, height = LETTER[1], LETTER[0]
     box = pymupdf.Rect(PAGE_MARGIN, PAGE_MARGIN, width - PAGE_MARGIN, height - PAGE_MARGIN)

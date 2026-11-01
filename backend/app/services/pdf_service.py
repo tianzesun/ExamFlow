@@ -25,7 +25,7 @@ from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
 from app.services import assignment_service, paper_state
-from app.services.paper_state import exam_title
+from app.services.paper_state import exam_times, exam_title
 from app.services.settings_service import PaperStamp, get_system_settings
 from app.utils import utcnow
 
@@ -600,6 +600,8 @@ def build_print_file(
             divider = out.new_page(width=612, height=792)
             write_text(divider, pymupdf.Rect(72, 260, 540, 300), exam_title(exam), 16,
                        bold=True, align="center")
+            # When, so invigilators can check they have the right stack before handing it out.
+            write_text(divider, pymupdf.Rect(72, 220, 540, 245), exam_times(exam), 12, align="center", grey=True)
             write_text(divider, pymupdf.Rect(72, 310, 540, 370), f"{room.building} {room.room_number}", 36,
                        bold=True, align="center")
             write_text(divider, pymupdf.Rect(72, 380, 540, 400),

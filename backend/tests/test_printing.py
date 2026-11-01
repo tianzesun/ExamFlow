@@ -62,6 +62,8 @@ def test_print_file_is_in_seat_order_with_room_divider():
     doc = _print_file(exam_id)
     assert len(doc) == 1 + 3  # divider, then one page per paper
     assert "3 papers" in doc[0].get_text()
+    # The cover says when, so invigilators can check they have the right stack.
+    assert "Thursday, December 10 · 9:00 AM to" in " ".join(doc[0].get_text().split())
 
     seat_map = client.get(f"/api/exams/{exam_id}/assignments/seat-map", headers=ADMIN_HEADERS).json()
     seats = sorted(

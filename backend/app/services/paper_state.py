@@ -8,6 +8,7 @@ changes and a new template therefore make just the affected papers out of date, 
 those need generating and printing again.
 """
 
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import Integer, cast, func, not_, or_, select
@@ -51,6 +52,16 @@ def shows_version(db: Session, exam_id: UUID) -> bool:
 def exam_title(exam: Exam) -> str:
     """The line printed at the top of each paper, recorded on it so renaming the exam dates the paper."""
     return f"{exam.course_code} — {exam.exam_name}"
+
+
+def exam_times(exam: Exam) -> str:
+    """"Monday, December 28 · 9:00 AM to 11:00 AM", for door signs and the cover sheet of each room's stack."""
+    when = exam.exam_date.strftime("%A, %B %-d") if exam.exam_date else ""
+    if exam.start_time and exam.exam_date:
+        start = datetime.combine(exam.exam_date, exam.start_time)
+        end = start + timedelta(minutes=exam.duration_minutes)
+        when += f" · {start.strftime('%-I:%M %p')} to {end.strftime('%-I:%M %p')}"
+    return when
 
 
 # The title the exam has now; papers from before it was recorded are taken to match.

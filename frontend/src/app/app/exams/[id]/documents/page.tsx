@@ -259,6 +259,33 @@ export default function DocumentsPage() {
 
       <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} onUploaded={fetchData} versions={paperVersions} />
 
+      {/* Generation */}
+      {canEdit && (
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">B · Generate papers</h3>
+            <p className="text-xs text-ink-3">
+              {activeTemplate
+                ? "Preview one paper with a sample student to check the layout, then generate one PDF per seated student."
+                : "Available once the template in part A is uploaded."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={handlePreview} disabled={!activeTemplate || previewing} loading={previewing}>
+              <Eye className="h-4 w-4" /> Preview a paper
+            </Button>
+            {nothingToUpdate ? (
+              <Button variant="secondary" onClick={handleValidate} disabled={generating || jobActive || !activeTemplate}>
+                <RefreshCw className="h-4 w-4" /> Regenerate all
+              </Button>
+            ) : (
+              <Button onClick={handleValidate} disabled={generating || jobActive || !activeTemplate} loading={generating || jobActive}>
+                <FileCheck2 className="h-4 w-4" /> {hasPapers ? `Update ${plural(toGenerate, "paper")}` : "Check & generate papers"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {error && (
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -377,33 +404,6 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* Generation */}
-      {canEdit && (
-        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-ink">B · Generate papers</h3>
-            <p className="text-xs text-ink-3">
-              {activeTemplate
-                ? "Preview one paper with a sample student to check the layout, then generate one PDF per seated student."
-                : "Available once the template in part A is uploaded."}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={handlePreview} disabled={!activeTemplate || previewing} loading={previewing}>
-              <Eye className="h-4 w-4" /> Preview a paper
-            </Button>
-            {nothingToUpdate ? (
-              <Button variant="secondary" onClick={handleValidate} disabled={generating || jobActive || !activeTemplate}>
-                <RefreshCw className="h-4 w-4" /> Regenerate all
-              </Button>
-            ) : (
-              <Button onClick={handleValidate} disabled={generating || jobActive || !activeTemplate} loading={generating || jobActive}>
-                <FileCheck2 className="h-4 w-4" /> {hasPapers ? `Update ${plural(toGenerate, "paper")}` : "Check & generate papers"}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
       {canEdit && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           {readiness.map((r) => (
@@ -429,7 +429,7 @@ export default function DocumentsPage() {
 
       {/* Print */}
       {canEdit && upToDate > 0 && (
-        <div className="surface-card flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="surface-card flex flex-col gap-4 p-5">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
               <Printer className="h-4 w-4" />
@@ -447,7 +447,7 @@ export default function DocumentsPage() {
               )}
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
             <Select
               value={printRoom}
               onChange={(e) => setPrintRoom(e.target.value)}

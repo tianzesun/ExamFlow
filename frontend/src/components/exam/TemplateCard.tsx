@@ -17,7 +17,8 @@ import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { notifyExamChanged } from "./workspace";
 
-const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+const formatMb = (bytes: number) =>
+  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 const LETTERS = ["A", "B", "C", "D"];
 
