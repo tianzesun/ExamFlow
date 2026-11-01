@@ -84,3 +84,18 @@ export async function addCoursePerson(courseId: string, email: string): Promise<
 export async function removeCoursePerson(courseId: string, accessId: string): Promise<void> {
   return fetchApi<void>(`/api/courses/${courseId}/people/${accessId}`, { method: "DELETE" });
 }
+
+/** What a course-access CSV would do (or did, once confirmed). */
+export interface CourseAccessImport {
+  added: number;
+  already: number;
+  errors: string[];
+  /** The first rows being added */
+  rows: { course_code: string; email: string }[];
+}
+
+export async function importCourseAccess(file: File, confirm: boolean): Promise<CourseAccessImport> {
+  const form = new FormData();
+  form.append("file", file);
+  return fetchApi<CourseAccessImport>(`/api/courses/access/import?confirm=${confirm}`, { method: "POST", body: form });
+}

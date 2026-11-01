@@ -14,6 +14,7 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  UserPlus,
   X,
 } from "lucide-react";
 import { getCourses } from "@/lib/api/courses";
@@ -21,6 +22,7 @@ import { getAllExams } from "@/lib/api/exams";
 import { syncTTBCourses } from "@/lib/api/ttb";
 import { errorReference } from "@/lib/api/client";
 import { isExamOffice, useAuth } from "@/lib/auth/context";
+import { CourseAccessImportDialog } from "@/components/course/CourseAccessImportDialog";
 import type { ReactNode } from "react";
 import type { Course, Exam } from "@/lib/types";
 import { formatNumber, plural } from "@/lib/format";
@@ -89,6 +91,7 @@ export default function CoursesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const { user } = useAuth();
 
   const loadData = () => {
@@ -196,6 +199,11 @@ export default function CoursesPage() {
               </Button>
             )}
             {isExamOffice(user) && (
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                <UserPlus /> Add people from CSV
+              </Button>
+            )}
+            {isExamOffice(user) && (
               <Link href="/app/courses/new">
                 <Button>
                   <Plus /> Create course
@@ -205,6 +213,8 @@ export default function CoursesPage() {
           </>
         }
       />
+
+      <CourseAccessImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
       {syncResult && (
         <div

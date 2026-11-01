@@ -5,6 +5,7 @@ they were added to, with those courses' exams, rosters, seating and papers. An e
 someone may not see answers "not found", so its existence isn't revealed either.
 """
 
+import re
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Query, Session
 
 from app.auth import get_current_user, security
 from app.database import get_db
+from app.models.audit_log import AuditLog
+from app.models.course import Course
 from app.models.course_access import CourseAccess
 from app.models.exam import Exam
 from app.models.user import User
@@ -104,3 +107,46 @@ def course_people(db: Session, course_id: UUID) -> list[CourseAccess]:
         db.query(CourseAccess).filter(CourseAccess.course_id == course_id)
         .order_by(func.lower(CourseAccess.email)).all()
     )
+
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _course_key(code: str) -> str:
+    """Course codes are typed as "CSC 108", "csc108" or "CSC108"; compare without case or spaces."""
+    return re.sub(r"\s+", "", code).upper()
+
+
+def import_course_access(db: Session, rows: list[dict], user: User, apply: bool) -> dict:
+    """Give many people access from rows of course_code and email.
+
+    With apply=False nothing is saved: the result says what would happen, row by row.
+    """
+    courses = {_course_key(c.course_code): c for c in db.query(Course)}
+    existing = {(course_id, email) for course_id, email in db.query(CourseAccess.course_id, CourseAccess.email)}
+    added, already, errors, seen = [], 0, [], set()
+    for line, row in enumerate(rows, start=2):  # row 1 is the header
+        code = (row.get("course_code") or row.get("course") or "").strip()
+        email = normalise_email(row.get("email") or "")
+        if not code and not email:
+            continue
+        course = courses.get(_course_key(code))
+        if not course:
+            errors.append(f"Row {line}: no course {code or '(blank)'}")
+            continue
+        if not EMAIL_PATTERN.match(email) or len(email) > 255:
+            errors.append(f"Row {line}: {email or '(blank)'} isn't an email address")
+            continue
+        key = (course.id, email)
+        if key in existing or key in seen:
+            already += 1
+            continue
+        seen.add(key)
+        added.append({"course_code": course.course_code, "email": email})
+        if apply:
+            db.add(CourseAccess(course_id=course.id, email=email, added_by=user.id))
+            db.add(AuditLog(user_id=user.id, action="COURSE_ACCESS_GRANTED", entity_type="course",
+                            entity_id=course.id, new_values={"email": email, "source": "csv"}))
+    if apply:
+        db.commit()
+    return {"added": len(added), "already": already, "errors": errors, "rows": added[:20]}

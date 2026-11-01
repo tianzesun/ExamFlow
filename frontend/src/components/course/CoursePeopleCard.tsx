@@ -38,24 +38,35 @@ export function CoursePeopleCard({ courseId, canManage }: { courseId: string; ca
 
   const add = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    // Several addresses can be pasted at once, separated by commas, spaces or new lines.
+    const emails = [...new Set(email.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean))];
+    if (!emails.length) return;
     setAdding(true);
-    try {
-      const person = await addCoursePerson(courseId, email.trim());
-      setPeople((list) => [...(list ?? []), person].sort((a, b) => a.email.localeCompare(b.email)));
-      setEmail("");
-      toast.success(`${person.email} can now see this course`);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError && err.status === 409
-          ? err.message
-          : err instanceof ApiError && err.status === 422
-            ? "Enter the email address the person signs in with."
-            : `They couldn't be added. Try again.${errorReference(err)}`,
-      );
-    } finally {
-      setAdding(false);
+    const added: CoursePerson[] = [];
+    const problems: string[] = [];
+    for (const address of emails) {
+      try {
+        added.push(await addCoursePerson(courseId, address));
+      } catch (err) {
+        problems.push(
+          err instanceof ApiError && err.status === 409
+            ? err.message
+            : err instanceof ApiError && err.status === 422
+              ? `${address} isn't an email address`
+              : `${address} couldn't be added${errorReference(err)}`,
+        );
+      }
     }
+    if (added.length) {
+      setPeople((list) => [...(list ?? []), ...added].sort((a, b) => a.email.localeCompare(b.email)));
+      toast.success(
+        added.length === 1 ? `${added[0].email} can now see this course` : `${added.length} people can now see this course`,
+      );
+    }
+    if (problems.length) toast.error(problems.join(". "));
+    // Keep only what failed in the box, so it can be fixed and tried again.
+    setEmail(problems.length ? emails.filter((a) => !added.some((p) => p.email === a.toLowerCase())).join(", ") : "");
+    setAdding(false);
   };
 
   const remove = async (person: CoursePerson) => {
@@ -124,8 +135,8 @@ export function CoursePeopleCard({ courseId, canManage }: { courseId: string; ca
         <form onSubmit={add} className="flex items-end gap-2 border-t border-line px-5 py-3.5">
           <div className="min-w-0 flex-1">
             <Input
-              label="Add by sign-in email"
-              type="email"
+              label="Add by sign-in email (one or several)"
+              type="text"
               value={email}
               placeholder="name@utoronto.ca"
               onChange={(e) => setEmail(e.target.value)}

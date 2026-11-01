@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -11,9 +11,11 @@ from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.course_access import CourseAccess
 from app.models.user import User
+from app.rate_limit import per_user
 from app.schemas.course import CourseCreate, CourseListResponse, CourseResponse, CourseUpdate
 from app.services import access_service, course_service
 from app.services.access_service import require_course_access
+from app.services.roster_service import parse_csv
 
 router = APIRouter(prefix="/api/courses", tags=["courses"], dependencies=[Depends(require_course_access)])
 
@@ -42,6 +44,29 @@ def create_course(
         return course
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@router.post("/access/import", dependencies=[Depends(per_user("upload", 30, 600))])
+async def import_access(
+    file: UploadFile = File(...),
+    confirm: bool = Query(False, description="Save the changes; otherwise only report what would happen"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Add instructors and TAs to many courses from a CSV with course_code and email columns."""
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The file is too large (2 MB at most)")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the file as CSV (UTF-8)") from None
+    rows = parse_csv(text)
+    columns = set(rows[0]) if rows else set()
+    if rows and not ({"course_code", "course"} & columns and "email" in columns):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="The file needs a course_code column and an email column")
+    return access_service.import_course_access(db, rows, user, apply=confirm)
 
 
 @router.get("/{course_id}", response_model=CourseResponse)
