@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.rate_limit import per_address
+from app.services.settings_service import entra_config
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
@@ -39,15 +40,15 @@ def _user_response(user: User) -> UserResponse:
 
 
 @router.get("/config")
-def get_auth_config() -> dict:
+def get_auth_config(db: Session = Depends(get_db)) -> dict:
     """How the sign-in page should offer sign-in. Public: none of this is secret."""
     entra = None
-    if settings.entra_enabled:
-        client = settings.ENTRA_CLIENT_ID.strip()
+    config = entra_config(db)
+    if config:
         entra = {
-            "tenant_id": settings.ENTRA_TENANT_ID.strip(),
-            "client_id": client,
-            "scopes": [f"api://{client}/{settings.ENTRA_API_SCOPE}"],
+            "tenant_id": config.tenant_id,
+            "client_id": config.client_id,
+            "scopes": [f"api://{config.client_id}/{config.api_scope}"],
         }
     return {"entra": entra, "test_accounts": settings.dev_auth_enabled}
 

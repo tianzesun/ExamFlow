@@ -1,12 +1,16 @@
 """Admin › Settings: what an administrator changes, and where it takes effect."""
 
+import uuid
 from unittest import mock
 
 import pymupdf
 
+from app.auth import entra
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models.course import Course
-from app.services import ttb_service
+from app.services import settings_service, ttb_service
+from tests import test_entra
 from tests.test_seat_map import ADMIN_HEADERS, INSTRUCTOR_HEADERS, _create_exam_with_students, client
 
 STAFF_HEADERS = {"Authorization": "Bearer dev-staff-token"}
@@ -32,8 +36,8 @@ def test_defaults_and_deployment_info():
     data = _settings()
     assert data["settings"]["ttb_subjects"] and data["settings"]["max_upload_mb"] >= 1
     # The deployment is shown, not editable, and holds nothing secret.
-    assert set(data["deployment"]) == {"environment", "utorid_sign_in", "test_accounts", "rate_limits",
-                                       "public_app_url", "storage"}
+    assert set(data["deployment"]) == {"environment", "test_accounts", "rate_limits", "public_app_url",
+                                       "storage"}
 
 
 def test_saving_tidies_values_and_records_only_what_changed():
@@ -93,3 +97,71 @@ def test_upload_limit_follows_the_setting():
     r = client.post(f"/api/exams/{exam_id}/templates", files={"file": ("big.pdf", pdf, "application/pdf")},
                     headers=ADMIN_HEADERS)
     assert len(pdf) > 1024 * 1024 and r.status_code == 400 and "max 1MB" in r.json()["detail"]
+
+
+# ── UTORid sign-in set in the app ───────────────────────────
+
+def _registration(**changes) -> dict:
+    return {
+        "tenant_id": str(uuid.uuid4()), "client_id": str(uuid.uuid4()), "api_scope": "access_as_user",
+        "role_values": {"ADMIN": "Exams.Admin", "STAFF": "Exams.Office", "INSTRUCTOR": "Exams.Instructor",
+                        "TA": "Exams.TA"},
+        **changes,
+    }
+
+
+def _save_sign_in(body: dict, tenant_known: bool | None = True):
+    with mock.patch.object(settings_service, "_tenant_exists", return_value=tenant_known):
+        return client.put("/api/admin/settings/sign-in", json=body, headers=ADMIN_HEADERS)
+
+
+def test_utorid_sign_in_set_in_the_app_is_used():
+    body = _registration()
+    r = _save_sign_in(body)
+    assert r.status_code == 200, r.text
+    assert r.json()["source"] == "settings" and r.json()["enabled"] is True
+
+    # The sign-in page now offers it, and tokens for that registration sign in with the mapped role.
+    config = client.get("/api/auth/config").json()["entra"]
+    assert config["tenant_id"] == body["tenant_id"] and config["client_id"] == body["client_id"]
+    token = test_entra._token(iss=f"https://login.microsoftonline.com/{body['tenant_id']}/v2.0",
+                              aud=body["client_id"], tid=body["tenant_id"], roles=["Exams.Office"])
+    with mock.patch.object(entra, "_signing_key", lambda token, tenant: test_entra.KEY.public_key()):
+        me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200 and me.json()["role"] == "STAFF"
+
+    log = client.get("/api/admin/activity", params={"category": "system"}, headers=ADMIN_HEADERS).json()["entries"]
+    assert log[0]["action"] == "SYSTEM_SIGN_IN_SETTINGS_UPDATED"
+
+
+def test_sign_in_settings_are_checked():
+    assert _save_sign_in(_registration(client_id="")).status_code == 422             # one without the other
+    assert _save_sign_in(_registration(tenant_id="uoft")).status_code == 422         # not an ID
+    roles = {"ADMIN": "Same", "STAFF": "Same", "INSTRUCTOR": "I", "TA": "T"}
+    assert _save_sign_in(_registration(role_values=roles)).status_code == 422        # roles must differ
+    r = _save_sign_in(_registration(), tenant_known=False)
+    assert r.status_code == 400 and "tenant" in r.json()["detail"]
+    # Microsoft unreachable: saved anyway, as the IDs are well formed.
+    assert _save_sign_in(_registration(), tenant_known=None).status_code == 200
+
+
+def test_the_environment_wins_and_locks_the_page():
+    s = get_settings()
+    tenant, client_id = str(uuid.uuid4()), str(uuid.uuid4())
+    with mock.patch.object(s, "ENTRA_TENANT_ID", tenant), mock.patch.object(s, "ENTRA_CLIENT_ID", client_id):
+        got = client.get("/api/admin/settings/sign-in", headers=ADMIN_HEADERS).json()
+        assert got["source"] == "environment" and got["sign_in"]["tenant_id"] == tenant
+        r = _save_sign_in(_registration())
+        assert r.status_code == 400 and "environment" in r.json()["detail"]
+
+
+def test_sign_in_cannot_be_switched_off_without_test_accounts():
+    assert _save_sign_in(_registration()).status_code == 200
+    off = _registration(tenant_id="", client_id="")
+    # As in production: no test accounts (only the check sees this, so the admin here can still call).
+    production = mock.Mock(dev_auth_enabled=False, entra_enabled=False)
+    with mock.patch.object(settings_service, "get_settings", return_value=production):
+        r = _save_sign_in(off)
+    assert r.status_code == 400 and "nobody" in r.json()["detail"]
+    assert _save_sign_in(off).status_code == 200  # test accounts still work here
+    assert client.get("/api/auth/config").json()["entra"] is None

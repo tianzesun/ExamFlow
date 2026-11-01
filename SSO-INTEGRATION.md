@@ -84,7 +84,13 @@ No client secret or certificate is needed. Don't create one.
 
 ## Server settings
 
-Set these in the backend's environment (they are identifiers, not secrets):
+There are two places to set these (they are identifiers, not secrets):
+
+- **Admin › Settings › UTORid sign-in**, in the app. Handy during the pilot: sign in with a test
+  account, enter the IDs, then try a UTORid sign-in before switching test accounts off. The page
+  shows the redirect URI to register.
+- **The backend's environment**, below. When set, these take priority and the Settings page shows
+  them locked. Use this in production so sign-in can't be changed from the app.
 
 ```bash
 ENTRA_TENANT_ID=<UofT directory (tenant) ID>

@@ -96,7 +96,8 @@ def validate_production_settings() -> list[str]:
         if settings.AUTH_DEV_MODE:
             errors.append(f"AUTH_DEV_MODE must be false outside development (APP_ENV={settings.APP_ENV!r})")
         if not settings.entra_enabled:
-            errors.append("ENTRA_TENANT_ID and ENTRA_CLIENT_ID are required in production (UTORid sign-in)")
+            errors.append("ENTRA_TENANT_ID and ENTRA_CLIENT_ID aren't set; UTORid sign-in then relies on "
+                          "Admin › Settings, and pinning it here stops it being changed from the app")
         if "localhost" in settings.CORS_ALLOWED_ORIGINS:
             errors.append("CORS_ALLOWED_ORIGINS should not contain localhost in production")
 

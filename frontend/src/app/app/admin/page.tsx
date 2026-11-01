@@ -80,6 +80,7 @@ const ACTION_LABEL: Record<string, string> = {
   ROOM_LAYOUT_UPDATED: "Changed a room layout",
   ROOM_DELETED: "Deleted a room",
   SYSTEM_SETTINGS_UPDATED: "Changed settings",
+  SYSTEM_SIGN_IN_SETTINGS_UPDATED: "Changed UTORid sign-in settings",
 };
 
 function actionLabel(action: string): string {

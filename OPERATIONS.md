@@ -185,7 +185,9 @@ Administrators change these in ExamFlow itself; each change is in Admin › Acti
 | Seating for new exams (order, spacing, paper versions) | By student number, every seat, one version | New exams; each exam can change its own |
 | Largest exam paper upload | 50 MB | Exam paper uploads (1–200 MB) |
 
-Everything about the deployment itself (database, Entra, URLs, rate limits) stays in the environment file. The Settings page shows it read only.
+**UTORid sign-in** (Entra tenant ID, client ID, API scope and the app role value for each ExamFlow role) can be entered on the same page. None of it is secret — ExamFlow signs in as a single-page app and has no client secret. If `ENTRA_TENANT_ID` and `ENTRA_CLIENT_ID` are set in the environment they take priority and the page shows them locked; pin them there in production so a compromised admin account can't point sign-in elsewhere. The page refuses a tenant ID Microsoft doesn't know, and won't turn UTORid sign-in off while test accounts are off. If a wrong client ID locks everyone out, set the correct values in the environment file and restart.
+
+Everything else about the deployment (database, URLs, rate limits) stays in the environment file. The Settings page shows it read only.
 
 ## Upgrades
 

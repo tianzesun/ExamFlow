@@ -67,7 +67,6 @@ export interface SystemSettings {
 /** How the server is set up; shown, not editable. */
 export interface DeploymentInfo {
   environment: string;
-  utorid_sign_in: boolean;
   test_accounts: boolean;
   rate_limits: boolean;
   public_app_url: string;
@@ -85,4 +84,29 @@ export async function getSystemSettings(): Promise<SettingsPage> {
 
 export async function saveSystemSettings(settings: SystemSettings): Promise<SettingsPage> {
   return fetchApi<SettingsPage>("/api/admin/settings", { method: "PUT", body: JSON.stringify(settings) });
+}
+
+/** The Entra app registration for UTORid sign-in. Nothing here is secret (no client secret is used). */
+export interface SignInSettings {
+  tenant_id: string;
+  client_id: string;
+  api_scope: string;
+  /** ExamFlow role → Entra app role value */
+  role_values: Record<"ADMIN" | "STAFF" | "INSTRUCTOR" | "TA", string>;
+}
+
+export interface SignInSettingsPage {
+  sign_in: SignInSettings;
+  /** "environment": set on the server and can't be changed here */
+  source: "environment" | "settings";
+  enabled: boolean;
+  test_accounts: boolean;
+}
+
+export async function getSignInSettings(): Promise<SignInSettingsPage> {
+  return fetchApi<SignInSettingsPage>("/api/admin/settings/sign-in");
+}
+
+export async function saveSignInSettings(settings: SignInSettings): Promise<SignInSettingsPage> {
+  return fetchApi<SignInSettingsPage>("/api/admin/settings/sign-in", { method: "PUT", body: JSON.stringify(settings) });
 }

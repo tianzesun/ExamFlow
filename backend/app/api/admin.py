@@ -10,6 +10,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.auth import require_role
+from app.config import get_settings
 from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.course import Course
@@ -18,7 +19,7 @@ from app.models.exam import Exam
 from app.models.room import Room
 from app.models.user import User
 from app.services import settings_service
-from app.services.settings_service import SystemSettings
+from app.services.settings_service import SignInSettings, SignInSettingsError, SystemSettings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -119,6 +120,32 @@ def update_settings(
 ) -> dict:
     """Save the settings. They apply from the next sync, new exam or upload; nothing done already changes."""
     return _settings_response(settings_service.update_system_settings(db, data, admin.id))
+
+
+def _sign_in_response(db: Session) -> dict:
+    settings, source = settings_service.get_sign_in_settings(db)
+    return {"sign_in": settings.model_dump(mode="json"), "source": source,
+            "enabled": bool(settings.tenant_id), "test_accounts": get_settings().dev_auth_enabled}
+
+
+@router.get("/settings/sign-in")
+def get_sign_in_settings(db: Session = Depends(get_db), _admin: User = Depends(require_role("ADMIN"))) -> dict:
+    """The Entra app registration UTORid sign-in uses, and whether the environment sets it."""
+    return _sign_in_response(db)
+
+
+@router.put("/settings/sign-in")
+def update_sign_in_settings(
+    data: SignInSettings,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role("ADMIN")),
+) -> dict:
+    """Save the app registration; it applies to the next sign-in."""
+    try:
+        settings_service.update_sign_in_settings(db, data, admin.id)
+    except SignInSettingsError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
+    return _sign_in_response(db)
 
 
 # ── Activity (audit log) ────────────────────────────────────

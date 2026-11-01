@@ -7,6 +7,8 @@ import { ApiError, errorReference } from "@/lib/api/client";
 import { getSystemSettings, saveSystemSettings, type DeploymentInfo, type SystemSettings } from "@/lib/api/admin";
 import { ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
 import { Button, Input, Select, Skeleton } from "@/components";
+import { Group } from "./settings-group";
+import { SignInSettingsCard } from "./sign-in-settings";
 
 /** Settings an administrator changes, and the server's set-up (read only, from its environment). */
 export function SettingsCard() {
@@ -113,6 +115,8 @@ export function SettingsCard() {
         </div>
       </section>
 
+      <SignInSettingsCard />
+
       <section className="surface-card overflow-hidden">
         <div className="border-b border-line px-5 py-3.5">
           <h2 className="text-sm font-semibold text-ink">This server</h2>
@@ -122,25 +126,12 @@ export function SettingsCard() {
         </div>
         <dl className="grid grid-cols-1 gap-x-8 gap-y-3 px-5 py-4 text-sm sm:grid-cols-2 xl:grid-cols-3">
           <Fact label="Environment">{deployment.environment}</Fact>
-          <Fact label="UTORid sign-in"><OnOff on={deployment.utorid_sign_in} onText="Set up" offText="Not set up" /></Fact>
           <Fact label="Test accounts"><OnOff on={deployment.test_accounts} onText="On" offText="Off" /></Fact>
           <Fact label="Rate limits"><OnOff on={deployment.rate_limits} onText="On" offText="Off" /></Fact>
           <Fact label="QR codes on papers link to"><span className="font-mono text-xs">{deployment.public_app_url}</span></Fact>
           <Fact label="File storage">{deployment.storage}</Fact>
         </dl>
       </section>
-    </div>
-  );
-}
-
-function Group({ title, text, children }: { title: string; text: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 px-5 py-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-8">
-      <div>
-        <h3 className="text-sm font-medium text-ink">{title}</h3>
-        <p className="mt-0.5 text-xs text-ink-3">{text}</p>
-      </div>
-      <div className="grid max-w-3xl grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
     </div>
   );
 }

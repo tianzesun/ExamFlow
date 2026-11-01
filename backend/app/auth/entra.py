@@ -13,9 +13,9 @@ import jwt
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.models.audit_log import AuditLog
 from app.models.user import User
+from app.services.settings_service import EntraConfig, entra_config
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +50,9 @@ def _signing_key(token: str, tenant_id: str):
     return _jwks_client(tenant_id).get_signing_key_from_jwt(token).key
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str, config: EntraConfig) -> dict:
     """The token's claims if Entra issued it for this API; raises jwt.InvalidTokenError otherwise."""
-    settings = get_settings()
-    tenant, client = settings.ENTRA_TENANT_ID.strip(), settings.ENTRA_CLIENT_ID.strip()
+    tenant, client = config.tenant_id, config.client_id
     claims = jwt.decode(
         token,
         _signing_key(token, tenant),
@@ -66,13 +65,13 @@ def decode_token(token: str) -> dict:
     )
     if claims["tid"] != tenant:
         raise jwt.InvalidTokenError("Token is from another tenant")
-    if settings.ENTRA_API_SCOPE not in str(claims.get("scp", "")).split():
+    if config.api_scope not in str(claims.get("scp", "")).split():
         raise jwt.InvalidTokenError("Token lacks the ExamFlow API scope")
     return claims
 
 
-def role_from_claims(claims: dict) -> str | None:
-    mapping = get_settings().entra_role_map
+def role_from_claims(claims: dict, config: EntraConfig) -> str | None:
+    mapping = config.role_map
     roles = {mapping[r] for r in claims.get("roles", []) if r in mapping}
     return next((r for r in ROLE_ORDER if r in roles), None)
 
@@ -83,10 +82,11 @@ def verify_entra_token(token: str, db: Session) -> User | None:
     Returns None for a token that isn't valid; raises NoExamFlowRoleError for a valid university
     sign-in that hasn't been given access to ExamFlow.
     """
-    if not get_settings().entra_enabled or not looks_like_jwt(token):
+    config = entra_config(db) if looks_like_jwt(token) else None
+    if not config:
         return None
     try:
-        claims = decode_token(token)
+        claims = decode_token(token, config)
     except jwt.PyJWKClientError:
         logger.exception("Entra signing keys could not be loaded")
         return None
@@ -95,7 +95,7 @@ def verify_entra_token(token: str, db: Session) -> User | None:
         return None
 
     email = claims.get("preferred_username") or claims.get("email") or claims.get("upn")
-    role = role_from_claims(claims)
+    role = role_from_claims(claims, config)
     if not role:
         raise NoExamFlowRoleError(email)
 
