@@ -32,8 +32,8 @@ const CHECK_LABELS: Record<string, string> = {
   roster: "Roster imported",
   rooms: "Rooms configured",
   seating: "Seating assigned",
-  template: "Template active",
-  documents: "Exams generated",
+  template: "Exam paper uploaded",
+  documents: "Papers generated",
   qr: "QR codes ready",
 };
 
@@ -252,11 +252,11 @@ export default function AdministrationPage() {
           </CardHeader>
           <dl className="divide-y divide-line px-5 text-sm">
             {[
-              ["Template", checks.find(c => c.name === "template")?.message || "None"],
+              ["Exam paper", checks.find(c => c.name === "template")?.message || "None"],
               ["Students", `${formatNumber(rosterCount)} registered`],
               ["Seated", `${formatNumber(seatingCheck?.count ?? 0)} / ${formatNumber(seatingCheck?.required ?? 0)}`],
               ["Rooms", formatNumber(examRooms.length)],
-              ["Personalized exams", formatNumber(generatedCount)],
+              ["Papers", formatNumber(generatedCount)],
               ["QR codes", formatNumber(qrCount)],
             ].map(([label, value]) => (
               <div key={label} className="flex items-baseline justify-between gap-4 py-2.5">

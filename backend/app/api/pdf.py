@@ -10,6 +10,7 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
+from app.rate_limit import per_user
 from app.services import generation_job_service, paper_state, pdf_service
 from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
@@ -58,7 +59,11 @@ def validate_generation(
 
 # ── Generate ────────────────────────────────────────────────
 
-@router.post("/api/exams/{exam_id}/generated", response_model=GenerationResultResponse)
+@router.post(
+    "/api/exams/{exam_id}/generated",
+    response_model=GenerationResultResponse,
+    dependencies=[Depends(per_user("generation", 20, 600))],
+)
 def generate_exams(
     exam_id: UUID,
     db: Session = Depends(get_db),
@@ -82,7 +87,11 @@ def generate_exams(
 
 # ── Background generation ───────────────────────────────────
 
-@router.post("/api/exams/{exam_id}/generated/jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/api/exams/{exam_id}/generated/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(per_user("generation", 20, 600))],
+)
 def start_generation_job(
     exam_id: UUID,
     background_tasks: BackgroundTasks,
@@ -142,7 +151,7 @@ def get_paper_status(
 
 # ── Preview ─────────────────────────────────────────────────
 
-@router.get("/api/exams/{exam_id}/generated/preview")
+@router.get("/api/exams/{exam_id}/generated/preview", dependencies=[Depends(per_user("exam-files", 30, 600))])
 def preview_paper(
     exam_id: UUID,
     db: Session = Depends(get_db),
@@ -159,7 +168,7 @@ def preview_paper(
 
 # ── Print file ──────────────────────────────────────────────
 
-@router.get("/api/exams/{exam_id}/generated/print")
+@router.get("/api/exams/{exam_id}/generated/print", dependencies=[Depends(per_user("exam-files", 30, 600))])
 def download_print_file(
     exam_id: UUID,
     room_id: UUID | None = Query(None),

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     OIDC_CLIENT_SECRET: str = ""
     OIDC_REDIRECT_URI: str = ""
 
+    # Guards against abuse on sign-in, uploads, paper generation and the QR check (app/rate_limit.py).
+    RATE_LIMITS_ENABLED: bool = True
+
     # CORS
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000"
 

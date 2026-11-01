@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
+from app.rate_limit import per_user
 from app.services import template_service
 from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam, sync_exam_status
@@ -48,7 +49,12 @@ def _verify_template_ownership(db: Session, template_id: UUID, exam_id: UUID):
 
 # ── Upload ──────────────────────────────────────────────────
 
-@router.post("/api/exams/{exam_id}/templates", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/exams/{exam_id}/templates",
+    response_model=TemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(per_user("upload", 30, 600))],
+)
 async def upload_template(
     exam_id: UUID,
     file: UploadFile = File(...),

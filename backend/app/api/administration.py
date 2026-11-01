@@ -10,6 +10,7 @@ from app.models.audit_log import AuditLog
 from app.models.exam import Exam
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
+from app.rate_limit import per_address, per_user
 from app.services import admin_service
 from app.services.access_service import require_exam_access
 from app.services.exam_status_service import block_writes_to_archived_exam
@@ -32,7 +33,7 @@ def generate_qr(
 
 # ── QR Verify ───────────────────────────────────────────────
 
-@router.get("/api/verify/{token}")
+@router.get("/api/verify/{token}", dependencies=[Depends(per_address("qr-check", 60, 60))])
 def verify_qr(
     token: str,
     request: Request,
@@ -139,7 +140,10 @@ def download_seating_map(
 
 # ── Package Generate ────────────────────────────────────────
 
-@router.post("/api/exams/{exam_id}/package/generate", dependencies=[Depends(block_writes_to_archived_exam)])
+@router.post(
+    "/api/exams/{exam_id}/package/generate",
+    dependencies=[Depends(block_writes_to_archived_exam), Depends(per_user("exam-files", 30, 600))],
+)
 def generate_package(
     exam_id: UUID,
     db: Session = Depends(get_db),
@@ -157,7 +161,7 @@ def generate_package(
 
 # ── Package Download ────────────────────────────────────────
 
-@router.get("/api/exams/{exam_id}/package/download")
+@router.get("/api/exams/{exam_id}/package/download", dependencies=[Depends(per_user("exam-files", 30, 600))])
 def download_package(
     exam_id: UUID,
     db: Session = Depends(get_db),

@@ -17,15 +17,36 @@ npm run dev
 ### Production
 
 ```bash
-# Backend
+# Backend (behind the university's proxy or load balancer)
 cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 \
+  --proxy-headers --forwarded-allow-ips=<proxy address>
 
 # Frontend
 cd frontend
 npm run build
 npm start
 ```
+
+`--proxy-headers` makes the server see each browser's own address rather than the proxy's.
+The rate limits on test sign-in and the public QR check count per address, so without it
+every visitor would share one count.
+
+### Rate limits
+
+Abuse guards in `backend/app/rate_limit.py`; going over one answers **429** with a
+`Retry-After` header.
+
+| What | Limit | Counted per |
+|------|-------|-------------|
+| Test-account sign-in (`/api/auth/login`) | 10 a minute | address |
+| QR check on a paper (`/api/verify/...`) | 60 a minute | address |
+| Roster imports and paper uploads | 30 per 10 minutes | person |
+| Paper generation (full or update) | 20 per 10 minutes | person |
+| Print file, paper preview, exam-day package | 30 per 10 minutes | person |
+
+Counts are kept in each server process, so with 4 workers someone can reach up to 4 times
+these figures. Set `RATE_LIMITS_ENABLED=false` to switch them off (e.g. for load testing).
 
 ## Shutdown
 

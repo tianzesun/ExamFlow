@@ -83,11 +83,11 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
     elif missing and needed - {"A"}:
         template_message = f"No paper uploaded for version {', '.join(missing)}"
     elif missing:
-        template_message = "No active template"
+        template_message = "No exam paper uploaded"
     elif len(active) > 1:
         template_message = f"Versions {', '.join(sorted(active))} uploaded"
     else:
-        template_message = f"Template v{next(iter(active.values())).version} active"
+        template_message = f"Revision {next(iter(active.values())).version} uploaded"
     checks.append(CheckResult(
         name="template",
         status="FAIL" if missing else "PASS",
@@ -102,11 +102,11 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
     # Only up-to-date papers count: a seating change or new template makes the affected ones stale.
     to_update = max(0, assigned_count - generated_count)
     if generated_count == 0:
-        documents_message = "No exams generated"
+        documents_message = "No papers generated"
     elif to_update:
         documents_message = f"{generated_count} up to date, {to_update} to generate"
     else:
-        documents_message = f"{generated_count} personalized exams generated"
+        documents_message = f"{generated_count} papers generated"
     checks.append(CheckResult(
         name="documents",
         status="PASS" if generated_count > 0 and to_update == 0 else "FAIL",
@@ -131,7 +131,7 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
     checks.append(CheckResult(
         name="qr",
         status=qr_status,
-        message=f"{qr_count}/{generated_count} QR codes generated" if generated_count > 0 else "Generate exams first",
+        message=f"{qr_count}/{generated_count} QR codes generated" if generated_count > 0 else "Generate papers first",
         count=qr_count,
         required=generated_count if generated_count > 0 else None,
     ))

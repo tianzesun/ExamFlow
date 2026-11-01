@@ -7,6 +7,7 @@ from app.auth.dev_auth import DEV_USERS, verify_dev_token
 from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
+from app.rate_limit import per_address
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
@@ -49,7 +50,7 @@ def get_me(user: User = Depends(get_current_user)) -> User:
     )
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/login", response_model=UserResponse, dependencies=[Depends(per_address("sign-in", 10, 60))])
 def dev_login(request: DevLoginRequest, db: Session = Depends(get_db)) -> User:
     """Development login endpoint.
     In production, this would be replaced by OIDC callback.

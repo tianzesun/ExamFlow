@@ -80,13 +80,14 @@ export function formatRelative(v: DateInput, now: Date = new Date()): string {
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const days = Math.round((d.getTime() - today.getTime()) / DAY);
-    if (Math.abs(days) < 45) return relFmt.format(days, "day");
+    if (Math.abs(days) < 60) return relFmt.format(days, "day");
   }
   const diff = d.getTime() - now.getTime();
   const abs = Math.abs(diff);
   if (abs < HOUR) return relFmt.format(Math.round(diff / MIN), "minute");
   if (abs < DAY) return relFmt.format(Math.round(diff / HOUR), "hour");
-  if (abs < 45 * DAY) return relFmt.format(Math.round(diff / DAY), "day");
+  // Days up to two months, so nearby dates read alike ("in 44 days", "in 48 days", not "in 2 months").
+  if (abs < 60 * DAY) return relFmt.format(Math.round(diff / DAY), "day");
   if (abs < 365 * DAY) return relFmt.format(Math.round(diff / (30 * DAY)), "month");
   return relFmt.format(Math.round(diff / (365 * DAY)), "year");
 }

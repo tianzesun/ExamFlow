@@ -33,7 +33,7 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Add rate limiting to sensitive endpoints (login, upload, generation)
 - **Impact:** Prevent abuse in production
 - **Scope:** Backend middleware
-- **Status:** Not started
+- **Status:** Done — limits on test sign-in, the QR check, uploads, generation and print/package downloads (OPERATIONS.md › Rate limits). In-memory per server process; move to a shared store if exact limits across workers are ever needed.
 
 ---
 

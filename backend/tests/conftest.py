@@ -25,6 +25,15 @@ def one_test_run_at_a_time():
 
 
 @pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """Each test starts with no requests counted, as the suite makes far more than a person would."""
+    from app import rate_limit
+
+    rate_limit.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def rollback_database():
     """Run each test inside one outer transaction that is rolled back afterwards.
 

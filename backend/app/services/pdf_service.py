@@ -203,7 +203,7 @@ def validate_generation(db: Session, exam_id: UUID) -> list[str]:
         ).first()
         label = f" for version {version}" if needed != ["A"] else ""
         if not template:
-            errors.append(f"No exam paper uploaded{label}" if label else "No active template found")
+            errors.append(f"No exam paper uploaded{label}" if label else "No exam paper uploaded")
             return errors
         template_path = os.path.join(
             "storage", "exams", str(exam_id), "templates", template.stored_filename
@@ -240,7 +240,7 @@ def _load_active_template(db: Session, exam_id: UUID, paper_version: str = "A") 
     ).first()
     if not template:
         raise ValueError(
-            "No active template" if paper_version == "A" else f"No exam paper uploaded for version {paper_version}"
+            "No exam paper uploaded" if paper_version == "A" else f"No exam paper uploaded for version {paper_version}"
         )
 
     template_path = os.path.join(

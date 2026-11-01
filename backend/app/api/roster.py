@@ -7,6 +7,7 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.student import Student
 from app.models.user import User
+from app.rate_limit import per_user
 from app.schemas.student import (
     AccommodationUpdate,
     AttendanceSummary,
@@ -114,7 +115,9 @@ def roster_stats(
     return RosterStats(total_students=total, exam_id=exam_id)
 
 
-@router.post("/import/preview", response_model=RosterImportPreview)
+@router.post(
+    "/import/preview", response_model=RosterImportPreview, dependencies=[Depends(per_user("upload", 30, 600))]
+)
 async def preview_import(
     exam_id: UUID,
     file: UploadFile = File(...),
@@ -139,7 +142,7 @@ async def preview_import(
     return roster_service.preview_roster_import(db, exam_id, text)
 
 
-@router.post("/import/confirm")
+@router.post("/import/confirm", dependencies=[Depends(per_user("upload", 30, 600))])
 async def confirm_import(
     exam_id: UUID,
     file: UploadFile = File(...),

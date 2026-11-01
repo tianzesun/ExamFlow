@@ -430,7 +430,7 @@ def generate_exam_package(
     ).all()
 
     if not generated:
-        raise ValueError("No personalized exams generated. Generate exams first.")
+        raise ValueError("No exam papers yet. Generate them in the Exam papers step first.")
 
     safe_name = _zip_part(f"{exam.course_code}-{exam.exam_name}")[:50]
     zip_filename = f"{safe_name}-Administration-Package.zip"
