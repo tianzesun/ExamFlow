@@ -301,6 +301,7 @@ export default function RosterPage() {
               <Th>Name</Th>
               <Th className="hidden md:table-cell">UTORid</Th>
               <Th className="hidden lg:table-cell">Email</Th>
+              <Th>Seat</Th>
               <Th>Accommodations</Th>
               {canEdit && <Th className="text-right">Actions</Th>}
             </TableHead>
@@ -311,6 +312,15 @@ export default function RosterPage() {
                   <Td className="font-medium">{s.full_name}</Td>
                   <Td className="hidden font-mono text-xs text-ink-2 md:table-cell">{s.utorid || <span className="text-ink-3">—</span>}</Td>
                   <Td className="hidden text-ink-2 lg:table-cell">{s.email || <span className="text-ink-3">—</span>}</Td>
+                  <Td className="whitespace-nowrap">
+                    {s.seat_code ? (
+                      <span className="text-xs text-ink-2">
+                        {s.room} <span className="font-mono font-medium text-ink">{s.seat_code}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-ink-3">Not seated</span>
+                    )}
+                  </Td>
                   <Td>
                     {(s.extra_time_minutes ?? 0) > 0 || s.accommodation_notes ? (
                       <span className="inline-flex items-center gap-1.5">

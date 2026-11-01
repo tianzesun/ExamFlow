@@ -140,3 +140,20 @@ def test_accommodation_notes_are_for_exam_office_staff_only():
     assert _roster(exam_id)[0]["accommodation_notes"] == "Separate room"
     roster = client.get(f"/api/exams/{exam_id}/roster", headers=INSTRUCTOR_HEADERS).json()["students"]
     assert roster[0]["accommodation_notes"] is None and roster[0]["extra_time_minutes"] == 30
+
+
+def test_roster_shows_where_each_student_sits():
+    exam_id, room_id, numbers = _create_exam_with_students(student_count=2, capacity=5)
+    assert all(s["seat_code"] is None for s in _roster(exam_id))
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).status_code == 200
+    room = client.get(f"/api/rooms/{room_id}", headers=ADMIN_HEADERS).json()
+    seat_map = client.get(f"/api/exams/{exam_id}/assignments/seat-map", headers=ADMIN_HEADERS).json()["rooms"][0]
+    expected = {s["occupant"]["student_number"]: s["seat_code"] for s in seat_map["seats"] if s["occupant"]}
+    for entry in _roster(exam_id):
+        assert entry["seat_code"] == expected[entry["student_number"]]
+        assert entry["room"] == f"{room['building']} {room['room_number']}"
+    # Checking someone in returns their seat too, so the list keeps showing it.
+    student = _roster(exam_id)[0]
+    r = client.put(f"/api/exams/{exam_id}/roster/{student['student_id']}/attendance",
+                   json={"attendance_status": "PRESENT"}, headers=ADMIN_HEADERS)
+    assert r.json()["seat_code"] == student["seat_code"]

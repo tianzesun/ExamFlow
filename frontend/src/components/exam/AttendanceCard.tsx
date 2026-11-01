@@ -46,7 +46,8 @@ export function AttendanceCard({ examId, canMark }: { examId: string; canMark: b
         (!q ||
           s.full_name.toLowerCase().includes(q) ||
           s.student_number.includes(q) ||
-          (s.utorid ?? "").toLowerCase().includes(q)),
+          (s.utorid ?? "").toLowerCase().includes(q) ||
+          (s.seat_code ?? "").toLowerCase() === q),
     );
   }, [students, query, filter]);
 
@@ -70,7 +71,7 @@ export function AttendanceCard({ examId, canMark }: { examId: string; canMark: b
       <div className="flex flex-col gap-4 border-b border-line px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h3 className="text-sm font-semibold text-ink">Attendance</h3>
-          <p className="text-xs text-ink-3">Check students in as they arrive. Search by name, student number or UTORid.</p>
+          <p className="text-xs text-ink-3">Check students in as they arrive and send them to their seat. Search by name, student number, UTORid or seat.</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden items-center gap-3 text-xs sm:flex">
@@ -150,6 +151,17 @@ export function AttendanceCard({ examId, canMark }: { examId: string; canMark: b
                     {status === "PRESENT" && s.checked_in_at && <> · in at {formatTime(new Date(s.checked_in_at).toTimeString().slice(0, 5))}</>}
                   </p>
                 </div>
+                {/* Where to send them: the room and seat printed on their paper. */}
+                {s.seat_code ? (
+                  <span className="shrink-0 text-right leading-tight" title={`${s.room} · seat ${s.seat_code}`}>
+                    <span className="block font-mono text-sm font-semibold text-ink">{s.seat_code}</span>
+                    <span className="block max-w-32 truncate text-[11px] text-ink-3">{s.room}</span>
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
+                    No seat
+                  </span>
+                )}
                 {(s.extra_time_minutes ?? 0) > 0 && (
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-subtle px-2 py-0.5 text-[11px] font-medium text-violet">
                     <Timer className="h-3 w-3" /> +{s.extra_time_minutes} min

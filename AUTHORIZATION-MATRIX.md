@@ -152,7 +152,10 @@ Access to resources is scoped by exam ownership:
 2. All write operations require ADMIN or STAFF role
 3. Room creation/deletion is ADMIN only
 4. QR verification is public by design (for proctor use)
-5. Audit logs are ADMIN only
+5. Audit logs are ADMIN only: the Admin page's **Activity** tab (`GET /api/admin/activity`). The
+   **People** tab (`GET /api/admin/users`) lists everyone who has signed in; an ADMIN can switch
+   someone off in ExamFlow at once (`PATCH /api/admin/users/{id}`), whatever their role in Entra,
+   but not themselves. Both changes are audited (`USER_DEACTIVATED`, `USER_ACTIVATED`)
 6. Object-level authorization prevents cross-exam access: every route under `/api/exams/{exam_id}`
    and `/api/courses/{course_id}` checks course access (`app/services/access_service.py`), and the
    exam, course and summary lists only include visible courses

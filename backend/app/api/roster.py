@@ -36,7 +36,8 @@ def list_roster(
     user: User = Depends(get_current_user),
 ):
     results, total = roster_service.get_roster(db, exam_id, page, page_size)
-    students = [_roster_entry(es, s, user) for es, s in results]
+    seats = roster_service.seats_for(db, [es.id for es, _ in results])
+    students = [_roster_entry(es, s, user, seats.get(es.id)) for es, s in results]
     return {"students": [s.model_dump() for s in students], "total": total}
 
 
@@ -44,7 +45,7 @@ def list_roster(
 NOTES_ROLES = {"ADMIN", "STAFF"}
 
 
-def _roster_entry(es, s, user: User) -> ExamStudentResponse:
+def _roster_entry(es, s, user: User, seat: tuple[str, str] | None = None) -> ExamStudentResponse:
     return ExamStudentResponse(
         id=es.id,
         exam_id=es.exam_id,
@@ -57,6 +58,8 @@ def _roster_entry(es, s, user: User) -> ExamStudentResponse:
         checked_in_at=es.checked_in_at,
         extra_time_minutes=es.extra_time_minutes,
         accommodation_notes=es.accommodation_notes if user.role in NOTES_ROLES else None,
+        room=seat[0] if seat else None,
+        seat_code=seat[1] if seat else None,
         created_at=es.created_at,
     )
 
@@ -81,7 +84,7 @@ def set_attendance(
     es = roster_service.set_attendance(db, exam_id, student_id, data.attendance_status, user.id)
     if not es:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in roster")
-    return _roster_entry(es, _student_for(db, es), user)
+    return _roster_entry(es, _student_for(db, es), user, roster_service.seats_for(db, [es.id]).get(es.id))
 
 
 @router.put("/{student_id}/accommodation", response_model=ExamStudentResponse)
@@ -97,7 +100,7 @@ def set_accommodation(
     )
     if not es:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in roster")
-    return _roster_entry(es, _student_for(db, es), user)
+    return _roster_entry(es, _student_for(db, es), user, roster_service.seats_for(db, [es.id]).get(es.id))
 
 
 def _student_for(db: Session, es) -> Student:

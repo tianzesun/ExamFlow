@@ -29,6 +29,9 @@ class ExamStudentResponse(BaseModel):
     checked_in_at: datetime | None = None
     extra_time_minutes: int = 0
     accommodation_notes: str | None = None
+    # Where the student sits, once seating is done: shown at check-in to send them to the right place.
+    room: str | None = None
+    seat_code: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

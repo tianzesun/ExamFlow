@@ -49,6 +49,9 @@ export interface ExamStudent {
   checked_in_at?: string | null;
   extra_time_minutes?: number;
   accommodation_notes?: string | null;
+  /** Where the student sits, once seating is done */
+  room?: string | null;
+  seat_code?: string | null;
   created_at: string;
 }
 

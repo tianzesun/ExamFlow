@@ -51,21 +51,15 @@ def test_invalid_token():
 
 
 def test_staff_cannot_access_admin():
-    response = client.get(
-        "/api/admin/test",
-        headers={"Authorization": "Bearer dev-staff-token"},
-    )
-    assert response.status_code == 403
+    for path in ("/api/admin/users", "/api/admin/activity"):
+        response = client.get(path, headers={"Authorization": "Bearer dev-staff-token"})
+        assert response.status_code == 403, path
 
 
 def test_admin_can_access_admin():
-    response = client.get(
-        "/api/admin/test",
-        headers={"Authorization": "Bearer dev-admin-token"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["message"] == "Admin access verified"
+    for path in ("/api/admin/users", "/api/admin/activity"):
+        response = client.get(path, headers={"Authorization": "Bearer dev-admin-token"})
+        assert response.status_code == 200, path
 
 
 def test_dev_tokens_endpoint():

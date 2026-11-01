@@ -7,8 +7,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.exam_assignment import ExamAssignment
 from app.models.exam_student import ExamStudent
 from app.models.generated_exam import GeneratedExam
+from app.models.room import Room
+from app.models.seat import Seat
 from app.models.student import Student
 from app.utils import utcnow
 
@@ -198,6 +201,19 @@ def get_roster(db: Session, exam_id: UUID, page: int = 1, page_size: int = 50) -
         .all()
     )
     return results, total
+
+
+def seats_for(db: Session, exam_student_ids: list[UUID]) -> dict[UUID, tuple[str, str]]:
+    """Room label and seat code for each seated student."""
+    if not exam_student_ids:
+        return {}
+    rows = (
+        db.query(ExamAssignment.exam_student_id, Room.building, Room.room_number, Seat.seat_code)
+        .join(Seat, ExamAssignment.seat_id == Seat.id)
+        .join(Room, Seat.room_id == Room.id)
+        .filter(ExamAssignment.exam_student_id.in_(exam_student_ids))
+    )
+    return {es_id: (f"{building} {number}", code) for es_id, building, number, code in rows}
 
 
 def remove_from_roster(db: Session, exam_id: UUID, student_id: UUID, user_id: UUID) -> bool:
