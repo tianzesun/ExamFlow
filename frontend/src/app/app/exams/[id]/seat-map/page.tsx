@@ -206,6 +206,11 @@ export default function SeatMapPage() {
   const commitMove = async (studentId: string, name: string, targetSeatId: string) => {
     const target = seatIndex.get(targetSeatId)?.seat;
     if (!target || !target.is_usable) return;
+    if (target.taken_by) {
+      toast.error(`${target.seat_code} is used by ${target.taken_by} at the same time. Pick another seat.`);
+      setCarry(null);
+      return;
+    }
     if (target.occupant?.student_id === studentId) {
       setCarry(null);
       return;
@@ -383,7 +388,7 @@ export default function SeatMapPage() {
                   setDragOverUnassigned(false);
                 }}
                 onSeatDragOver={(e, seat) => {
-                  if (!seat.is_usable) return;
+                  if (!seat.is_usable || seat.taken_by) return;
                   e.preventDefault();
                   setDragOverSeatId(seat.id);
                 }}
@@ -707,6 +712,7 @@ function Legend() {
     { cls: "border-violet/40 bg-violet-subtle", label: "Manual" },
     { cls: "border-dashed border-line-strong bg-surface", label: "Empty" },
     { cls: "seat-blocked border-line", label: "Not in use" },
+    { cls: "border-warning/40 bg-warning/10", label: "Another exam at the same time" },
   ];
   return (
     <div className="flex flex-wrap items-center gap-3 text-xs text-ink-3">
@@ -750,13 +756,17 @@ function SeatTile({
   const o = seat.occupant;
   const isSource = carry?.fromSeatId === seat.id;
   // Where the carried student can land: any empty seat, or a filled one to swap when moving from a seat.
-  const isTarget = !!carry && canEdit && seat.is_usable && !isSource && (!o || !!carry.fromSeatId);
+  const elsewhere = seat.taken_by;
+  const isTarget = !!carry && canEdit && seat.is_usable && !elsewhere && !isSource && (!o || !!carry.fromSeatId);
 
   const label = !seat.is_usable
     ? `${seat.seat_code}, not in use`
     : o
       ? `${seat.seat_code}, ${o.full_name}, ${o.student_number}${showVersion ? `, version ${o.paper_version}` : ""}`
-      : `${seat.seat_code}, empty`;
+        + (elsewhere ? `. Clash: ${elsewhere} also uses this seat at the same time` : "")
+      : elsewhere
+        ? `${seat.seat_code}, used by ${elsewhere} at the same time`
+        : `${seat.seat_code}, empty`;
 
   return (
     <button
@@ -765,7 +775,7 @@ function SeatTile({
       title={label}
       aria-label={label}
       aria-pressed={selected}
-      disabled={!seat.is_usable}
+      disabled={!seat.is_usable || (!!elsewhere && !o)}
       draggable={canEdit && !!o}
       onClick={onClick}
       onDragStart={onDragStart}
@@ -776,7 +786,8 @@ function SeatTile({
         "group relative flex h-[60px] w-[64px] flex-col justify-between rounded-lg border px-1 py-1 text-left transition-all duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2",
         !seat.is_usable && "seat-blocked cursor-not-allowed border-line text-ink-3",
-        seat.is_usable && !o && "border-dashed border-line-strong bg-surface text-ink-3 hover:border-accent hover:bg-accent-subtle",
+        seat.is_usable && !o && !elsewhere && "border-dashed border-line-strong bg-surface text-ink-3 hover:border-accent hover:bg-accent-subtle",
+        seat.is_usable && !o && elsewhere && "cursor-not-allowed border-warning/40 bg-warning/10 text-warning",
         o && o.method === "MANUAL" && "border-violet/40 bg-violet-subtle text-ink hover:border-violet",
         o && o.method !== "MANUAL" && "border-accent/40 bg-accent-subtle text-ink hover:border-accent",
         o && canEdit && "cursor-grab active:cursor-grabbing",
@@ -786,6 +797,7 @@ function SeatTile({
         dragOver && "scale-105 ring-2 ring-accent",
         selected && "ring-2 ring-accent ring-offset-2 ring-offset-surface-2",
         highlighted && "animate-pulse ring-4 ring-warning/60",
+        o && elsewhere && "ring-2 ring-danger ring-offset-1 ring-offset-surface-2",
       )}
     >
       <span className="flex items-center justify-between">
@@ -801,7 +813,9 @@ function SeatTile({
           <span className="tnum block truncate text-[9px] leading-tight tracking-tight text-ink-2">{o.student_number}</span>
         </span>
       ) : (
-        <span className="text-[10px] leading-tight">{seat.is_usable ? (isTarget ? "Drop here" : "Empty") : "—"}</span>
+        <span className="text-[10px] leading-tight">
+          {!seat.is_usable ? "—" : elsewhere ? "Other exam" : isTarget ? "Drop here" : "Empty"}
+        </span>
       )}
     </button>
   );
@@ -875,8 +889,18 @@ function Inspector({
       <div className="p-5">
         {!seat.is_usable ? (
           <p className="text-sm text-ink-2">This seat is marked as not in use and cannot be assigned.</p>
+        ) : seat.taken_by && !o ? (
+          <p className="text-sm text-ink-2">
+            <b className="font-medium text-ink">{seat.taken_by}</b> has a student in this seat at the same time, so
+            it can&apos;t be used for this exam.
+          </p>
         ) : o ? (
           <>
+            {seat.taken_by && (
+              <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+                {seat.taken_by} also has a student in this seat at the same time. Move this student to a free seat.
+              </p>
+            )}
             <div className="flex items-center gap-3">
               <span
                 className={cn(

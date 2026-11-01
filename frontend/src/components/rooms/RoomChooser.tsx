@@ -20,6 +20,7 @@ import { FloorPlan, FloorPlanLegend, cellKey, type CellState } from "./FloorPlan
 export function RoomChooser({
   open,
   onClose,
+  examId,
   rooms,
   spacing,
   examRoomIds,
@@ -28,6 +29,7 @@ export function RoomChooser({
 }: {
   open: boolean;
   onClose: () => void;
+  examId: string;
   /** Rooms that can still be added to the exam */
   rooms: Room[];
   spacing: string;
@@ -55,21 +57,21 @@ export function RoomChooser({
   useEffect(() => {
     if (!open || !current || layouts[current.id]) return;
     const id = current.id;
-    getRoomLayout(id)
+    getRoomLayout(id, examId)
       .then((layout) => setLayouts((l) => ({ ...l, [id]: layout })))
       .catch(() => setLayouts((l) => ({ ...l, [id]: "error" })));
-  }, [open, current, layouts]);
+  }, [open, current, layouts, examId]);
 
   // Layouts of the exam's own rooms, to work out how many students still need a seat.
   useEffect(() => {
     if (!open) return;
     for (const id of examRoomIds) {
       if (layouts[id]) continue;
-      getRoomLayout(id)
+      getRoomLayout(id, examId)
         .then((layout) => setLayouts((l) => ({ ...l, [id]: layout })))
         .catch(() => setLayouts((l) => ({ ...l, [id]: "error" })));
     }
-  }, [open, examRoomIds, layouts]);
+  }, [open, examRoomIds, layouts, examId]);
 
   const examRoomsLoaded = examRoomIds.every((id) => layouts[id]);
   const seatsInExamRooms = examRoomIds.reduce((n, id) => {
@@ -180,10 +182,17 @@ export function RoomChooser({
                       <Stat icon={Armchair} label="Seats" value={plan.usable} />
                       {spacing !== "none" && <Stat icon={Users} label="Students with spacing" value={plan.allowed} strong />}
                       {plan.blocked > 0 && <Stat label="Not in use" value={plan.blocked} />}
+                      {plan.taken > 0 && <Stat label="Used by another exam" value={plan.taken} />}
                       <Stat label="Rows × seats" text={`${plan.rows} × ${plan.columns}`} />
                     </div>
                   )}
                 </div>
+                {plan && plan.taken > 0 && (
+                  <p className="border-b border-warning/20 bg-warning/10 px-5 py-2 text-xs text-warning">
+                    {plan.others.join(", ")} {plan.others.length === 1 ? "uses" : "use"} {plural(plan.taken, "seat")} here
+                    at the same time. Those seats are left out; this exam can share the rest of the room.
+                  </p>
+                )}
                 {plan && studentsNeedingRoom > 0 && (
                   <p
                     className={cn(
@@ -219,7 +228,7 @@ export function RoomChooser({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-5 py-3">
-                  <FloorPlanLegend spacing={spacing !== "none"} seated={false} highlightSeats />
+                  <FloorPlanLegend spacing={spacing !== "none"} seated={false} highlightSeats taken={!!plan?.taken} />
                   <div className="flex gap-2">
                     <Button variant="ghost" onClick={onClose} disabled={adding}>Cancel</Button>
                     <Button onClick={add} loading={adding}>
@@ -252,13 +261,17 @@ function Stat({ icon: Icon, label, value, text, strong }: {
 /** Each position's state, and the counts shown above the plan. */
 function planOf(layout: RoomLayout, spacing: string) {
   const cells = new Map<string, CellState>();
-  let usable = 0, allowed = 0, blocked = 0;
+  let usable = 0, allowed = 0, blocked = 0, taken = 0;
   for (const s of layout.seats) {
     if (s.row == null || s.column == null) continue;
     let state: CellState = "seat";
     if (!s.is_usable) {
       state = "blocked";
       blocked++;
+    } else if (s.taken_by) {
+      // Automatic seating skips it, so it doesn't count towards the students.
+      state = "taken";
+      taken++;
     } else {
       usable++;
       if (seatAllowed(s.row, s.column, spacing)) allowed++;
@@ -266,5 +279,9 @@ function planOf(layout: RoomLayout, spacing: string) {
     }
     cells.set(cellKey(s.row, s.column), state);
   }
-  return { rows: layout.rows, columns: layout.columns, aisles: new Set(layout.aisles_after), cells, usable, allowed, blocked };
+  const others = [...new Set(layout.seats.map((s) => s.taken_by).filter((x): x is string => !!x))];
+  return {
+    rows: layout.rows, columns: layout.columns, aisles: new Set(layout.aisles_after), cells, usable, allowed, blocked,
+    taken, others,
+  };
 }

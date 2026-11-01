@@ -1,6 +1,7 @@
 import random
 import secrets
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
@@ -184,6 +185,55 @@ def _seat_allowed(seat: Seat, spacing: str) -> bool:
     return row % 2 == 1 and col % 2 == 1
 
 
+# ── Seats other exams hold at the same time ─────────────────
+
+def exam_label(exam: Exam) -> str:
+    return f"{exam.course_code} — {exam.exam_name}"
+
+
+def _window(exam: Exam, extra_minutes: int = 0) -> tuple[datetime, datetime]:
+    start = datetime.combine(exam.exam_date, exam.start_time)
+    return start, start + timedelta(minutes=exam.duration_minutes + extra_minutes)
+
+
+def seats_taken_elsewhere(db: Session, exam_id: UUID, room_ids: list[UUID] | None = None) -> dict[UUID, str]:
+    """Seats another exam has a student in while this one runs, with that exam's name.
+
+    Two exams can share a room (a gym, a large hall) but never a seat. Each seated student
+    counts until their own extra time is over; this exam runs until its longest extra time ends.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return {}
+    own_extra = db.query(func.max(ExamStudent.extra_time_minutes)).filter(ExamStudent.exam_id == exam_id).scalar()
+    start, end = _window(exam, own_extra or 0)
+    q = (
+        db.query(ExamAssignment.seat_id, Exam, ExamStudent.extra_time_minutes)
+        .join(Exam, Exam.id == ExamAssignment.exam_id)
+        .join(ExamStudent, ExamStudent.id == ExamAssignment.exam_student_id)
+        # Same day or the day before, for an evening exam that runs past midnight.
+        .filter(
+            Exam.id != exam_id,
+            Exam.status != "ARCHIVED",
+            Exam.exam_date.between(exam.exam_date - timedelta(days=1), exam.exam_date + timedelta(days=1)),
+        )
+    )
+    if room_ids is not None:
+        q = q.join(Seat, Seat.id == ExamAssignment.seat_id).filter(Seat.room_id.in_(room_ids))
+    taken: dict[UUID, str] = {}
+    for seat_id, other, extra in q.all():
+        other_start, other_end = _window(other, extra or 0)
+        if other_start < end and start < other_end:
+            taken[seat_id] = exam_label(other)
+    return taken
+
+
+def _check_seat_free_elsewhere(db: Session, exam_id: UUID, seat: Seat) -> None:
+    other = seats_taken_elsewhere(db, exam_id, [seat.room_id]).get(seat.id)
+    if other:
+        raise ValueError(f"Seat {seat.seat_code} is taken by {other} at the same time")
+
+
 # ── Seating plan ────────────────────────────────────────────
 
 def _get_sorted_students(db: Session, exam_id: UUID) -> list[tuple[ExamStudent, Student]]:
@@ -207,7 +257,8 @@ def _order_students(students: list[tuple[ExamStudent, Student]], rules: SeatingR
 
 
 def _free_seats(db: Session, exam_id: UUID) -> list[tuple[Seat, Room]]:
-    """Usable seats nobody holds yet, room by room, front row first. Rooms since deactivated are skipped."""
+    """Usable seats nobody holds yet, in this exam or another at the same time, room by room, front row
+    first. Rooms since deactivated are skipped."""
     rooms = [room for room in get_exam_rooms(db, exam_id) if room.is_active]
     if not rooms:
         return []
@@ -219,6 +270,8 @@ def _free_seats(db: Session, exam_id: UUID) -> list[tuple[Seat, Room]]:
         .filter(Seat.room_id.in_(list(by_id)), Seat.is_usable, ~Seat.id.in_(assigned_seat_ids))
         .all()
     )
+    elsewhere = seats_taken_elsewhere(db, exam_id, list(by_id))
+    seats = [s for s in seats if s.id not in elsewhere]
     seats.sort(key=lambda s: (position[s.room_id], s.row_number or 0, s.column_number or 0, s.seat_code))
     return [(seat, by_id[seat.room_id]) for seat in seats]
 
@@ -568,6 +621,7 @@ def assign_student(
         raise ValueError("Seat not found or not usable")
     if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == seat.room_id).first():
         raise ValueError("Seat is not in a room selected for this exam")
+    _check_seat_free_elsewhere(db, exam_id, seat)
 
     # Use current max version for this exam
     max_version = db.query(func.max(ExamAssignment.version)).filter(
@@ -643,6 +697,7 @@ def get_seat_map(db: Session, exam_id: UUID) -> list[dict]:
         .all()
     )
 
+    elsewhere = seats_taken_elsewhere(db, exam_id, [r.id for r in rooms])
     seats_by_room: dict[UUID, list[dict]] = {r.id: [] for r in rooms}
     room_seats: dict[UUID, list[Seat]] = {r.id: [] for r in rooms}
     for seat, assignment, student in rows:
@@ -653,6 +708,8 @@ def get_seat_map(db: Session, exam_id: UUID) -> list[dict]:
             "row_number": seat.row_number,
             "column_number": seat.column_number,
             "is_usable": seat.is_usable,
+            # Another exam at the same time has a student here.
+            "taken_by": elsewhere.get(seat.id),
             "occupant": {
                 "assignment_id": str(assignment.id),
                 "student_id": str(student.id),
@@ -708,6 +765,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
         raise ValueError("Seat not found or not usable")
     if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == seat.room_id).first():
         raise ValueError("Seat is not in a room selected for this exam")
+    _check_seat_free_elsewhere(db, exam_id, seat)
 
     current = db.query(ExamAssignment).filter(
         ExamAssignment.exam_id == exam_id,

@@ -5,8 +5,9 @@ import { Lock } from "lucide-react";
 import { rowLabel } from "@/lib/api/rooms";
 import { cn } from "@/lib/utils";
 
-/** "spaced": a seat the exam's spacing rule keeps empty (only when previewing a room for an exam). */
-export type CellState = "seat" | "blocked" | "missing" | "spaced";
+/** When previewing a room for an exam: "spaced" is a seat the exam's spacing rule keeps empty, and
+ * "taken" a seat another exam uses at the same time. */
+export type CellState = "seat" | "blocked" | "missing" | "spaced" | "taken";
 
 export const cellKey = (row: number, col: number) => `${row}-${col}`;
 
@@ -143,6 +144,7 @@ export function FloorPlan({
                   state === "missing" ? `${code}: no seat`
                     : state === "blocked" ? `${code}: not in use`
                     : state === "spaced" ? `${code}: kept empty by the spacing rule`
+                    : state === "taken" ? `${code}: used by another exam at the same time`
                     : `${code}: seat`;
                 return (
                   <div key={col} className={gapBefore(col)}>
@@ -176,6 +178,7 @@ export function FloorPlan({
                           "border border-accent/45 bg-accent-subtle text-accent shadow-[inset_0_-3px_0_color-mix(in_oklab,var(--accent)_22%,transparent)]",
                         state === "blocked" && "seat-blocked border border-line text-ink-3 hover:border-warning",
                         state === "spaced" && "border border-line bg-surface-2/60 text-ink-3/50",
+                        state === "taken" && "border border-warning/40 bg-warning/15 text-warning",
                         state === "missing" &&
                           "border border-dashed border-line/70 bg-transparent text-transparent hover:border-accent/60",
                       )}
@@ -201,8 +204,8 @@ export function FloorPlan({
   );
 }
 
-export function FloorPlanLegend({ spacing = false, seated = true, highlightSeats = false }: {
-  spacing?: boolean; seated?: boolean; highlightSeats?: boolean;
+export function FloorPlanLegend({ spacing = false, seated = true, highlightSeats = false, taken = false }: {
+  spacing?: boolean; seated?: boolean; highlightSeats?: boolean; taken?: boolean;
 }) {
   const items = [
     {
@@ -210,6 +213,7 @@ export function FloorPlanLegend({ spacing = false, seated = true, highlightSeats
       label: spacing ? "Seat a student can use" : "Seat",
     },
     ...(spacing ? [{ cls: "border-line bg-surface-2/60", label: "Kept empty by spacing" }] : []),
+    ...(taken ? [{ cls: "border-warning/40 bg-warning/15", label: "Another exam at the same time" }] : []),
     { cls: "seat-blocked border-line", label: "Not in use" },
     { cls: "border-dashed border-line", label: "No seat" },
   ];

@@ -557,6 +557,7 @@ export default function SeatingPage() {
         <RoomChooser
           open={choosingRoom}
           onClose={() => setChoosingRoom(false)}
+          examId={examId}
           rooms={availableRooms}
           spacing={rules.spacing}
           examRoomIds={examRooms.map((r) => r.id)}

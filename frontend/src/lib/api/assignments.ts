@@ -146,6 +146,8 @@ export interface SeatMapSeat {
   row_number: number | null;
   column_number: number | null;
   is_usable: boolean;
+  /** Another exam at the same time has a student in this seat (its name) */
+  taken_by: string | null;
   occupant: SeatOccupant | null;
 }
 

@@ -66,7 +66,24 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
         required=roster_count,
     ))
 
-    # 4. Template check: an active paper for every version students are seated for.
+    # 3b. No student sits in a seat another exam uses at the same time (e.g. after an exam was moved).
+    from app.services.assignment_service import seats_taken_elsewhere
+
+    elsewhere = seats_taken_elsewhere(db, exam_id)
+    clashes = [
+        elsewhere[seat_id] for (seat_id,) in db.query(ExamAssignment.seat_id).filter(ExamAssignment.exam_id == exam_id)
+        if seat_id in elsewhere
+    ]
+    if clashes:
+        others = ", ".join(sorted(set(clashes)))
+        checks.append(CheckResult(
+            name="seat_clashes",
+            status="FAIL",
+            message=f"{len(clashes)} {'student sits' if len(clashes) == 1 else 'students sit'} in seats {others} "
+                    "uses at the same time. Move them on the seat map or reseat everyone.",
+            count=len(clashes),
+        ))
+
     active = {
         t.paper_version: t for t in db.query(ExamTemplate).filter(
             ExamTemplate.exam_id == exam_id,

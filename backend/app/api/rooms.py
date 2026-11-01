@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
-from app.services import room_service
+from app.services import access_service, assignment_service, room_service
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -131,12 +131,19 @@ def update_room(
 @router.get("/{room_id}/layout", response_model=dict)
 def get_room_layout(
     room_id: UUID,
+    exam_id: UUID | None = Query(None, description="Mark seats another exam holds while this one runs"),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     layout = room_service.get_layout(db, room_id)
     if layout is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    if exam_id:
+        if not access_service.can_see_exam(db, user, exam_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+        taken = assignment_service.seats_taken_elsewhere(db, exam_id, [room_id])
+        for seat in layout["seats"]:
+            seat["taken_by"] = taken.get(UUID(seat["id"]))
     return layout
 
 

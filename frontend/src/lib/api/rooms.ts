@@ -88,6 +88,8 @@ export interface LayoutSeat {
   exams: number;
   /** Upcoming exams with a student seated here */
   upcoming: number;
+  /** Only when asked for an exam: another exam seats a student here at the same time */
+  taken_by?: string | null;
 }
 
 export interface RoomLayout {
@@ -98,8 +100,9 @@ export interface RoomLayout {
   seats: LayoutSeat[];
 }
 
-export async function getRoomLayout(roomId: string): Promise<RoomLayout> {
-  return fetchApi(`/api/rooms/${roomId}/layout`);
+/** With examId, seats another exam uses at the same time carry taken_by. */
+export async function getRoomLayout(roomId: string, examId?: string): Promise<RoomLayout> {
+  return fetchApi(`/api/rooms/${roomId}/layout${examId ? `?exam_id=${encodeURIComponent(examId)}` : ""}`);
 }
 
 export async function saveRoomLayout(

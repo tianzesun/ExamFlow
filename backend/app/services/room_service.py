@@ -275,6 +275,7 @@ def get_layout(db: Session, room_id: UUID) -> dict | None:
         **room_layout(room, seats),
         "seats": [
             {
+                "id": str(s.id),
                 "seat_code": s.seat_code,
                 "row": s.row_number,
                 "column": s.column_number,
