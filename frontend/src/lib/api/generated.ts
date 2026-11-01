@@ -38,6 +38,8 @@ export interface GeneratedExamListResponse {
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  /** Worth knowing but not blocking, e.g. students who have no seat yet and so get no paper. */
+  warnings: string[];
 }
 
 export interface GenerationJob {

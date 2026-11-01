@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, Download, FileText, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Upload } from "lucide-react";
 import {
   uploadTemplate, listTemplates, getTemplateDownloadUrl,
   activateTemplate, ExamTemplate,
@@ -14,6 +14,7 @@ import { DownloadButton } from "@/components/download-button";
 import { Input } from "@/components/input";
 import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { notifyExamChanged } from "./workspace";
 
 const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -43,6 +44,7 @@ export function TemplateCard({
   const [crowdmarkId, setCrowdmarkId] = useState("");
   const [crowdmarkUrl, setCrowdmarkUrl] = useState("");
   const [uploadVersion, setUploadVersion] = useState("A");
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const t = await listTemplates(examId).catch(() => [] as ExamTemplate[]);
@@ -68,13 +70,16 @@ export function TemplateCard({
     onUploaded?.();
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const upload = async (file: File, letter: string) => {
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      setError("Only PDF files can be uploaded. Export the exam from Crowdmark as a PDF.");
+      return;
+    }
+    setUploadVersion(letter);
     setUploading(true);
     setError(null);
     try {
-      await uploadTemplate(examId, file, crowdmarkId || undefined, crowdmarkUrl || undefined, uploadVersion);
+      await uploadTemplate(examId, file, crowdmarkId || undefined, crowdmarkUrl || undefined, letter);
       setCrowdmarkId("");
       setCrowdmarkUrl("");
       await changed();
@@ -85,6 +90,26 @@ export function TemplateCard({
       if (inputRef.current) inputRef.current.value = "";
     }
   };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) upload(file, uploadVersion);
+  };
+
+  /** Dropping a PDF on a version's row uploads it for that version. */
+  const dropTarget = (letter: string) => canEdit ? {
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(letter);
+    },
+    onDragLeave: () => setDragOver(null),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(null);
+      const file = e.dataTransfer.files?.[0];
+      if (file && !uploading) upload(file, letter);
+    },
+  } : {};
 
   const handleActivate = async (templateId: string) => {
     try {
@@ -131,7 +156,10 @@ export function TemplateCard({
           {letters.map((letter) => {
             const active = activeFor(letter);
             return active ? (
-              <div key={letter} className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <div key={letter} {...dropTarget(letter)} className={cn(
+                "flex flex-col gap-3 rounded-lg border bg-surface-2 p-3.5 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                dragOver === letter ? "border-accent bg-accent-subtle" : "border-line",
+              )}>
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10 font-semibold text-success">
                     {multi ? letter : <CheckCircle2 className="h-4 w-4" />}
@@ -159,18 +187,31 @@ export function TemplateCard({
                 </div>
               </div>
             ) : (
-              <div key={letter} className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong px-4 py-3.5 text-sm text-ink-2 sm:flex-row sm:items-center sm:justify-between">
+              <div key={letter} {...dropTarget(letter)} className={cn(
+                "flex flex-col gap-3 rounded-lg border-2 border-dashed px-4 text-sm text-ink-2 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                multi ? "py-3.5" : "py-6",
+                dragOver === letter ? "border-accent bg-accent-subtle" : "border-line-strong",
+              )}>
                 <span className="flex items-center gap-3">
                   {multi
                     ? <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/10 font-semibold text-warning">{letter}</span>
-                    : <FileText className="h-4 w-4 shrink-0 text-ink-3" />}
-                  {multi
-                    ? `Version ${letter} isn't uploaded yet.`
-                    : "No template yet. Export the exam PDF from Crowdmark and upload it here."}
+                    : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-subtle text-accent"><Upload className="h-4 w-4" /></span>}
+                  <span>
+                    <span className="block font-medium text-ink">
+                      {multi ? `Version ${letter} isn't uploaded yet` : "Upload the exam paper"}
+                    </span>
+                    <span className="block text-xs text-ink-3">
+                      {uploading && uploadVersion === letter
+                        ? "Uploading…"
+                        : canEdit
+                          ? "Drag the PDF exported from Crowdmark here, or choose the file."
+                          : "Staff upload the PDF exported from Crowdmark."}
+                    </span>
+                  </span>
                 </span>
-                {canEdit && multi && (
+                {canEdit && (
                   <Button size="sm" onClick={() => chooseFile(letter)} loading={uploading && uploadVersion === letter} className="shrink-0">
-                    <Upload className="h-3.5 w-3.5" /> Upload version {letter}
+                    <Upload className="h-3.5 w-3.5" /> {multi ? `Upload version ${letter}` : "Choose PDF"}
                   </Button>
                 )}
               </div>
@@ -181,7 +222,7 @@ export function TemplateCard({
         {canEdit && (
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-ink-3">
-              {multi ? "Crowdmark details for the next upload" : activeFor("A") ? "Replace with a new revision" : "Upload the PDF"}
+              {multi || !activeFor("A") ? "Crowdmark details (optional)" : "Replace with a new revision"}
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input type="text" placeholder="Crowdmark exam ID (optional)" value={crowdmarkId}
@@ -189,15 +230,15 @@ export function TemplateCard({
               <Input type="text" placeholder="Crowdmark URL (optional)" value={crowdmarkUrl}
                 onChange={(e) => setCrowdmarkUrl(e.target.value)} aria-label="Crowdmark URL" />
             </div>
-            <div className="flex items-center justify-end gap-3">
-              <span className="text-xs text-ink-3">PDF only</span>
-              <input ref={inputRef} type="file" accept=".pdf" onChange={handleUpload} className="sr-only" tabIndex={-1} aria-hidden />
-              {!multi && (
-                <Button size="sm" variant={activeFor("A") ? "secondary" : "primary"} onClick={() => chooseFile("A")} loading={uploading}>
-                  <Upload className="h-3.5 w-3.5" /> {uploading ? "Uploading…" : "Choose PDF"}
+            <input ref={inputRef} type="file" accept=".pdf,application/pdf" onChange={handleUpload} className="sr-only" tabIndex={-1} aria-hidden />
+            {!multi && activeFor("A") && (
+              <div className="flex items-center justify-end gap-3">
+                <span className="text-xs text-ink-3">PDF only · or drop it on the current paper above</span>
+                <Button size="sm" variant="secondary" onClick={() => chooseFile("A")} loading={uploading}>
+                  <Upload className="h-3.5 w-3.5" /> {uploading ? "Uploading…" : "Choose new PDF"}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
       </div>

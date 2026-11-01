@@ -7,7 +7,7 @@ import { getAssignmentSummary, AssignmentSummary, getSeatingRules } from "@/lib/
 import { ExamTemplate } from "@/lib/api/templates";
 import {
   validateGeneration, startGenerationJob, getLatestGenerationJob, listGeneratedExams, getPaperStatus, PaperStatus,
-  getGeneratedExamDownloadUrl, getPrintFileUrl, getPreviewUrl, GeneratedExam, GenerationJob,
+  getGeneratedExamDownloadUrl, getPrintFileUrl, getPreviewUrl, GeneratedExam, GenerationJob, ValidationResult,
 } from "@/lib/api/generated";
 import { Exam } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -47,13 +47,14 @@ export default function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Generation state
-  const [validation, setValidation] = useState<{ valid: boolean; errors: string[] } | null>(null);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [generating, setGenerating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [regenerateAll, setRegenerateAll] = useState(false);
   const [genResult, setGenResult] = useState<{ generated: number } | null>(null);
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
   const [printRoom, setPrintRoom] = useState("");
   const [printScope, setPrintScope] = useState<"all" | "new">("all");
   const [doubleSided, setDoubleSided] = useState(false);
@@ -179,6 +180,20 @@ export default function DocumentsPage() {
     }
   };
 
+  /** Open a PDF in a new tab, where the browser's viewer can print it straight away. */
+  const handleOpen = async (key: string, url: string, after?: () => void) => {
+    setOpening(key);
+    setError(null);
+    try {
+      await openFile(url);
+      after?.();
+    } catch (err) {
+      setError(`The PDF couldn't be opened. Try again in a moment.${errorReference(err)}`);
+    } finally {
+      setOpening(null);
+    }
+  };
+
   const handlePreview = async () => {
     setPreviewing(true);
     setError(null);
@@ -208,7 +223,10 @@ export default function DocumentsPage() {
   const nothingToUpdate = hasPapers && toGenerate === 0;
   const fullRun = regenerateAll || nothingToUpdate;
   const willGenerate = fullRun ? assigned : toGenerate;
+  const unseated = Math.max(0, (summary?.registered_students ?? 0) - assigned);
   const pageCount = Math.max(1, Math.ceil(totalGenerated / 50));
+  const printUrl = getPrintFileUrl(examId, { roomId: printRoom || undefined, doubleSided, onlyNew: printScope === "new" });
+  const printDisabled = jobActive || (printScope === "new" && (paperStatus?.not_printed ?? 0) === 0);
   const readiness = [
     {
       label: paperVersions > 1 ? "Exam papers" : "Active template",
@@ -216,7 +234,13 @@ export default function DocumentsPage() {
       detail: templateSummary || "Upload it in part A",
     },
     { label: "Roster", ok: (summary?.registered_students ?? 0) > 0, detail: plural(summary?.registered_students ?? 0, "student") },
-    { label: "Seating", ok: assigned > 0, detail: `${formatNumber(assigned)} of ${formatNumber(summary?.registered_students ?? 0)} seated` },
+    {
+      label: "Seating",
+      ok: assigned > 0 && unseated === 0,
+      detail: unseated > 0 && assigned > 0
+        ? `${formatNumber(assigned)} of ${formatNumber(summary?.registered_students ?? 0)} seated · ${formatNumber(unseated)} get no paper yet`
+        : `${formatNumber(assigned)} of ${formatNumber(summary?.registered_students ?? 0)} seated`,
+    },
   ];
 
   return (
@@ -293,6 +317,11 @@ export default function DocumentsPage() {
                   ? "Every paper is replaced; copies already printed will no longer verify and must be reprinted."
                   : `Only papers that are new or out of date are made. The other ${plural(upToDate, "paper")} stay as printed.`}
               </p>
+              {validation?.warnings.map((w) => (
+                <p key={w} className="mt-2 flex items-start gap-1.5 text-sm text-warning">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {w}
+                </p>
+              ))}
               {hasPapers && !nothingToUpdate && (
                 <label className="mt-2 inline-flex cursor-pointer select-none items-center gap-2 text-xs text-ink-2">
                   <input
@@ -448,13 +477,22 @@ export default function DocumentsPage() {
               />
               Double-sided
             </label>
+            <Button
+              variant="secondary"
+              onClick={() => handleOpen("print", printUrl, () => fetchData())}
+              loading={opening === "print"}
+              disabled={printDisabled}
+              title="Opens the PDF in a new tab, ready for your browser's Print button"
+            >
+              <Printer className="h-4 w-4" /> Open to print
+            </Button>
             <DownloadButton
-              url={getPrintFileUrl(examId, { roomId: printRoom || undefined, doubleSided, onlyNew: printScope === "new" })}
+              url={printUrl}
               filename="exam-papers.pdf"
-              disabled={jobActive || (printScope === "new" && (paperStatus?.not_printed ?? 0) === 0)}
+              disabled={printDisabled}
               onDownloaded={() => fetchData()}
             >
-              <Download className="h-4 w-4" /> Download for printing
+              <Download className="h-4 w-4" /> Download PDF
             </DownloadButton>
           </div>
         </div>
@@ -536,9 +574,16 @@ export default function DocumentsPage() {
                     <Td className="text-xs text-ink-2">{g.printed_at ? formatDate(g.printed_at, "") : "Not yet"}</Td>
                     <Td className="text-xs text-ink-2">{formatDate(g.created_at, "")}</Td>
                     <Td className="py-1.5 text-right">
-                      <DownloadButton url={getGeneratedExamDownloadUrl(examId, g.id)} filename="exam-paper.pdf" variant="ghost" size="sm">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" loading={opening === g.id}
+                          onClick={() => handleOpen(g.id, getGeneratedExamDownloadUrl(examId, g.id))}
+                          aria-label={`View ${g.full_name}'s paper`}>
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </Button>
+                        <DownloadButton url={getGeneratedExamDownloadUrl(examId, g.id)} filename="exam-paper.pdf" variant="ghost" size="sm">
                           <Download className="h-3.5 w-3.5" /> Download
                         </DownloadButton>
+                      </div>
                     </Td>
                   </tr>
                 ))}

@@ -55,7 +55,8 @@ def validate_generation(
     _user: User = Depends(get_current_user),
 ):
     errors = pdf_service.validate_generation(db, exam_id)
-    return {"valid": len(errors) == 0, "errors": errors}
+    warnings = [] if errors else pdf_service.generation_warnings(db, exam_id)
+    return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
 # ── Generate ────────────────────────────────────────────────

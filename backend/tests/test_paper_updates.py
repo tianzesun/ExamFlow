@@ -187,3 +187,23 @@ def test_renaming_the_exam_makes_every_paper_out_of_date():
     assert _status(exam_id)["up_to_date"] == 2
     r = client.get(f"/api/exams/{exam_id}/generated/print", headers=ADMIN_HEADERS)
     assert "Final (rescheduled)" in " ".join(pymupdf.open(stream=r.content)[0].get_text().split())
+
+
+def test_papers_for_seated_students_while_some_still_need_a_seat():
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    late = f"8{uuid.uuid4().int % 10**8:08d}"
+    client.post(
+        f"/api/exams/{exam_id}/roster/import/confirm",
+        files={"file": ("late.csv", f"student_number,first_name,last_name\n{late},Late,Student\n", "text/csv")},
+        headers=ADMIN_HEADERS,
+    )
+    # The late student has no seat: generating still works for everyone else, with a warning.
+    check = client.get(f"/api/exams/{exam_id}/generated/validate", headers=ADMIN_HEADERS).json()
+    assert check["valid"] and "1 student has no seat yet" in check["warnings"][0]
+    assert _update_papers(exam_id, only_changed=False).status_code == 202
+    assert _status(exam_id)["up_to_date"] == 2 and late not in _current_papers(exam_id)
+
+    assert client.post(f"/api/exams/{exam_id}/assignments/seat-remaining", headers=ADMIN_HEADERS).status_code == 200
+    assert client.get(f"/api/exams/{exam_id}/generated/validate", headers=ADMIN_HEADERS).json()["warnings"] == []
+    _update_papers(exam_id)
+    assert late in _current_papers(exam_id)

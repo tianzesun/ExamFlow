@@ -106,9 +106,10 @@ Nobody else moves, so only those students' papers need regenerating and reprinti
 
 ### 9. Import Crowdmark Template
 
-1. Navigate to Exam Template
-2. Upload Crowdmark PDF template
-3. Optionally enter Crowdmark metadata
+1. Open the exam's **Exam papers** step
+2. Drag the PDF exported from Crowdmark onto part A, or choose **Choose PDF**. With several paper
+   versions, drop each PDF on its version's row.
+3. Optionally enter the Crowdmark exam ID and URL first
 4. Verify upload success
 
 ### 10. Activate Template
@@ -123,8 +124,11 @@ Nobody else moves, so only those students' papers need regenerating and reprinti
 3. Verify all checks pass:
    - Active template found
    - Students in roster
-   - Seating assignments complete
+   - At least some students seated
    - No conflicts
+
+Students without a seat yet don't block generation: the check warns that they get no paper this time.
+Seat them later and use **Update papers**; only their papers are made, and those already printed stay valid.
 
 ### 12. Generate Personalized Exams
 
@@ -133,6 +137,9 @@ Nobody else moves, so only those students' papers need regenerating and reprinti
 3. Review results:
    - Generated count
    - Failed count (should be 0)
+4. To print, choose **Open to print** (opens one PDF of every paper in seat order, room by room, ready for
+   the browser's Print button) or **Download PDF**. Each paper can also be viewed or downloaded on its own
+   from the Generated papers list.
 
 ### 13. Verify QR Codes
 

@@ -235,24 +235,35 @@ def validate_generation(db: Session, exam_id: UUID) -> list[str]:
             errors.append(f"Template file not found on disk{label}")
             return errors
 
-    roster_count = db.query(func.count(ExamStudent.id)).filter(
-        ExamStudent.exam_id == exam_id
-    ).scalar() or 0
-
-    assignment_count = db.query(func.count(ExamAssignment.id)).filter(
-        ExamAssignment.exam_id == exam_id
-    ).scalar() or 0
-
+    roster_count, assignment_count = _seated(db, exam_id)
     if roster_count == 0:
         errors.append("No students in roster")
-    if assignment_count == 0:
-        errors.append("No seating assignments found")
-    if roster_count != assignment_count:
-        errors.append(
-            f"Roster ({roster_count}) and assignments ({assignment_count}) count mismatch"
-        )
+    elif assignment_count == 0:
+        errors.append("No student has a seat yet. Assign seats first.")
 
     return errors
+
+
+def _seated(db: Session, exam_id: UUID) -> tuple[int, int]:
+    """(students on the roster, students with a seat)."""
+    roster = db.query(func.count(ExamStudent.id)).filter(ExamStudent.exam_id == exam_id).scalar() or 0
+    seated = db.query(func.count(ExamAssignment.id)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0
+    return roster, seated
+
+
+def generation_warnings(db: Session, exam_id: UUID) -> list[str]:
+    """What staff should know before generating, without stopping them.
+
+    Papers carry the seat, so students without one get no paper yet. Staff can still print for everyone
+    seated and make the rest later with "Update papers", which leaves the printed ones as they are.
+    """
+    roster, seated = _seated(db, exam_id)
+    missing = roster - seated
+    if seated == 0 or missing <= 0:
+        return []
+    who = "1 student has" if missing == 1 else f"{missing} students have"
+    return [f"{who} no seat yet, so they get no paper this time. "
+            "Seat them, then use Update papers; papers already printed stay valid."]
 
 
 def _load_active_template(db: Session, exam_id: UUID, paper_version: str = "A") -> tuple[ExamTemplate, bytes]:
