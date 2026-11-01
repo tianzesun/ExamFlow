@@ -10,6 +10,20 @@ from app.database import SessionLocal, engine
 EXAM_STORAGE = os.path.join("storage", "exams")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def one_test_run_at_a_time():
+    """Two runs at once delete each other's paper files (see remove_stored_files), so refuse a second."""
+    import fcntl
+
+    os.makedirs("storage", exist_ok=True)
+    with open(os.path.join("storage", ".test-run.lock"), "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pytest.exit("Another test run is in progress; wait for it to finish.", returncode=2)
+        yield
+
+
 @pytest.fixture(autouse=True)
 def rollback_database():
     """Run each test inside one outer transaction that is rolled back afterwards.
