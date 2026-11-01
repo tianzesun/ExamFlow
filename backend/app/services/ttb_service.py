@@ -20,6 +20,10 @@ async def fetch_reference_data() -> dict:
     return parse_reference_data(resp.text)
 
 
+class UpstreamError(RuntimeError):
+    """The Timetable Builder couldn't be reached or answered with an error."""
+
+
 async def _request_with_retry(
     method: str,
     url: str,
@@ -44,7 +48,7 @@ async def _request_with_retry(
             last_exc = exc
             if attempt < retries:
                 await asyncio.sleep(backoff_seconds * (attempt + 1))
-    raise RuntimeError(f"TTB request failed after {retries + 1} attempts: {last_exc}") from last_exc
+    raise UpstreamError(f"TTB request failed after {retries + 1} attempts: {last_exc}") from last_exc
 
 
 def parse_reference_data(xml_text: str) -> dict:
@@ -232,54 +236,61 @@ async def fetch_all_cs_courses(
     )
 
 
-async def sync_cs_courses_to_db(db_session, semester: str = "20269") -> int:
-    """Sync CS courses from TTB to database. Returns count of synced courses."""
-    from app.models import Course, Meeting
-
+async def sync_cs_courses_to_db(db_session, semester: str, user_id=None) -> dict:
+    """Fetch CS courses for the term from TTB and bring the database in line with them."""
     courses_data = await fetch_all_cs_courses(session_code=semester)
-    count = 0
+    return apply_timetable(db_session, semester, courses_data, user_id)
 
+
+def apply_timetable(db_session, semester: str, courses_data: list[dict], user_id=None) -> dict:
+    """Make the term's courses and meeting times match what TTB says now.
+
+    New courses are added and renamed ones follow TTB (their unarchived exams too). Each
+    course's meetings for the term are replaced with TTB's current list, so changed times,
+    rooms and instructors, sections that meet more than once a week, and cancelled sections
+    all come out right. Departments set by hand are kept.
+    """
+    from app.models import AuditLog, Course, Exam, Meeting
+
+    added = renamed = meetings = 0
     for c in courses_data:
-        course_code = c["code"]
-
-        # Get or create course
-        course = db_session.query(Course).filter_by(course_code=course_code).first()
+        course = db_session.query(Course).filter_by(course_code=c["code"]).first()
         if not course:
-            course = Course(
-                course_code=course_code,
-                course_name=c["name"],
-                department="Computer Science",
-            )
+            course = Course(course_code=c["code"], course_name=c["name"], department="Computer Science")
             db_session.add(course)
             db_session.flush()
+            added += 1
+        elif c["name"] and course.course_name != c["name"]:
+            course.course_name = c["name"]
+            # Exams keep a copy of the name (it's stamped on papers); archived ones stay as they were.
+            db_session.query(Exam).filter(Exam.course_id == course.id, Exam.status != "ARCHIVED").update(
+                {"course_name": c["name"]}, synchronize_session=False
+            )
+            renamed += 1
 
-        # Add sections with meeting times
+        db_session.query(Meeting).filter(Meeting.course_id == course.id, Meeting.semester == semester).delete(
+            synchronize_session=False
+        )
         for sec in c.get("sections", []):
+            section_code = f"{sec['teachMethod']}{sec['sectionNumber']}"
             for mt in sec.get("meetingTimes", []):
-                section_code = f"{sec['teachMethod']}{sec['sectionNumber']}"
-                meeting = db_session.query(Meeting).filter_by(
+                db_session.add(Meeting(
                     course_id=course.id,
                     section_code=section_code,
                     semester=semester,
-                ).first()
+                    day=mt.get("day", ""),
+                    start_time=mt.get("startTime", ""),
+                    end_time=mt.get("endTime", ""),
+                    building=mt.get("buildingCode", ""),
+                    room=mt.get("room", ""),
+                    instructors=", ".join(sec.get("instructors", [])),
+                    max_capacity=sec.get("maxEnrolment", 0),
+                    current_enrolment=sec.get("currentEnrolment", 0),
+                ))
+                meetings += 1
 
-                if not meeting:
-                    meeting = Meeting(
-                        course_id=course.id,
-                        section_code=section_code,
-                        semester=semester,
-                        day=mt.get("day", ""),
-                        start_time=mt.get("startTime", ""),
-                        end_time=mt.get("endTime", ""),
-                        building=mt.get("buildingCode", ""),
-                        room=mt.get("room", ""),
-                        instructors=", ".join(sec.get("instructors", [])),
-                        max_capacity=sec.get("maxEnrolment", 0),
-                        current_enrolment=sec.get("currentEnrolment", 0),
-                    )
-                    db_session.add(meeting)
-
-        count += 1
-
+    result = {"synced": len(courses_data), "added": added, "renamed": renamed, "meetings": meetings}
+    db_session.add(AuditLog(user_id=user_id, action="TIMETABLE_SYNCED", entity_type="course",
+                            new_values={"semester": semester, **result}))
     db_session.commit()
-    return count
+    return result

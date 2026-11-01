@@ -4,13 +4,14 @@ TTB API endpoints for syncing courses from UofT's Timetable Builder.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
 from app.services.ttb_service import (
+    UpstreamError,
     fetch_courses,
     fetch_reference_data,
     sync_cs_courses_to_db,
@@ -61,14 +62,15 @@ async def get_courses(
 
 @router.post("/sync")
 async def sync_cs_courses(
-    semester: str = "20269",
+    semester: str = Query(..., pattern=r"^\d{4}[159]$", description="TTB session code, e.g. 20269 for Fall 2026"),
     db: Session = Depends(get_db),
-    _user: User = Depends(require_role("ADMIN")),
+    user: User = Depends(require_role("ADMIN")),
 ):
-    """Sync CS courses from TTB to database."""
+    """Bring the term's CS courses and meeting times in line with TTB."""
     try:
-        count = await sync_cs_courses_to_db(db, semester)
-        return {"status": "success", "synced": count, "semester": semester}
-    except Exception:
+        result = await sync_cs_courses_to_db(db, semester, user.id)
+    except UpstreamError:
         logger.exception("Timetable Builder request failed")
         raise HTTPException(status_code=502, detail="The Timetable Builder could not be reached. Try again later.")
+    # Anything else (e.g. a database error) is ours, not TTB's: the error handler answers 500 with a reference.
+    return {"status": "success", "semester": semester, **result}

@@ -40,6 +40,7 @@ const ACTION_LABEL: Record<string, string> = {
   COURSE_CREATED: "Created a course",
   COURSE_UPDATED: "Edited a course",
   COURSE_DELETED: "Deleted a course",
+  TIMETABLE_SYNCED: "Synced courses from the Timetable Builder",
   EXAM_CREATED: "Created an exam",
   EXAM_UPDATED: "Edited an exam",
   EXAM_DELETED: "Deleted an exam",

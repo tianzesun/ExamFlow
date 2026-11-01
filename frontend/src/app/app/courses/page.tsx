@@ -116,7 +116,11 @@ export default function CoursesPage() {
     setSyncResult(null);
     try {
       const result = await syncTTBCourses();
-      setSyncResult({ ok: true, message: `Synced ${plural(result.synced, "course")} from the Timetable Builder.` });
+      const changes = [result.added && `${result.added} new`, result.renamed && `${result.renamed} renamed`].filter(Boolean);
+      setSyncResult({
+        ok: true,
+        message: `Synced ${plural(result.synced, "course")} from the Timetable Builder${changes.length ? ` (${changes.join(", ")})` : ""}. Meeting times are up to date.`,
+      });
       loadData();
     } catch (err) {
       setSyncResult({ ok: false, message: `Sync from the Timetable Builder failed. Please try again in a few minutes.${errorReference(err)}` });

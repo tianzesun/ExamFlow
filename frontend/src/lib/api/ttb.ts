@@ -10,8 +10,12 @@ export interface TTBReferenceData {
 
 export interface TTBSyncResponse {
   status: string;
-  synced: number;
   semester: string;
+  /** Courses in the term, of which `added` were new and `renamed` had a new name */
+  synced: number;
+  added: number;
+  renamed: number;
+  meetings: number;
 }
 
 export async function getTTBReferenceData(): Promise<TTBReferenceData> {

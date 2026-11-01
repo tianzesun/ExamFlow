@@ -26,8 +26,8 @@ LOCAL = ZoneInfo("America/Toronto")
 # Groups for filtering the log; an action not listed falls under "other".
 CATEGORIES: dict[str, tuple[str, ...]] = {
     "access": ("USER_", "COURSE_ACCESS_"),
-    "courses_exams": ("COURSE_CREATED", "COURSE_UPDATED", "COURSE_DELETED", "EXAM_CREATED", "EXAM_UPDATED",
-                      "EXAM_DELETED", "EXAM_STATUS_"),
+    "courses_exams": ("COURSE_CREATED", "COURSE_UPDATED", "COURSE_DELETED", "TIMETABLE_", "EXAM_CREATED",
+                      "EXAM_UPDATED", "EXAM_DELETED", "EXAM_STATUS_"),
     "students": ("ROSTER_", "STUDENT_", "ACCOMMODATION_"),
     "seating": ("SEAT", "EXAM_ROOM_"),
     "papers": ("EXAM_TEMPLATE_", "TEMPLATE_DOWNLOADED", "PERSONALIZED_EXAMS_", "PAPER_DOWNLOADED", "PRINT_FILE_",
