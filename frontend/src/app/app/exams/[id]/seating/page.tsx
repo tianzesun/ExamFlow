@@ -32,6 +32,7 @@ import {
 
 import { notifyExamChanged } from "@/components/exam/workspace";
 import { ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
+import { RoomChooser } from "@/components/rooms/RoomChooser";
 type PreviewData = AssignmentPreview;
 
 const DEFAULT_RULES: SeatingRules = { order: "student_number", spacing: "none", accommodation_room_id: null, versions: 1 };
@@ -62,7 +63,7 @@ export default function SeatingPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [seatingRemaining, setSeatingRemaining] = useState(false);
-  const [selectedAddRoom, setSelectedAddRoom] = useState<string>("");
+  const [choosingRoom, setChoosingRoom] = useState(false);
   const [rules, setRules] = useState<SeatingRules>(DEFAULT_RULES);
   const [savingRules, setSavingRules] = useState(false);
 
@@ -117,17 +118,11 @@ export default function SeatingPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleAddRoom = async () => {
-    if (!selectedAddRoom) return;
-    setError(null);
-    try {
-      await addExamRoom(examId, selectedAddRoom);
-      notifyExamChanged();
-      setSelectedAddRoom("");
-      fetchAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add room");
-    }
+  // Errors go back to the room chooser, which stays open and says what went wrong.
+  const handleAddRoom = async (roomId: string) => {
+    await addExamRoom(examId, roomId);
+    notifyExamChanged();
+    fetchAll();
   };
 
   const handleRemoveRoom = async (roomId: string) => {
@@ -496,19 +491,9 @@ export default function SeatingPage() {
             </p>
           </div>
           {canEdit && (
-            <div className="flex items-center gap-2">
-              <Select
-                value={selectedAddRoom}
-                onChange={(e) => setSelectedAddRoom(e.target.value)}
-                options={availableRooms.map((r) => ({ value: r.id, label: `${r.building} ${r.room_number} (${r.capacity} seats)` }))}
-                placeholder="Add a room…"
-                aria-label="Add a room"
-                className="w-64"
-              />
-              <Button variant="secondary" onClick={handleAddRoom} disabled={!selectedAddRoom}>
-                <Plus className="h-4 w-4" /> Add
-              </Button>
-            </div>
+            <Button variant="secondary" onClick={() => setChoosingRoom(true)} disabled={availableRooms.length === 0}>
+              <Plus className="h-4 w-4" /> Add a room
+            </Button>
           )}
         </div>
         {examRooms.length === 0 ? (
@@ -567,6 +552,18 @@ export default function SeatingPage() {
           </Table>
         )}
       </div>
+
+      {canEdit && (
+        <RoomChooser
+          open={choosingRoom}
+          onClose={() => setChoosingRoom(false)}
+          rooms={availableRooms}
+          spacing={rules.spacing}
+          examRoomIds={examRooms.map((r) => r.id)}
+          registered={summary?.registered_students ?? 0}
+          onAdd={handleAddRoom}
+        />
+      )}
 
       {/* Assignments */}
       <div className="surface-card overflow-hidden">

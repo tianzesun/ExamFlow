@@ -5,12 +5,14 @@ import { Lock } from "lucide-react";
 import { rowLabel } from "@/lib/api/rooms";
 import { cn } from "@/lib/utils";
 
-export type CellState = "seat" | "blocked" | "missing";
+/** "spaced": a seat the exam's spacing rule keeps empty (only when previewing a room for an exam). */
+export type CellState = "seat" | "blocked" | "missing" | "spaced";
 
 export const cellKey = (row: number, col: number) => `${row}-${col}`;
 
-/** Seat tiles shrink as rooms get wider so a whole lecture hall fits on screen. */
-function cellSize(columns: number) {
+/** Seat tiles shrink as rooms get wider so a whole lecture hall fits on screen; compact fits a dialog. */
+function cellSize(columns: number, compact = false) {
+  if (compact) return columns <= 12 ? 30 : columns <= 20 ? 24 : columns <= 30 ? 19 : 15;
   if (columns <= 12) return 40;
   if (columns <= 20) return 34;
   if (columns <= 30) return 28;
@@ -28,6 +30,8 @@ export function FloorPlan({
   onRow,
   onColumn,
   onToggleAisle,
+  compact = false,
+  highlightSeats = false,
 }: {
   rows: number;
   columns: number;
@@ -41,10 +45,14 @@ export function FloorPlan({
   onRow?: (row: number) => void;
   onColumn?: (col: number) => void;
   onToggleAisle?: (afterCol: number) => void;
+  /** Smaller tiles, for previewing a room inside a dialog. */
+  compact?: boolean;
+  /** Tint the seats students can use, so they stand out from spaced, unused and missing ones. */
+  highlightSeats?: boolean;
 }) {
   const editable = !!onPaintStart;
   const painting = useRef(false);
-  const size = cellSize(columns);
+  const size = cellSize(columns, compact);
   const showCodes = size >= 34;
 
   useEffect(() => {
@@ -132,7 +140,10 @@ export function FloorPlan({
                 const lock = lockOf?.(row, col) ?? null;
                 const code = `${label}${String(col).padStart(2, "0")}`;
                 const desc =
-                  state === "missing" ? `${code}: no seat` : state === "blocked" ? `${code}: not in use` : `${code}: seat`;
+                  state === "missing" ? `${code}: no seat`
+                    : state === "blocked" ? `${code}: not in use`
+                    : state === "spaced" ? `${code}: kept empty by the spacing rule`
+                    : `${code}: seat`;
                 return (
                   <div key={col} className={gapBefore(col)}>
                     <button
@@ -159,9 +170,12 @@ export function FloorPlan({
                         "relative flex items-center justify-center rounded-md text-[9px] font-medium transition-colors duration-100",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                         editable && "cursor-crosshair",
-                        state === "seat" &&
+                        state === "seat" && !highlightSeats &&
                           "border border-line-strong bg-surface text-ink-3 shadow-[inset_0_-3px_0_var(--surface-hover)] hover:border-accent",
+                        state === "seat" && highlightSeats &&
+                          "border border-accent/45 bg-accent-subtle text-accent shadow-[inset_0_-3px_0_color-mix(in_oklab,var(--accent)_22%,transparent)]",
                         state === "blocked" && "seat-blocked border border-line text-ink-3 hover:border-warning",
+                        state === "spaced" && "border border-line bg-surface-2/60 text-ink-3/50",
                         state === "missing" &&
                           "border border-dashed border-line/70 bg-transparent text-transparent hover:border-accent/60",
                       )}
@@ -187,9 +201,15 @@ export function FloorPlan({
   );
 }
 
-export function FloorPlanLegend() {
+export function FloorPlanLegend({ spacing = false, seated = true, highlightSeats = false }: {
+  spacing?: boolean; seated?: boolean; highlightSeats?: boolean;
+}) {
   const items = [
-    { cls: "border-line-strong bg-surface", label: "Seat" },
+    {
+      cls: highlightSeats ? "border-accent/45 bg-accent-subtle" : "border-line-strong bg-surface",
+      label: spacing ? "Seat a student can use" : "Seat",
+    },
+    ...(spacing ? [{ cls: "border-line bg-surface-2/60", label: "Kept empty by spacing" }] : []),
     { cls: "seat-blocked border-line", label: "Not in use" },
     { cls: "border-dashed border-line", label: "No seat" },
   ];
@@ -201,12 +221,14 @@ export function FloorPlanLegend() {
           {i.label}
         </span>
       ))}
-      <span className="inline-flex items-center gap-1.5">
-        <span className="flex h-3 w-3 items-center justify-center rounded-full bg-violet text-white">
-          <Lock className="h-[7px] w-[7px]" />
+      {seated && (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="flex h-3 w-3 items-center justify-center rounded-full bg-violet text-white">
+            <Lock className="h-[7px] w-[7px]" />
+          </span>
+          Students seated
         </span>
-        Students seated
-      </span>
+      )}
     </div>
   );
 }

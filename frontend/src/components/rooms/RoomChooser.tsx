@@ -1,0 +1,270 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Armchair, Building2, Check, DoorOpen, Search, Users } from "lucide-react";
+import { getRoomLayout, type Room, type RoomLayout } from "@/lib/api/rooms";
+import { errorReference } from "@/lib/api/client";
+import { SPACING_OPTIONS, seatAllowed } from "@/lib/seating-options";
+import { formatNumber, plural } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Button, Skeleton } from "@/components";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FloorPlan, FloorPlanLegend, cellKey, type CellState } from "./FloorPlan";
+
+/**
+ * Choose a room for an exam while seeing its floor plan: which seats exist, which aren't
+ * in use, and which the exam's spacing rule keeps empty, so staff can tell how many
+ * students it really holds before adding it.
+ */
+export function RoomChooser({
+  open,
+  onClose,
+  rooms,
+  spacing,
+  examRoomIds,
+  registered,
+  onAdd,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Rooms that can still be added to the exam */
+  rooms: Room[];
+  spacing: string;
+  /** Rooms already in the exam; their seats under the spacing rule count towards the students. */
+  examRoomIds: string[];
+  /** Students registered for the exam */
+  registered: number;
+  onAdd: (roomId: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [layouts, setLayouts] = useState<Record<string, RoomLayout | "error">>({});
+  const [adding, setAdding] = useState(false);
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rooms
+      .filter((r) => !q || `${r.building} ${r.room_number}`.toLowerCase().includes(q))
+      .sort((a, b) => a.building.localeCompare(b.building) || a.room_number.localeCompare(b.room_number, undefined, { numeric: true }));
+  }, [rooms, query]);
+
+  // Highlight the first room when the list opens or the search hides the chosen one.
+  const current = shown.find((r) => r.id === chosen) ?? shown[0] ?? null;
+
+  useEffect(() => {
+    if (!open || !current || layouts[current.id]) return;
+    const id = current.id;
+    getRoomLayout(id)
+      .then((layout) => setLayouts((l) => ({ ...l, [id]: layout })))
+      .catch(() => setLayouts((l) => ({ ...l, [id]: "error" })));
+  }, [open, current, layouts]);
+
+  // Layouts of the exam's own rooms, to work out how many students still need a seat.
+  useEffect(() => {
+    if (!open) return;
+    for (const id of examRoomIds) {
+      if (layouts[id]) continue;
+      getRoomLayout(id)
+        .then((layout) => setLayouts((l) => ({ ...l, [id]: layout })))
+        .catch(() => setLayouts((l) => ({ ...l, [id]: "error" })));
+    }
+  }, [open, examRoomIds, layouts]);
+
+  const examRoomsLoaded = examRoomIds.every((id) => layouts[id]);
+  const seatsInExamRooms = examRoomIds.reduce((n, id) => {
+    const l = layouts[id];
+    return n + (l && l !== "error" ? planOf(l, spacing).allowed : 0);
+  }, 0);
+  const studentsNeedingRoom = examRoomsLoaded ? Math.max(0, registered - seatsInExamRooms) : 0;
+
+  const layout = current ? layouts[current.id] : undefined;
+  const plan = useMemo(() => (layout && layout !== "error" ? planOf(layout, spacing) : null), [layout, spacing]);
+  const spacingLabel = SPACING_OPTIONS.find((o) => o.value === spacing)?.label ?? "Fill every seat";
+
+  const add = async () => {
+    if (!current) return;
+    setAdding(true);
+    try {
+      await onAdd(current.id);
+      setChosen(null);
+      setQuery("");
+      onClose();
+    } catch (err) {
+      toast.error(`${current.building} ${current.room_number} couldn't be added. Try again.${errorReference(err)}`);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-6xl">
+        <DialogHeader className="border-b border-line px-5 py-4">
+          <DialogTitle className="text-base font-semibold text-ink">Add a room</DialogTitle>
+          <DialogDescription className="text-xs text-ink-3">
+            Pick a room to see its seats. Seating follows this exam&apos;s spacing rule: <b className="font-medium text-ink-2">{spacingLabel}</b>.
+            {studentsNeedingRoom > 0 && <> {plural(studentsNeedingRoom, "student")} still need a room.</>}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid h-[min(70vh,640px)] grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
+          {/* Room list */}
+          <div className="flex min-h-0 flex-col border-b border-line md:border-b-0 md:border-r">
+            <div className="relative p-3">
+              <Search className="pointer-events-none absolute left-5.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search building or room"
+                aria-label="Search rooms"
+                className="h-9 w-full rounded-lg border border-line-strong bg-surface pl-8 pr-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
+              />
+            </div>
+            <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="listbox" aria-label="Rooms">
+              {shown.length === 0 && (
+                <li className="px-3 py-8 text-center text-xs text-ink-3">
+                  {rooms.length === 0 ? "Every active room is already in this exam." : "No room matches that search."}
+                </li>
+              )}
+              {shown.map((r) => {
+                const selected = current?.id === r.id;
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => setChosen(r.id)}
+                      onDoubleClick={add}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                        selected ? "bg-accent-subtle ring-1 ring-accent/30" : "hover:bg-surface-hover",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                          selected ? "bg-accent text-white" : "bg-surface-2 text-ink-3",
+                        )}
+                      >
+                        <DoorOpen className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-ink">
+                          {r.building} <span className="font-mono text-xs text-ink-2">{r.room_number}</span>
+                        </span>
+                        <span className="tnum block text-xs text-ink-3">{plural(r.capacity, "seat")}</span>
+                      </span>
+                      {selected && <Check className="h-4 w-4 shrink-0 text-accent" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* Floor plan of the highlighted room */}
+          <div className="flex min-h-0 flex-col bg-surface-2/40">
+            {!current ? (
+              <div className="flex flex-1 items-center justify-center text-sm text-ink-3">No room to show.</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line bg-surface px-5 py-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-xs text-ink-3"><Building2 className="h-3.5 w-3.5" /> {current.building}</p>
+                    <p className="text-lg font-semibold text-ink">Room {current.room_number}</p>
+                  </div>
+                  {plan && (
+                    <div className="flex flex-wrap gap-2">
+                      <Stat icon={Armchair} label="Seats" value={plan.usable} />
+                      {spacing !== "none" && <Stat icon={Users} label="Students with spacing" value={plan.allowed} strong />}
+                      {plan.blocked > 0 && <Stat label="Not in use" value={plan.blocked} />}
+                      <Stat label="Rows × seats" text={`${plan.rows} × ${plan.columns}`} />
+                    </div>
+                  )}
+                </div>
+                {plan && studentsNeedingRoom > 0 && (
+                  <p
+                    className={cn(
+                      "border-b px-5 py-2 text-xs",
+                      plan.allowed >= studentsNeedingRoom
+                        ? "border-success/20 bg-success/10 text-success"
+                        : "border-warning/20 bg-warning/10 text-warning",
+                    )}
+                  >
+                    {plan.allowed >= studentsNeedingRoom
+                      ? `Enough room for the ${plural(studentsNeedingRoom, "student")} still without one.`
+                      : `Holds ${formatNumber(plan.allowed)} of the ${plural(studentsNeedingRoom, "student")} still without a room; you'll need another room too.`}
+                  </p>
+                )}
+                <div className="min-h-0 flex-1 overflow-auto p-6">
+                  {layout === "error" ? (
+                    <p className="py-10 text-center text-sm text-danger">
+                      This room&apos;s layout couldn&apos;t be loaded. You can still add it.
+                    </p>
+                  ) : !plan ? (
+                    <Skeleton className="mx-auto h-72 w-full max-w-xl" />
+                  ) : plan.rows === 0 ? (
+                    <p className="py-10 text-center text-sm text-ink-3">This room has no seat layout yet. Set one up on the Rooms page.</p>
+                  ) : (
+                    <FloorPlan
+                      compact
+                      highlightSeats
+                      rows={plan.rows}
+                      columns={plan.columns}
+                      aisles={plan.aisles}
+                      stateOf={(row, col) => plan.cells.get(cellKey(row, col)) ?? "missing"}
+                    />
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-5 py-3">
+                  <FloorPlanLegend spacing={spacing !== "none"} seated={false} highlightSeats />
+                  <div className="flex gap-2">
+                    <Button variant="ghost" onClick={onClose} disabled={adding}>Cancel</Button>
+                    <Button onClick={add} loading={adding}>
+                      Add {current.building} {current.room_number}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Stat({ icon: Icon, label, value, text, strong }: {
+  icon?: typeof Users; label: string; value?: number; text?: string; strong?: boolean;
+}) {
+  return (
+    <div className={cn("rounded-lg border px-3 py-1.5", strong ? "border-accent/30 bg-accent-subtle" : "border-line bg-surface-2")}>
+      <p className="flex items-center gap-1 text-[11px] text-ink-3">{Icon && <Icon className="h-3 w-3" />}{label}</p>
+      <p className={cn("tnum text-sm font-semibold", strong ? "text-accent" : "text-ink")}>
+        {text ?? formatNumber(value ?? 0)}
+      </p>
+    </div>
+  );
+}
+
+/** Each position's state, and the counts shown above the plan. */
+function planOf(layout: RoomLayout, spacing: string) {
+  const cells = new Map<string, CellState>();
+  let usable = 0, allowed = 0, blocked = 0;
+  for (const s of layout.seats) {
+    if (s.row == null || s.column == null) continue;
+    let state: CellState = "seat";
+    if (!s.is_usable) {
+      state = "blocked";
+      blocked++;
+    } else {
+      usable++;
+      if (seatAllowed(s.row, s.column, spacing)) allowed++;
+      else state = "spaced";
+    }
+    cells.set(cellKey(s.row, s.column), state);
+  }
+  return { rows: layout.rows, columns: layout.columns, aisles: new Set(layout.aisles_after), cells, usable, allowed, blocked };
+}
