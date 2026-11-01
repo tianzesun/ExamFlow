@@ -84,6 +84,10 @@ This document describes the complete workflow for exam administrators using Exam
 1. Review the seating list
 2. Verify each student has a seat
 3. Make manual adjustments if needed
+4. On Exam day, print the door signs: an entrance poster listing every room, then one sign per room
+   saying who writes there ("Names A to Kim", or student number ranges). Seating by name or by student
+   number gives each room one block; after manual moves that break the blocks, the signs send students
+   to the seating list instead.
 
 ### 9. Import Crowdmark Template
 

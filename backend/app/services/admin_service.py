@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import zipfile
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import pymupdf
@@ -22,7 +23,7 @@ from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
-from app.services import paper_state, room_service
+from app.services import assignment_service, paper_state, room_service
 from app.services.settings_service import get_system_settings
 from app.utils import utcnow
 
@@ -264,6 +265,193 @@ def generate_seating_list_csv(db: Session, exam_id: UUID) -> str:
     return buf.getvalue()
 
 
+# ── Room directions (door signs) ────────────────────────────
+
+def _common_prefix(a: str, b: str) -> int:
+    n = 0
+    while n < min(len(a), len(b)) and a[n] == b[n]:
+        n += 1
+    return n
+
+
+def _ranges(runs: list[list[tuple[str, str]]], even: bool = False) -> list[tuple[str, str]] | None:
+    """The shortest labels that still tell each run of students from its neighbours, e.g.
+    ("A", "Ki") then ("Kl", "M"). runs are consecutive blocks of (sort key, shown text);
+    None when two neighbouring blocks start and end with the same key, so no label separates them.
+    even makes a run's open end as long as its other end, so "9" to "99449005" reads "99449000"."""
+    out = []
+    for i, run in enumerate(runs):
+        (first_key, first), (last_key, last) = run[0], run[-1]
+        if i == 0:
+            start = first[:1]
+        else:
+            prev_key = runs[i - 1][-1][0]
+            n = _common_prefix(prev_key, first_key)
+            if n >= len(first_key):
+                return None
+            start = first[:n + 1]
+        if i == len(runs) - 1:
+            end = last[:1]
+        else:
+            next_key = runs[i + 1][0][0]
+            n = _common_prefix(last_key, next_key)
+            if n >= len(last_key):
+                return None
+            end = last[:n + 1]
+        if even and len(runs) > 1:
+            if i == 0:
+                start = first[:len(end)]
+            elif i == len(runs) - 1:
+                end = last[:len(start)]
+        out.append((start, end))
+    return out
+
+
+def room_directions(db: Session, exam_id: UUID) -> dict:
+    """Which students write in which room, as a range a door sign can show.
+
+    Seating by name or by student number fills rooms in turn, so each room holds one block of
+    the alphabet or of student numbers; the labels are the shortest that tell the blocks apart.
+    When manual moves (or a random order) break the blocks up, "by" is None and students look
+    themselves up on the seating list. The accommodation room is shown as such, not as a range.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise LookupError("Exam not found")
+    rooms = assignment_service.get_exam_rooms(db, exam_id)
+    rules = assignment_service.get_rules(db, exam_id)
+    accommodation = rules.accommodation_room_id
+    seated = _seated_students(db, exam_id)
+    counts: dict[UUID, int] = {}
+    for _, _, room, _ in seated:
+        counts[room.id] = counts.get(room.id, 0) + 1
+    split = [r for r in seated if r[2].id != accommodation]
+
+    by, labels = None, {}
+    keys = (
+        ("name", lambda st: st.full_name.casefold(), lambda st: st.full_name[:1].upper() + st.full_name[1:]),
+        ("student_number", lambda st: st.student_number, lambda st: st.student_number),
+    )
+    if rules.order == "student_number":
+        keys = keys[::-1]  # when both give blocks, the one seating followed
+    for name, key, shown in keys:
+        ordered = sorted(split, key=lambda r: (key(r[0]), r[0].student_number))
+        runs: list[list[tuple[str, str]]] = []
+        run_rooms: list[UUID] = []
+        for student, _, room, _ in ordered:
+            if not run_rooms or run_rooms[-1] != room.id:
+                runs.append([])
+                run_rooms.append(room.id)
+            runs[-1].append((key(student), shown(student)))
+        if len(run_rooms) != len(set(run_rooms)):
+            continue  # a room holds more than one block
+        ranges = _ranges(runs, even=name == "student_number") if runs else []
+        if ranges is None:
+            continue
+        by, labels = name, dict(zip(run_rooms, ranges))
+        break
+
+    return {
+        "by": by,
+        "rooms": [
+            {
+                "room_id": str(room.id),
+                "room": _room_label(room),
+                "students": counts.get(room.id, 0),
+                "accommodation": room.id == accommodation,
+                # The only room for students without accommodations: no range needed.
+                "everyone": by is not None and len(labels) == 1 and room.id in labels,
+                "from": labels[room.id][0] if room.id in labels else None,
+                "to": labels[room.id][1] if room.id in labels else None,
+            }
+            for room in rooms
+        ],
+    }
+
+
+def _range_text(by: str | None, room: dict) -> str:
+    if room["accommodation"]:
+        return "Students writing with accommodations"
+    if not room["students"]:
+        return "No students"
+    if room["everyone"]:
+        return "All students"
+    if room["from"] is None:
+        return "Find your seat on the seating list"
+    what = "Names" if by == "name" else "Student numbers"
+    dots = "…" if by == "student_number" else ""
+    if room["from"] == room["to"]:
+        return f"{what} {room['from']}{dots}"
+    return f"{what} {room['from']}{dots} to {room['to']}{dots}"
+
+
+def _exam_times(exam: Exam) -> str:
+    when = exam.exam_date.strftime("%A, %B %-d") if exam.exam_date else ""
+    if exam.start_time and exam.exam_date:
+        start = datetime.combine(exam.exam_date, exam.start_time)
+        end = start + timedelta(minutes=exam.duration_minutes)
+        when += f" · {start.strftime('%-I:%M %p')} to {end.strftime('%-I:%M %p')}"
+    return when
+
+
+_SIGN_CSS = """
+* {font-family: sans-serif; color: #000; text-align: center;}
+p.org {font-size: 13pt; color: #444; margin: 0 0 10pt 0;}
+p.exam {font-size: 26pt; font-weight: bold; margin: 0 0 4pt 0;}
+p.when {font-size: 17pt; color: #333; margin: 0 0 22pt 0;}
+p.room {font-size: 80pt; font-weight: bold; margin: 0 0 16pt 0;}
+p.range {font-size: 36pt; font-weight: bold; margin: 0 0 10pt 0;}
+p.count {font-size: 16pt; color: #444; margin: 0;}
+table {border-collapse: collapse; width: 100%; margin-top: 6pt;}
+th {font-size: 14pt; text-align: left; border-bottom: 1.5pt solid #000; padding: 6pt 8pt;}
+td {font-size: 20pt; text-align: left; border-bottom: 0.6pt solid #888; padding: 9pt 8pt;}
+td.room {font-weight: bold;}
+"""
+
+
+def generate_room_signs_pdf(db: Session, exam_id: UUID) -> bytes:
+    """An entrance poster listing every room, then one door sign per room, all landscape."""
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise LookupError("Exam not found")
+    directions = room_directions(db, exam_id)
+    rooms = [r for r in directions["rooms"] if r["students"]]
+    if not rooms:
+        raise ValueError("No students have seats yet")
+
+    org = get_system_settings(db).document_heading
+    top = (f'<p class="org">{html.escape(org)}</p>' if org else "") + (
+        f'<p class="exam">{html.escape(exam.course_code)} — {html.escape(exam.exam_name)}</p>'
+        f'<p class="when">{html.escape(_exam_times(exam))}</p>'
+    )
+    width, height = LETTER[1], LETTER[0]
+    box = pymupdf.Rect(PAGE_MARGIN, PAGE_MARGIN, width - PAGE_MARGIN, height - PAGE_MARGIN)
+    doc = pymupdf.open()
+
+    if len(rooms) > 1:
+        body = "".join(
+            f'<tr><td class="room">{html.escape(r["room"])}</td>'
+            f'<td>{html.escape(_range_text(directions["by"], r))}</td><td>{r["students"]}</td></tr>'
+            for r in rooms
+        )
+        doc.new_page(width=width, height=height).insert_htmlbox(
+            box, f"{top}<table><tr><th>Room</th><th>Who writes there</th><th>Students</th></tr>{body}</table>",
+            css=_SIGN_CSS, scale_low=0.3,
+        )
+    for r in rooms:
+        doc.new_page(width=width, height=height).insert_htmlbox(
+            box,
+            f'{top}<p class="room">{html.escape(r["room"])}</p>'
+            f'<p class="range">{html.escape(_range_text(directions["by"], r))}</p>'
+            f'<p class="count">{r["students"]} students</p>',
+            css=_SIGN_CSS, scale_low=0.3,
+        )
+    doc.subset_fonts()
+    data = doc.tobytes(garbage=4, deflate=True)
+    doc.close()
+    return data
+
+
 # ── Seating Map PDF ─────────────────────────────────────────
 
 def generate_seating_map_pdf(
@@ -461,6 +649,10 @@ def generate_exam_package(
         # Exam summary
         summary_pdf = generate_exam_summary_pdf(db, exam_id)
         zf.writestr(f"{safe_name}/Exam-Summary.pdf", summary_pdf)
+        try:
+            zf.writestr(f"{safe_name}/Room-Signs.pdf", generate_room_signs_pdf(db, exam_id))
+        except ValueError:
+            pass  # nobody seated yet: no signs to print
 
         # Signature lists and seating maps per room
         missing_documents = []

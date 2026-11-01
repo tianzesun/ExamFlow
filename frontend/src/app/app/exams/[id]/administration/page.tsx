@@ -9,6 +9,7 @@ import { getExamRooms } from "@/lib/api/assignments";
 import {
   generatePackage, getPackageDownloadUrl,
   getSignatureListUrl, getSeatingMapUrl, getSeatingListUrl,
+  getRoomDirections, getRoomSignsUrl, directionText, RoomDirections,
 } from "@/lib/api/administration";
 import { errorReference } from "@/lib/api/client";
 import { AttendanceCard } from "@/components/exam/AttendanceCard";
@@ -24,7 +25,7 @@ import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import {
   CheckCircle, XCircle, AlertCircle, AlertTriangle,
-  Download, FileText, ClipboardCheck, DoorOpen, LayoutGrid, Package, QrCode,
+  Download, FileText, ClipboardCheck, DoorOpen, LayoutGrid, Package, QrCode, Signpost,
 } from "lucide-react";
 import { notifyExamChanged } from "@/components/exam/workspace";
 
@@ -46,6 +47,7 @@ export default function AdministrationPage() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [readiness, setReadiness] = useState<ReadinessResult | null>(null);
   const [examRooms, setExamRooms] = useState<{ id: string; building: string; room_number: string }[]>([]);
+  const [directions, setDirections] = useState<RoomDirections | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,19 +65,21 @@ export default function AdministrationPage() {
       })
       .then(async () => {
         if (cancelled) return null;
-        const [e, r, rooms] = await Promise.all([
+        const [e, r, rooms, d] = await Promise.all([
           getExam(examId),
           getReadiness(examId).catch(() => null),
           getExamRooms(examId).catch(() => []),
+          getRoomDirections(examId).catch(() => null),
         ]);
         if (cancelled) return null;
-        return { exam: e, readiness: r, rooms } as const;
+        return { exam: e, readiness: r, rooms, directions: d } as const;
       })
       .then((next) => {
         if (!cancelled && next) {
           setExam(next.exam);
           setReadiness(next.readiness);
           setExamRooms(next.rooms);
+          setDirections(next.directions);
         }
       })
       .catch((err) => {
@@ -107,6 +111,13 @@ export default function AdministrationPage() {
     } finally {
       setGeneratingPkg(false);
     }
+  };
+
+  const seated = directions?.rooms.reduce((n, r) => n + r.students, 0) ?? 0;
+  const whoWrites = (roomId: string) => {
+    const r = directions?.rooms.find((d) => d.room_id === roomId);
+    if (!directions || !r) return "—";
+    return `${directionText(directions.by, r)}${r.students ? ` · ${plural(r.students, "student")}` : ""}`;
   };
 
   if (loading && !exam) return <PageLoader />;
@@ -277,9 +288,16 @@ export default function AdministrationPage() {
             <p className="text-xs text-ink-3">Signature lists and seating maps for proctors, per room</p>
           </div>
           {examRooms.length > 0 && (
-            <DownloadButton url={getSeatingListUrl(examId)} filename="Seating-List.pdf" variant="secondary" size="sm" className="shrink-0">
-              <FileText className="h-3.5 w-3.5" /> Seating list, all rooms
-            </DownloadButton>
+            <div className="flex shrink-0 gap-2">
+              {seated > 0 && (
+                <DownloadButton url={getRoomSignsUrl(examId)} filename="Room-Signs.pdf" variant="secondary" size="sm">
+                  <Signpost className="h-3.5 w-3.5" /> Door signs
+                </DownloadButton>
+              )}
+              <DownloadButton url={getSeatingListUrl(examId)} filename="Seating-List.pdf" variant="secondary" size="sm">
+                <FileText className="h-3.5 w-3.5" /> Seating list, all rooms
+              </DownloadButton>
+            </div>
           )}
         </div>
         {examRooms.length === 0 ? (
@@ -297,6 +315,7 @@ export default function AdministrationPage() {
           <Table>
             <TableHead>
               <Th>Room</Th>
+              <Th>Who writes here</Th>
               <Th className="text-right">Documents</Th>
             </TableHead>
             <TableBody>
@@ -305,6 +324,7 @@ export default function AdministrationPage() {
                   <Td className="font-medium">
                     {r.building} <span className="font-mono text-xs text-ink-2">{r.room_number}</span>
                   </Td>
+                  <Td className="text-ink-2">{whoWrites(r.id)}</Td>
                   <Td className="py-1.5 text-right">
                     <div className="flex justify-end gap-1">
                       <DownloadButton url={getSignatureListUrl(examId, r.id)} filename="Signature-List.pdf" variant="ghost" size="sm">

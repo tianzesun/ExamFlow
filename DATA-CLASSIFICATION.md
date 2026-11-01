@@ -39,6 +39,7 @@ Not stored: dates of birth, addresses, phone numbers, grades, financial data, ex
 | Uploaded exam paper (from Crowdmark) | L3 (assessment content before the exam) | Server filesystem `storage/exams/<exam>/templates/` | ADMIN, STAFF; INSTRUCTOR/TA for their courses |
 | Personalized papers (name, number, room, seat, QR code) | L3 | `storage/exams/<exam>/generated/` | as above |
 | Seating lists, signature lists, seating maps, exam-day package | L3 | Generated on request, not stored | as above |
+| Door signs (room, exam, time, and a range such as "Names A to Kim" or "Student numbers 9944900… to 9944905…") | L2 (only the shortest name or number starts that separate the rooms; no full name or number) | Generated on request, not stored | as above; meant to be posted at the rooms |
 | QR token on each paper | L2 | PostgreSQL `generated_exams` | Public check at `/verify/<token>`: answers only whether the paper is current, with course code, exam name and date, **no student details** |
 
 ### Staff and access

@@ -124,6 +124,28 @@ def download_seating_list(
     return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers(f"{name}.pdf"))
 
 
+# ── Room directions and door signs ──────────────────────────
+
+@router.get("/api/exams/{exam_id}/room-directions")
+def get_room_directions(exam_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    try:
+        return admin_service.room_directions(db, exam_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get("/api/exams/{exam_id}/room-signs")
+def download_room_signs(exam_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    try:
+        pdf_bytes = admin_service.generate_room_signs_pdf(db, exam_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    record_download(db, user, "EXAM_DAY_DOCUMENT_DOWNLOADED", exam_id, document="room signs")
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=attachment_headers("Room-Signs.pdf"))
+
+
 # ── Seating Map ─────────────────────────────────────────────
 
 @router.get("/api/exams/{exam_id}/seating-map/{room_id}")
