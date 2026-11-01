@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
 from app.models.exam import Exam
 from app.models.exam_template import ExamTemplate
+from app.services.settings_service import get_system_settings
 
 PDF_MIME = "application/pdf"
-MAX_TEMPLATE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 def _storage_dir(exam_id: UUID) -> str:
@@ -45,8 +45,9 @@ def upload_template(
     paper_version: str = "A",
 ) -> ExamTemplate:
     """Store a new upload and make it the active paper for its version."""
-    if len(content) > MAX_TEMPLATE_SIZE:
-        raise ValueError(f"File too large (max {MAX_TEMPLATE_SIZE // (1024 * 1024)}MB)")
+    max_mb = get_system_settings(db).max_upload_mb
+    if len(content) > max_mb * 1024 * 1024:
+        raise ValueError(f"File too large (max {max_mb}MB)")
 
     if mime_type != PDF_MIME or not validate_pdf_header(content):
         raise ValueError("Only valid PDF files are supported")

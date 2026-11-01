@@ -55,3 +55,34 @@ export async function getActivity(filters: {
   if (filters.day) params.set("day", filters.day);
   return fetchApi<ActivityPage>(`/api/admin/activity?${params}`);
 }
+
+export interface SystemSettings {
+  department_name: string;
+  ttb_division: string;
+  ttb_subjects: string[];
+  default_seating: { order: string; spacing: string; versions: number };
+  max_upload_mb: number;
+}
+
+/** How the server is set up; shown, not editable. */
+export interface DeploymentInfo {
+  environment: string;
+  utorid_sign_in: boolean;
+  test_accounts: boolean;
+  rate_limits: boolean;
+  public_app_url: string;
+  storage: string;
+}
+
+export interface SettingsPage {
+  settings: SystemSettings;
+  deployment: DeploymentInfo;
+}
+
+export async function getSystemSettings(): Promise<SettingsPage> {
+  return fetchApi<SettingsPage>("/api/admin/settings");
+}
+
+export async function saveSystemSettings(settings: SystemSettings): Promise<SettingsPage> {
+  return fetchApi<SettingsPage>("/api/admin/settings", { method: "PUT", body: JSON.stringify(settings) });
+}

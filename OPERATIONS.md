@@ -173,6 +173,20 @@ Configure alerts for:
 - Storage disk space low (<10%)
 - Generation failure rate high
 
+## Settings in the app (Admin › Settings)
+
+Administrators change these in ExamFlow itself; each change is in Admin › Activity under Settings. They apply from the next timetable sync, new exam or upload — nothing already in ExamFlow changes.
+
+| Setting | Default | Used by |
+|---------|---------|---------|
+| Department name | Computer Science | Courses the timetable sync adds |
+| Division code | ARTSC | Timetable sync |
+| Course code prefixes | CSC | Timetable sync (only courses starting with these) |
+| Seating for new exams (order, spacing, paper versions) | By student number, every seat, one version | New exams; each exam can change its own |
+| Largest exam paper upload | 50 MB | Exam paper uploads (1–200 MB) |
+
+Everything about the deployment itself (database, Entra, URLs, rate limits) stays in the environment file. The Settings page shows it read only.
+
 ## Upgrades
 
 1. Backup database

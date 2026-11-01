@@ -31,24 +31,9 @@ import {
 } from "lucide-react";
 
 import { notifyExamChanged } from "@/components/exam/workspace";
+import { ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
 type PreviewData = AssignmentPreview;
 
-const ORDER_OPTIONS = [
-  { value: "student_number", label: "By student number" },
-  { value: "name", label: "By name (A–Z)" },
-  { value: "random", label: "Random" },
-];
-const SPACING_OPTIONS = [
-  { value: "none", label: "Fill every seat" },
-  { value: "every_other_seat", label: "Every other seat (checkerboard)" },
-  { value: "every_other_seat_and_row", label: "One seat in four" },
-];
-const VERSION_OPTIONS = [
-  { value: "1", label: "One version" },
-  { value: "2", label: "Two (A, B)" },
-  { value: "3", label: "Three (A, B, C)" },
-  { value: "4", label: "Four (A–D)" },
-];
 const DEFAULT_RULES: SeatingRules = { order: "student_number", spacing: "none", accommodation_room_id: null, versions: 1 };
 
 export default function SeatingPage() {

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, History, ShieldCheck, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, History, Settings, ShieldCheck, Users } from "lucide-react";
+import { SettingsCard } from "@/components/admin/settings-card";
 import { useAuth } from "@/lib/auth/context";
 import { errorReference } from "@/lib/api/client";
 import { getActivity, getAdminUsers, setUserActive, type ActivityEntry, type ActivityPage, type AdminUser } from "@/lib/api/admin";
@@ -26,6 +27,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   papers: "Exam papers",
   exam_day: "Exam day",
   rooms: "Rooms",
+  system: "Settings",
   other: "Other",
 };
 
@@ -77,6 +79,7 @@ const ACTION_LABEL: Record<string, string> = {
   ROOM_UPDATED: "Edited a room",
   ROOM_LAYOUT_UPDATED: "Changed a room layout",
   ROOM_DELETED: "Deleted a room",
+  SYSTEM_SETTINGS_UPDATED: "Changed settings",
 };
 
 function actionLabel(action: string): string {
@@ -116,7 +119,7 @@ function details(entry: ActivityEntry): string {
 export default function AdminPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [tab, setTab] = useState<"people" | "activity">("people");
+  const [tab, setTab] = useState<"people" | "activity" | "settings">("people");
 
   useEffect(() => {
     if (user && user.role !== "ADMIN") router.push("/app");
@@ -129,7 +132,7 @@ export default function AdminPage() {
       <PageHeader
         eyebrow="Administration"
         title="Admin"
-        description="Who uses ExamFlow, and a record of everything done in it."
+        description="Who uses ExamFlow, a record of everything done in it, and how it is set up."
         meta={<Badge variant="violet"><ShieldCheck className="h-3 w-3" /> Admin only</Badge>}
       />
 
@@ -137,6 +140,7 @@ export default function AdminPage() {
         {([
           ["people", "People", Users],
           ["activity", "Activity", History],
+          ["settings", "Settings", Settings],
         ] as const).map(([key, label, Icon]) => (
           <button
             key={key}
@@ -153,7 +157,7 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {tab === "people" ? <PeopleCard myId={user.id} /> : <ActivityCard />}
+      {tab === "people" ? <PeopleCard myId={user.id} /> : tab === "activity" ? <ActivityCard /> : <SettingsCard />}
     </PageContainer>
   );
 }

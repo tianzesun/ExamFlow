@@ -76,9 +76,9 @@ def parse_reference_data(xml_text: str) -> dict:
 async def fetch_courses(
     session_code: str = "20269",
     division_code: str = "ARTSC",
-    subject_prefix: str = "CSC",
+    subject_prefix: str | tuple[str, ...] = "CSC",
 ) -> list[dict]:
-    """Fetch courses from TTB API via getCourses endpoint."""
+    """Fetch courses from TTB API via getCourses endpoint, keeping codes that start with a prefix."""
     payload = {
         "sessions": [session_code],
         "divisions": [division_code],
@@ -93,7 +93,7 @@ async def fetch_courses(
     return parse_courses_response(resp.text, subject_prefix)
 
 
-def parse_courses_response(xml_text: str, subject_prefix: str = "") -> list[dict]:
+def parse_courses_response(xml_text: str, subject_prefix: str | tuple[str, ...] = "") -> list[dict]:
     """Parse courses XML response into structured data.
 
     Each course is a separate <payload> element under <TTBResponse>.
@@ -227,22 +227,32 @@ def parse_courses_response(xml_text: str, subject_prefix: str = "") -> list[dict
 async def fetch_all_cs_courses(
     session_code: str = "20269",
     division_code: str = "ARTSC",
+    subjects: tuple[str, ...] = ("CSC",),
 ) -> list[dict]:
-    """Fetch all CSC courses."""
+    """Fetch the department's courses (by default CSC)."""
     return await fetch_courses(
         session_code=session_code,
         division_code=division_code,
-        subject_prefix="CSC",
+        subject_prefix=subjects,
     )
 
 
 async def sync_cs_courses_to_db(db_session, semester: str, user_id=None) -> dict:
-    """Fetch CS courses for the term from TTB and bring the database in line with them."""
-    courses_data = await fetch_all_cs_courses(session_code=semester)
-    return apply_timetable(db_session, semester, courses_data, user_id)
+    """Fetch the department's courses for the term from TTB and bring the database in line with them.
+
+    The division, course code prefixes and department name come from Admin › Settings.
+    """
+    from app.services.settings_service import get_system_settings
+
+    settings = get_system_settings(db_session)
+    courses_data = await fetch_all_cs_courses(
+        session_code=semester, division_code=settings.ttb_division, subjects=tuple(settings.ttb_subjects)
+    )
+    return apply_timetable(db_session, semester, courses_data, user_id, department=settings.department_name)
 
 
-def apply_timetable(db_session, semester: str, courses_data: list[dict], user_id=None) -> dict:
+def apply_timetable(db_session, semester: str, courses_data: list[dict], user_id=None,
+                    department: str = "Computer Science") -> dict:
     """Make the term's courses and meeting times match what TTB says now.
 
     New courses are added and renamed ones follow TTB (their unarchived exams too). Each
@@ -256,7 +266,7 @@ def apply_timetable(db_session, semester: str, courses_data: list[dict], user_id
     for c in courses_data:
         course = db_session.query(Course).filter_by(course_code=c["code"]).first()
         if not course:
-            course = Course(course_code=c["code"], course_name=c["name"], department="Computer Science")
+            course = Course(course_code=c["code"], course_name=c["name"], department=department)
             db_session.add(course)
             db_session.flush()
             added += 1

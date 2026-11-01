@@ -13,6 +13,7 @@ from app.models.meeting import Meeting
 from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
+from app.models.system_setting import SystemSetting
 from app.models.user import User
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "Meeting",
     "Document",
     "AuditLog",
+    "SystemSetting",
 ]

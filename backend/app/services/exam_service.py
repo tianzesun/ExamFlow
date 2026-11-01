@@ -1,4 +1,5 @@
 import os
+import secrets
 import shutil
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from app.models.course import Course
 from app.models.exam import Exam
 from app.schemas.exam import ExamCreate, ExamUpdate
 from app.services import exam_status_service
+from app.services.settings_service import get_system_settings
 
 VALID_STATUSES = {"DRAFT", "CONFIGURED", "READY", "GENERATED", "COMPLETED", "ARCHIVED"}
 # Only the manual statuses can be requested directly; DRAFT..GENERATED follow the
@@ -29,6 +31,7 @@ def create_exam(db: Session, data: ExamCreate, user_id: UUID) -> Exam:
     if not course:
         raise ValueError("Course not found")
 
+    defaults = get_system_settings(db).default_seating
     exam = Exam(
         course_id=course.id,
         course_code=course.course_code,
@@ -42,6 +45,9 @@ def create_exam(db: Session, data: ExamCreate, user_id: UUID) -> Exam:
         notes=data.notes or None,
         status="DRAFT",
         created_by=user_id,
+        # New exams start with the seating rules set in Admin › Settings.
+        seating_rules=defaults.model_dump(mode="json"),
+        assignment_seed=secrets.token_hex(8) if defaults.order == "random" else None,
     )
     db.add(exam)
     db.flush()

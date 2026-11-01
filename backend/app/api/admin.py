@@ -17,6 +17,8 @@ from app.models.course_access import CourseAccess
 from app.models.exam import Exam
 from app.models.room import Room
 from app.models.user import User
+from app.services import settings_service
+from app.services.settings_service import SystemSettings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -34,6 +36,7 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
                "QR_GENERATED"),
     "exam_day": ("ATTENDANCE_", "EXAM_PACKAGE_", "EXAM_DAY_", "QR_VERIF"),
     "rooms": ("ROOM_",),
+    "system": ("SYSTEM_",),
 }
 
 
@@ -94,6 +97,28 @@ def update_user(
         db.commit()
     courses = db.query(func.count(CourseAccess.id)).filter(CourseAccess.email == (user.email or "").lower()).scalar()
     return _user_dict(user, courses or 0)
+
+
+# ── Settings ────────────────────────────────────────────────
+
+def _settings_response(settings: SystemSettings) -> dict:
+    return {"settings": settings.model_dump(mode="json"), "deployment": settings_service.deployment_info()}
+
+
+@router.get("/settings")
+def get_settings_page(db: Session = Depends(get_db), _admin: User = Depends(require_role("ADMIN"))) -> dict:
+    """What an administrator can change here, and how the server is set up (read only)."""
+    return _settings_response(settings_service.get_system_settings(db))
+
+
+@router.put("/settings")
+def update_settings(
+    data: SystemSettings,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role("ADMIN")),
+) -> dict:
+    """Save the settings. They apply from the next sync, new exam or upload; nothing done already changes."""
+    return _settings_response(settings_service.update_system_settings(db, data, admin.id))
 
 
 # ── Activity (audit log) ────────────────────────────────────
