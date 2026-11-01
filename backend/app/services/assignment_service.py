@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -105,6 +105,7 @@ def move_room(db: Session, exam_id: UUID, from_room_id: UUID, to_room_id: UUID, 
     target = db.query(Room).filter(Room.id == to_room_id, Room.is_active).first()
     if not target:
         raise ValueError("Room not found or not active")
+    _lock_rooms(db, [from_room_id, to_room_id])
     rules = get_rules(db, exam_id)
     if rules.accommodation_room_id == to_room_id:
         raise ValueError("That is the accommodation room; only students with accommodations sit there")
@@ -162,6 +163,17 @@ def move_room(db: Session, exam_id: UUID, from_room_id: UUID, to_room_id: UUID, 
 
 def _room(room: Room) -> str:
     return f"{room.building} {room.room_number}"
+
+
+def _lock_rooms(db: Session, room_ids) -> None:
+    """Hold the rooms until this transaction ends, so two exams seated at the same moment can't both take
+    a seat that looked free to each. Locked in a fixed order so two runs never wait on each other."""
+    for room_id in sorted(set(room_ids)):
+        db.execute(select(func.pg_advisory_xact_lock(int.from_bytes(room_id.bytes[:8], "big", signed=True))))
+
+
+def _lock_exam_rooms(db: Session, exam_id: UUID) -> None:
+    _lock_rooms(db, [row[0] for row in db.query(ExamRoom.room_id).filter(ExamRoom.exam_id == exam_id)])
 
 
 def get_exam_rooms(db: Session, exam_id: UUID) -> list[Room]:
@@ -480,6 +492,7 @@ def preview_assignment(db: Session, exam_id: UUID) -> dict:
 # ── Confirm (Generate) ─────────────────────────────────────
 
 def confirm_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
+    _lock_exam_rooms(db, exam_id)
     existing = db.query(ExamAssignment).filter(ExamAssignment.exam_id == exam_id).first()
     if existing:
         raise ValueError("Seating has already been generated. Use regenerate to replace.")
@@ -512,6 +525,7 @@ def confirm_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
 # ── Regenerate ──────────────────────────────────────────────
 
 def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
+    _lock_exam_rooms(db, exam_id)
     existing_count = db.query(ExamAssignment).filter(ExamAssignment.exam_id == exam_id).count()
     if not existing_count:
         raise ValueError("No existing assignments to regenerate")
@@ -558,6 +572,7 @@ def regenerate_assignment(db: Session, exam_id: UUID, user_id: UUID) -> dict:
 
 def seat_remaining_students(db: Session, exam_id: UUID, user_id: UUID) -> dict:
     """Seat students who have no seat yet in the free seats, keeping every existing seat."""
+    _lock_exam_rooms(db, exam_id)
     seated = {
         row[0] for row in db.query(ExamAssignment.exam_student_id).filter(ExamAssignment.exam_id == exam_id)
     }
@@ -725,6 +740,7 @@ def assign_student(
         raise ValueError("Seat not found or not usable")
     if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == seat.room_id).first():
         raise ValueError("Seat is not in a room selected for this exam")
+    _lock_rooms(db, [seat.room_id])
     _check_seat_free_elsewhere(db, exam_id, seat)
 
     # Use current max version for this exam
@@ -869,6 +885,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
         raise ValueError("Seat not found or not usable")
     if not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == seat.room_id).first():
         raise ValueError("Seat is not in a room selected for this exam")
+    _lock_rooms(db, [seat.room_id])
     _check_seat_free_elsewhere(db, exam_id, seat)
 
     current = db.query(ExamAssignment).filter(

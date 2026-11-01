@@ -184,6 +184,11 @@ def update_room(
         _sync_seats(db, room, capacity)
         room.capacity = capacity
     if is_active is not None and is_active != room.is_active:
+        if not is_active and (exams := _upcoming_exams_seated(db, room.id)):
+            raise ValueError(
+                f"Students are seated in this room for {', '.join(exams)}. "
+                "Move them to another room before switching it off."
+            )
         old_values["is_active"] = room.is_active
         room.is_active = is_active
 
@@ -245,6 +250,24 @@ def room_layout(room: Room, seats: list[Seat]) -> dict:
     columns = max(saved.get("columns") or 0, max((s.column_number or 0 for s in seats), default=0))
     aisles = saved["aisles_after"] if "aisles_after" in saved else default_aisles(columns)
     return {"rows": rows, "columns": columns, "aisles_after": _clean_aisles(aisles, columns)}
+
+
+def _upcoming_exams_seated(db: Session, room_id: UUID) -> list[str]:
+    """Exams still to come that have students seated in the room, as "course — exam name"."""
+    rows = (
+        db.query(Exam.course_code, Exam.exam_name)
+        .join(ExamAssignment, ExamAssignment.exam_id == Exam.id)
+        .join(Seat, Seat.id == ExamAssignment.seat_id)
+        .filter(
+            Seat.room_id == room_id,
+            Exam.status != "ARCHIVED",
+            (Exam.exam_date.is_(None)) | (Exam.exam_date >= date.today()),
+        )
+        .distinct()
+        .order_by(Exam.course_code, Exam.exam_name)
+        .all()
+    )
+    return [f"{code} — {name}" for code, name in rows]
 
 
 def _seat_bookings(db: Session, seat_ids: list[UUID]) -> dict[UUID, dict]:

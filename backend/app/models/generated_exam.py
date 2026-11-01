@@ -46,6 +46,9 @@ class GeneratedExam(Base):
     # The "course — exam name" line printed at the top, so renaming the exam dates the paper. Empty on papers
     # made before it was recorded.
     exam_title = Column(String(310), nullable=True)
+    # The "building room" printed in the stamp, so renaming the room dates the paper. Empty on papers made
+    # before it was recorded.
+    room_label = Column(String(160), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

@@ -1,5 +1,12 @@
 """Two exams at the same time may share a room, but never a seat."""
 
+import threading
+import uuid
+
+from sqlalchemy.orm import Session
+
+from app.database import engine
+from app.services.assignment_service import _lock_rooms
 from tests.test_seat_map import ADMIN_HEADERS, _create_exam_with_students, client
 from tests.test_seating_rules import _flag
 
@@ -84,3 +91,25 @@ def test_moving_an_exam_onto_anothers_time_is_flagged_before_printing():
                  if c["name"] == "seat_clashes")
     assert check["status"] == "FAIL" and check["count"] == 2 and "SEAT" in check["message"]
     assert client.get(f"/api/exams/{b}/readiness", headers=ADMIN_HEADERS).json()["ready"] is False
+
+
+def test_seating_waits_while_another_exam_is_seating_the_same_room():
+    """Two exams seated at the same moment can't both take a seat that looked free to each."""
+    # A room nobody has seated yet: tests share one transaction, so a room seated earlier stays held.
+    b, room_id, _ = _create_exam_with_students(2, 4)
+    other = engine.connect()  # another staff member's request, outside this test's transaction
+    holder = Session(bind=other)
+    _lock_rooms(holder, [uuid.UUID(room_id)])
+    result = {}
+    worker = threading.Thread(target=lambda: result.update(
+        r=client.post(f"/api/exams/{b}/assignments/confirm", headers=ADMIN_HEADERS)))
+    try:
+        worker.start()
+        worker.join(timeout=2)
+        assert worker.is_alive(), "seating went ahead while the room was held"
+    finally:
+        holder.rollback()
+        holder.close()
+        other.close()
+    worker.join(timeout=30)
+    assert result["r"].status_code == 200

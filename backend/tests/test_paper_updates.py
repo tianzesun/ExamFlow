@@ -189,6 +189,17 @@ def test_renaming_the_exam_makes_every_paper_out_of_date():
     assert "Final (rescheduled)" in " ".join(pymupdf.open(stream=r.content)[0].get_text().split())
 
 
+def test_renaming_the_room_makes_its_papers_out_of_date():
+    exam_id, room_id = _ready_exam_with_papers(student_count=2)
+    assert client.patch(f"/api/rooms/{room_id}", json={"room_number": "B200"},
+                        headers=ADMIN_HEADERS).status_code == 200
+    assert _status(exam_id)["outdated"] == 2
+    _update_papers(exam_id)
+    assert _status(exam_id)["up_to_date"] == 2
+    r = client.get(f"/api/exams/{exam_id}/generated/print", headers=ADMIN_HEADERS)
+    assert "B200" in pymupdf.open(stream=r.content)[1].get_text()
+
+
 def test_papers_for_seated_students_while_some_still_need_a_seat():
     exam_id, _ = _ready_exam_with_papers(student_count=2)
     late = f"8{uuid.uuid4().int % 10**8:08d}"

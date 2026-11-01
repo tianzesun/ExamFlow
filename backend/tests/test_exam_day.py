@@ -127,6 +127,18 @@ def test_ttb_requires_sign_in():
     assert client.get("/api/ttb/reference-data").status_code in (401, 403)
 
 
+def test_room_with_students_seated_for_an_upcoming_exam_cannot_be_switched_off():
+    exam_id, room_id, _ = _create_exam_with_students(student_count=2, capacity=10)
+    assert client.post(f"/api/exams/{exam_id}/assignments/confirm", headers=ADMIN_HEADERS).status_code == 200
+    r = client.patch(f"/api/rooms/{room_id}", json={"is_active": False}, headers=ADMIN_HEADERS)
+    assert r.status_code == 409 and "Move them to another room" in r.json()["detail"]
+    assert client.get(f"/api/rooms/{room_id}", headers=ADMIN_HEADERS).json()["is_active"] is True
+
+    spare = _create_room(5)  # a room nobody is seated in switches off as before
+    assert client.patch(f"/api/rooms/{spare['id']}", json={"is_active": False},
+                        headers=ADMIN_HEADERS).status_code == 200
+
+
 def test_room_documents_need_one_of_the_exams_rooms():
     exam_id, _ = _ready_exam_with_papers()
     other_room = _create_room(5)
@@ -142,6 +154,8 @@ def test_package_folder_names_are_safe():
 
     exam_id, room_id = _ready_exam_with_papers()
     client.patch(f"/api/rooms/{room_id}", json={"building": "../../X"}, headers=ADMIN_HEADERS)
+    # Renaming the room dates the papers, so make them again with the new name.
+    assert client.post(f"/api/exams/{exam_id}/generated", headers=ADMIN_HEADERS).status_code == 200
     r = client.get(f"/api/exams/{exam_id}/package/download", headers=ADMIN_HEADERS)
     assert r.status_code == 200, r.text
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()

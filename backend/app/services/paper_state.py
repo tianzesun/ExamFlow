@@ -3,7 +3,7 @@
 A paper stays valid (its QR code verifies) until it is replaced, but it is only
 up to date while the student sits in the seat printed on it, the template it
 was made from is still the active one for the student's paper version, the stamp
-shows what Admin › Settings asks for, and the title is the exam's current one. Seating
+shows what Admin › Settings asks for, and the exam title and room name are the current ones. Seating
 changes and a new template therefore make just the affected papers out of date, and only
 those need generating and printing again.
 """
@@ -18,6 +18,8 @@ from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
+from app.models.room import Room
+from app.models.seat import Seat
 from app.models.system_setting import SystemSetting
 from app.services.settings_service import DEFAULT_STAMP, KEY
 
@@ -73,6 +75,20 @@ _title_matches = or_(
 )
 
 
+def room_label(room: Room) -> str:
+    """The room as the stamp prints it, recorded on the paper so renaming the room dates the paper."""
+    return f"{room.building} {room.room_number}"
+
+
+# The name the paper's room has now; papers from before it was recorded are taken to match.
+_room_matches = or_(
+    GeneratedExam.room_label.is_(None),
+    select(Seat.id).join(Room, Room.id == Seat.room_id).where(
+        Seat.id == GeneratedExam.seat_id, GeneratedExam.room_label == Room.building + " " + Room.room_number,
+    ).correlate(GeneratedExam).exists(),
+)
+
+
 # Correlated to the paper explicitly, so it still works in queries that also join seats or templates.
 # The student must still hold the seat printed on the paper, and the paper's template must be the
 # active upload for the version that seat now has.
@@ -87,6 +103,7 @@ _matches = (
         or_(GeneratedExam.version_shown.is_(None), GeneratedExam.version_shown == _shows_version),
         _stamp_matches,
         _title_matches,
+        _room_matches,
     )
     .correlate(GeneratedExam)
     .exists()

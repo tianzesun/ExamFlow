@@ -25,7 +25,7 @@ from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
 from app.services import assignment_service, paper_state
-from app.services.paper_state import exam_times, exam_title
+from app.services.paper_state import exam_times, exam_title, room_label
 from app.services.settings_service import PaperStamp, get_system_settings
 from app.utils import utcnow
 
@@ -128,7 +128,7 @@ def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Ro
     page.draw_line(pymupdf.Point(box.x0, box.y0 + 27), pymupdf.Point(box.x1, box.y0 + 27), color=(0, 0, 0), width=0.5)
     write_text(page, pymupdf.Rect(box.x0 + 6, box.y0 + 10, box.x0 + 40, box.y0 + 24), "ROOM", 7, grey=True)
     write_text(page, pymupdf.Rect(box.x0 + 40, box.y0 + 3, box.x1 - 6, box.y0 + 25),
-               f"{room.building} {room.room_number}", 12, bold=True, align="right")
+               room_label(room), 12, bold=True, align="right")
     write_text(page, pymupdf.Rect(box.x0 + 6, box.y0 + 40, box.x0 + 40, box.y0 + 52), "SEAT", 7, grey=True)
     write_text(page, pymupdf.Rect(box.x0 + 40, box.y0 + 29, box.x1 - 6, box.y0 + 53),
                seat.seat_code, 15, bold=True, align="right")
@@ -163,7 +163,7 @@ def _stamp_other_page(page: pymupdf.Page, student: Student, room: Room, seat: Se
     parts.append(student.student_number)
     if stamp.show_utorid and utorid:
         parts.append(utorid)
-    parts += [f"{room.building} {room.room_number}", f"Seat {seat.seat_code}"]
+    parts += [room_label(room), f"Seat {seat.seat_code}"]
     if paper_version:
         parts.append(f"Version {paper_version}")
     write_text(page, pymupdf.Rect(MARGIN, 6, w - MARGIN - 80, 18), " · ".join(parts), 8)
@@ -418,6 +418,7 @@ def generate_all_exams(
                 version_shown=show_version,
                 stamp_style=stamp.fingerprint(),
                 exam_title=exam_title(exam),
+                room_label=room_label(room),
                 qr_token=qr_token,
                 qr_generated_at=utcnow(),
                 created_by=user_id,
