@@ -24,6 +24,20 @@ class DevLoginRequest(BaseModel):
     token: str
 
 
+@router.get("/config")
+def get_auth_config() -> dict:
+    """How the sign-in page should offer sign-in. Public: none of this is secret."""
+    entra = None
+    if settings.entra_enabled:
+        client = settings.ENTRA_CLIENT_ID.strip()
+        entra = {
+            "tenant_id": settings.ENTRA_TENANT_ID.strip(),
+            "client_id": client,
+            "scopes": [f"api://{client}/{settings.ENTRA_API_SCOPE}"],
+        }
+    return {"entra": entra, "test_accounts": settings.dev_auth_enabled}
+
+
 @router.get("/me", response_model=UserResponse)
 def get_me(user: User = Depends(get_current_user)) -> User:
     return UserResponse(

@@ -172,7 +172,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             <p className="truncate text-[11px] leading-tight text-ink-3">{ROLE_LABEL[user.role] ?? user.role}</p>
           </div>
           <button
-            onClick={() => { logout(); router.push("/login"); }}
+            onClick={async () => { await logout(); router.push("/login"); }}
             className="rounded-lg p-1.5 text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink"
             title="Sign out"
             aria-label="Sign out"

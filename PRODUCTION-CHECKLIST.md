@@ -3,7 +3,7 @@
 ## Security
 
 - [ ] AUTH_DEV_MODE=false in production
-- [ ] OIDC configured (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET)
+- [ ] UTORid sign-in configured (ENTRA_TENANT_ID, ENTRA_CLIENT_ID; app registration and roles as in SSO-INTEGRATION.md)
 - [ ] CORS_ALLOWED_ORIGINS set to production domain only
 - [ ] HTTPS enforced (Strict-Transport-Security header)
 - [ ] No secrets committed to git

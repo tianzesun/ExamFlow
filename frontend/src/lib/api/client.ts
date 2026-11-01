@@ -1,3 +1,5 @@
+import { getEntraToken } from "../auth/entra";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const TOKEN_KEY = "examflow_dev_token";
@@ -11,12 +13,13 @@ function getStoredToken(): string | null {
   }
 }
 
-function buildHeaders(init?: RequestInit): Record<string, string> {
+/** A test account's token if one was used, otherwise the UTORid (Entra) access token. */
+async function buildHeaders(init?: RequestInit): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string> | undefined),
   };
-  const token = getStoredToken();
-  if (token && !headers["Authorization"]) {
+  const token = headers["Authorization"] ? null : getStoredToken() ?? (await getEntraToken());
+  if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
@@ -39,7 +42,7 @@ export function errorReference(err: unknown): string {
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const hasBody = options?.body !== undefined && options?.body !== null;
   const isFormData = typeof FormData !== "undefined" && hasBody && options?.body instanceof FormData;
-  const headers = buildHeaders(options);
+  const headers = await buildHeaders(options);
   if (hasBody && !isFormData && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
@@ -71,7 +74,7 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
 async function fetchFile(url: string): Promise<Response> {
   const response = await fetch(url.startsWith("http") ? url : `${API_BASE}${url}`, {
     credentials: "include",
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Download failed" }));

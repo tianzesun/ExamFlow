@@ -21,13 +21,13 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Implement OpenID Connect authentication with institutional identity provider
 - **Impact:** Required for production deployment
 - **Scope:** Backend auth module, configuration, user provisioning
-- **Status:** Not started
+- **Status:** Done in code — UTORid sign-in through Microsoft Entra ID (see SSO-INTEGRATION.md). Needs the app registration and role assignments in the UofT tenant before use.
 
 ### P0-002: Session Management
 - **Description:** Implement session expiry, server-side logout, secure cookie configuration
 - **Impact:** Required for production security
 - **Scope:** Backend session handling, frontend logout
-- **Status:** Not started
+- **Status:** Covered by Entra — ExamFlow keeps no session of its own; sign-in length, MFA and sign-out are set in Entra ID, and tokens end with the browser tab.
 
 ### P0-003: Rate Limiting
 - **Description:** Add rate limiting to sensitive endpoints (login, upload, generation)

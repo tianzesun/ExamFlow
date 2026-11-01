@@ -9,7 +9,7 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
 | Dev token authentication only | No real user identity verification | Restrict network access |
-| No SSO/OIDC integration | Cannot use institutional identity | Planned for production |
+| UTORid sign-in needs Entra set-up | Can't be used until the app registration and roles exist in the UofT tenant | See SSO-INTEGRATION.md |
 | No session expiry | Sessions persist indefinitely | Manual logout required |
 | No server-side logout | Client-side session clear only | Browser cookie clear |
 | No multi-factor authentication | MFA handled by IdP (not implemented) | Acceptable for pilot |

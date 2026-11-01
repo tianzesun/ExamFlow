@@ -7,6 +7,7 @@ import {
   Check,
   FileText,
   GraduationCap,
+  KeyRound,
   LayoutGrid,
   Lock,
   Printer,
@@ -15,9 +16,10 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { devLogin, getDevTokens } from "@/lib/api/auth";
-import { ApiError, errorReference } from "@/lib/api/client";
+import { clearToken, devLogin, getDevTokens } from "@/lib/api/auth";
+import { errorReference } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/context";
+import { completeEntraSignIn, getAuthConfig, startEntraSignIn, type AuthConfig } from "@/lib/auth/entra";
 import type { DevToken } from "@/lib/auth/types";
 import { Button } from "@/components";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,7 @@ const ROLE_META: Record<string, { label: string; description: string; icon: Luci
   ADMIN: { label: "Administrator", description: "Everything, including rooms and settings", icon: ShieldCheck },
   STAFF: { label: "Exam office staff", description: "Rosters, seating and exam papers", icon: UserCog },
   INSTRUCTOR: { label: "Instructor", description: "View courses, exams and seating", icon: GraduationCap },
+  TA: { label: "Teaching assistant", description: "Exam-day check-in", icon: Users },
 };
 
 const STEPS: { icon: LucideIcon; title: string; text: string }[] = [
@@ -54,13 +57,12 @@ export default function LoginPage() {
 function LoginScreen() {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
-  const { user, loading: userLoading, refreshUser } = useAuth();
+  const { user, loading: userLoading, denied, refreshUser } = useAuth();
+  const [config, setConfig] = useState<AuthConfig | null>(null);
   const [tokens, setTokens] = useState<DevToken[]>([]);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(true);
-  // Test sign-in is switched off on this server (it answers 403).
-  const [unavailable, setUnavailable] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
+  const [signingIn, setSigningIn] = useState<"utorid" | "test" | null>(null);
   const [error, setError] = useState("");
   const options = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -70,32 +72,63 @@ function LoginScreen() {
   }, [user, userLoading, next, router]);
 
   useEffect(() => {
-    getDevTokens()
-      .then((list) => {
-        setTokens(list);
-        const last = localStorage.getItem(LAST_ROLE_KEY);
-        setSelected((list.find((t) => t.role === last) ?? list[0])?.token ?? "");
+    getAuthConfig()
+      .then(async (c) => {
+        setConfig(c);
+        // A test-account token from before is sent ahead of the UTORid one, so drop it once
+        // the server no longer offers test accounts.
+        if (!c.test_accounts) clearToken();
+        // Back from Microsoft: load the user, then go where sign-in started.
+        const returnTo = await completeEntraSignIn().catch(() => {
+          setError("UTORid sign-in didn't finish. Try again.");
+          return null;
+        });
+        // Only go on if the account may use ExamFlow; otherwise stay and show why not.
+        if (returnTo) {
+          if (await refreshUser()) router.replace(safeNext(returnTo));
+          return;
+        }
+        if (c.test_accounts) {
+          const list = await getDevTokens();
+          setTokens(list);
+          const last = localStorage.getItem(LAST_ROLE_KEY);
+          setSelected((list.find((t) => t.role === last) ?? list[0])?.token ?? "");
+        }
       })
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 403) setUnavailable(true);
-        else setError(`Sign-in options couldn't be loaded. Reload the page to try again.${errorReference(err)}`);
-      })
+      .catch((err) => setError(`Sign-in options couldn't be loaded. Reload the page to try again.${errorReference(err)}`))
       .finally(() => setLoading(false));
+    // refreshUser and router are stable for the page's lifetime; this runs once per visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const signInWithUtorid = async () => {
+    setSigningIn("utorid");
+    setError("");
+    try {
+      clearToken(); // a test-account token would otherwise win over the UTORid one
+      await startEntraSignIn(next); // always asks which Microsoft account to use
+    } catch {
+      setError("UTORid sign-in couldn't start. Try again in a moment.");
+      setSigningIn(null);
+    }
+  };
 
   const signIn = async (token = selected) => {
     if (!token || signingIn) return;
-    setSigningIn(true);
+    setSigningIn("test");
     setError("");
     try {
       await devLogin(token);
       const role = tokens.find((t) => t.token === token)?.role;
       if (role) localStorage.setItem(LAST_ROLE_KEY, role);
-      await refreshUser();
-      router.replace(next);
+      if (await refreshUser()) router.replace(next);
+      else {
+        setError("You couldn't be signed in. Try again.");
+        setSigningIn(null);
+      }
     } catch (err) {
       setError(`You couldn't be signed in. Try again.${errorReference(err)}`);
-      setSigningIn(false);
+      setSigningIn(null);
     }
   };
 
@@ -114,6 +147,9 @@ function LoginScreen() {
   };
 
   const selectedRole = ROLE_META[tokens.find((t) => t.token === selected)?.role ?? ""]?.label;
+  const utorid = !!config?.entra;
+  const testAccounts = !!config?.test_accounts;
+  const unavailable = !!config && !utorid && !testAccounts;
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas lg:flex-row">
@@ -129,14 +165,30 @@ function LoginScreen() {
                   <h1 className="text-xl font-semibold tracking-tight text-ink">Sign in to ExamFlow</h1>
                   <p className="mt-1 text-sm text-ink-2">Exam administration for University of Toronto staff.</p>
                 </div>
-                {!unavailable && (
+                {testAccounts && !utorid && (
                   <span className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
                     Test sign-in
                   </span>
                 )}
               </div>
 
-              {unavailable ? (
+              {denied && (
+                <div className="mt-6 flex gap-3 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3.5" role="alert">
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                  <div className="text-sm">
+                    <p className="font-medium text-ink">No access to ExamFlow yet</p>
+                    <p className="mt-1 text-ink-2">{denied}</p>
+                  </div>
+                </div>
+              )}
+
+              {loading ? (
+                <div className="mt-6 space-y-2">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="h-11 animate-pulse rounded-lg border border-line bg-surface-2" />
+                  ))}
+                </div>
+              ) : unavailable ? (
                 <div className="mt-6 flex gap-3 rounded-lg border border-line bg-surface-2 px-4 py-4">
                   <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
                   <div className="text-sm">
@@ -145,72 +197,119 @@ function LoginScreen() {
                   </div>
                 </div>
               ) : (
-                <fieldset className="mt-6" disabled={signingIn}>
-                  <legend className="eyebrow mb-2">Choose an account</legend>
-                  {loading ? (
-                    <div className="space-y-2">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="h-[62px] animate-pulse rounded-lg border border-line bg-surface-2" />
-                      ))}
-                    </div>
-                  ) : tokens.length === 0 ? (
-                    !error && (
-                      <p className="rounded-lg border border-dashed border-line-strong px-3 py-4 text-sm text-ink-3">
-                        No accounts are available.
+                <>
+                  {utorid && (
+                    <div className="mt-6">
+                      <Button
+                        onClick={signInWithUtorid}
+                        loading={signingIn === "utorid"}
+                        disabled={!!signingIn}
+                        className="w-full"
+                        size="lg"
+                      >
+                        {signingIn === "utorid" ? "Opening UTORid sign-in…" : (
+                          <>
+                            <KeyRound /> {denied ? "Sign in with a different UTORid" : "Sign in with UTORid"}
+                          </>
+                        )}
+                      </Button>
+                      <p className="mt-2.5 text-center text-xs text-ink-3">
+                        You&apos;ll sign in on the University of Toronto&apos;s Microsoft page.
                       </p>
-                    )
-                  ) : (
-                    <div role="radiogroup" aria-label="Account" className="space-y-2">
-                      {tokens.map((t, i) => {
-                        const meta = ROLE_META[t.role] ?? { label: t.role, description: t.name, icon: UserCog };
-                        const isSelected = selected === t.token;
-                        const Icon = meta.icon;
-                        return (
-                          <button
-                            key={t.token}
-                            ref={(el) => { options.current[i] = el; }}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            tabIndex={isSelected || (!selected && i === 0) ? 0 : -1}
-                            onClick={() => setSelected(t.token)}
-                            onDoubleClick={() => signIn(t.token)}
-                            onKeyDown={(e) => onOptionKey(e, i)}
-                            className={cn(
-                              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-[border-color,background-color,box-shadow]",
-                              "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/20",
-                              isSelected
-                                ? "border-accent bg-accent-subtle ring-1 ring-accent"
-                                : "border-line-strong bg-surface hover:border-ink-3/50 hover:bg-surface-hover",
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                                isSelected ? "bg-accent text-canvas" : "bg-surface-hover text-ink-2",
-                              )}
-                            >
-                              <Icon className="h-4 w-4" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium text-ink">{meta.label}</span>
-                              <span className="block truncate text-xs text-ink-2">{meta.description}</span>
-                            </span>
-                            <span
-                              className={cn(
-                                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                                isSelected ? "border-accent bg-accent text-canvas" : "border-line-strong",
-                              )}
-                              aria-hidden
-                            >
-                              {isSelected && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-                            </span>
-                          </button>
-                        );
-                      })}
                     </div>
                   )}
-                </fieldset>
+
+                  {testAccounts && (
+                    <>
+                      {utorid && (
+                        <div className="my-6 flex items-center gap-3 text-xs text-ink-3">
+                          <span className="h-px flex-1 bg-line" />
+                          or use a test account
+                          <span className="h-px flex-1 bg-line" />
+                        </div>
+                      )}
+                      <fieldset className={cn(!utorid && "mt-6")} disabled={!!signingIn}>
+                        <legend className={cn("eyebrow mb-2", utorid && "sr-only")}>Choose an account</legend>
+                        {tokens.length === 0 ? (
+                          !error && (
+                            <p className="rounded-lg border border-dashed border-line-strong px-3 py-4 text-sm text-ink-3">
+                              No test accounts are available.
+                            </p>
+                          )
+                        ) : (
+                          <div role="radiogroup" aria-label="Test account" className="space-y-2">
+                            {tokens.map((t, i) => {
+                              const meta = ROLE_META[t.role] ?? { label: t.role, description: t.name, icon: UserCog };
+                              const isSelected = selected === t.token;
+                              const Icon = meta.icon;
+                              return (
+                                <button
+                                  key={t.token}
+                                  ref={(el) => { options.current[i] = el; }}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={isSelected}
+                                  tabIndex={isSelected || (!selected && i === 0) ? 0 : -1}
+                                  onClick={() => setSelected(t.token)}
+                                  onDoubleClick={() => signIn(t.token)}
+                                  onKeyDown={(e) => onOptionKey(e, i)}
+                                  className={cn(
+                                    "flex w-full items-center gap-3 rounded-lg border px-3 text-left transition-[border-color,background-color,box-shadow]",
+                                    "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/20",
+                                    utorid ? "py-2" : "py-2.5",
+                                    isSelected
+                                      ? "border-accent bg-accent-subtle ring-1 ring-accent"
+                                      : "border-line-strong bg-surface hover:border-ink-3/50 hover:bg-surface-hover",
+                                  )}
+                                >
+                                  <span
+                                    className={cn(
+                                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                                      isSelected ? "bg-accent text-canvas" : "bg-surface-hover text-ink-2",
+                                    )}
+                                  >
+                                    <Icon className="h-4 w-4" />
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block text-sm font-medium text-ink">{meta.label}</span>
+                                    <span className="block truncate text-xs text-ink-2">{meta.description}</span>
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                                      isSelected ? "border-accent bg-accent text-canvas" : "border-line-strong",
+                                    )}
+                                    aria-hidden
+                                  >
+                                    {isSelected && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </fieldset>
+                      <Button
+                        onClick={() => signIn()}
+                        disabled={!selected || !!signingIn}
+                        loading={signingIn === "test"}
+                        variant={utorid ? "secondary" : "primary"}
+                        className="mt-4 w-full"
+                        size="lg"
+                      >
+                        {signingIn === "test" ? "Signing in…" : (
+                          <>
+                            {selectedRole ? `Continue as ${selectedRole.toLowerCase()}` : "Continue"}
+                            <ArrowRight />
+                          </>
+                        )}
+                      </Button>
+                      <p className="mt-3 text-center text-xs leading-relaxed text-ink-3">
+                        Test accounts are for development and pilot servers only.
+                      </p>
+                    </>
+                  )}
+                </>
               )}
 
               {error && (
@@ -220,28 +319,6 @@ function LoginScreen() {
                 >
                   {error}
                 </div>
-              )}
-
-              {!unavailable && (
-                <>
-                  <Button
-                    onClick={() => signIn()}
-                    disabled={!selected}
-                    loading={signingIn}
-                    className="mt-6 w-full"
-                    size="lg"
-                  >
-                    {signingIn ? "Signing in…" : (
-                      <>
-                        {selectedRole ? `Continue as ${selectedRole.toLowerCase()}` : "Continue"}
-                        <ArrowRight />
-                      </>
-                    )}
-                  </Button>
-                  <p className="mt-4 text-center text-xs leading-relaxed text-ink-3">
-                    Test accounts are for development and pilot servers only.
-                  </p>
-                </>
               )}
             </div>
           </div>

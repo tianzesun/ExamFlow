@@ -16,7 +16,9 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "font-src 'self'",
-      `connect-src 'self' ${apiUrl}`,
+      // UTORid sign-in: MSAL fetches tokens from Microsoft Entra ID and may renew them in a hidden frame.
+      `connect-src 'self' ${apiUrl} https://login.microsoftonline.com`,
+      "frame-src https://login.microsoftonline.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

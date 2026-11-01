@@ -18,10 +18,18 @@ def get_current_user(
             detail="Not authenticated",
         )
 
-    # In Phase 1, we use development tokens
-    # In production, this would validate OIDC tokens
     from app.auth.dev_auth import verify_dev_token
-    user = verify_dev_token(credentials.credentials, db)
+    from app.auth.entra import NoExamFlowRoleError, looks_like_jwt, verify_entra_token
+
+    token = credentials.credentials
+    try:
+        # UTORid sign-ins carry an Entra access token (a JWT); test accounts a short fixed token.
+        user = verify_entra_token(token, db) if looks_like_jwt(token) else verify_dev_token(token, db)
+    except NoExamFlowRoleError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your UTORid doesn't have access to ExamFlow yet. Ask the exam office to give you a role.",
+        ) from None
 
     if not user:
         raise HTTPException(
