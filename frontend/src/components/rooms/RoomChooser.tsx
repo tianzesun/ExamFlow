@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Armchair, Building2, Check, DoorOpen, Search, Users } from "lucide-react";
 import { getRoomLayout, type Room, type RoomLayout } from "@/lib/api/rooms";
-import { errorReference } from "@/lib/api/client";
+import { ApiError, errorReference } from "@/lib/api/client";
 import { SPACING_OPTIONS, seatAllowed } from "@/lib/seating-options";
 import { formatNumber, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -102,7 +102,8 @@ export function RoomChooser({
       setQuery("");
       onClose();
     } catch (err) {
-      toast.error(moving
+      // A refusal (e.g. the room is the accommodation room) explains itself; anything else gets a reference.
+      toast.error(err instanceof ApiError && err.status === 400 ? err.message : moving
         ? `The students couldn't be moved to ${current.building} ${current.room_number}. Try again.${errorReference(err)}`
         : `${current.building} ${current.room_number} couldn't be added. Try again.${errorReference(err)}`);
     } finally {

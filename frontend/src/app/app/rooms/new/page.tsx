@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/api/client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -37,7 +38,7 @@ export default function NewRoomPage() {
       // Straight to the layout, where pillars and broken seats can be marked.
       router.push(`/app/rooms/${room.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create room");
+      setError(errorMessage(err, "The room couldn't be created. Try again in a moment."));
     } finally {
       setLoading(false);
     }

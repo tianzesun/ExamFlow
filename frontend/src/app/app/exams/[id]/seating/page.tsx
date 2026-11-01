@@ -34,6 +34,7 @@ import {
 import { notifyExamChanged } from "@/components/exam/workspace";
 import { FILL_OPTIONS, FRONT_ROW_OPTIONS, ORDER_OPTIONS, SPACING_OPTIONS, VERSION_OPTIONS } from "@/lib/seating-options";
 import { RoomChooser } from "@/components/rooms/RoomChooser";
+import { errorMessage } from "@/lib/api/client";
 type PreviewData = AssignmentPreview;
 
 const DEFAULT_RULES: SeatingRules = {
@@ -105,7 +106,7 @@ export default function SeatingPage() {
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(errorMessage(err, "Seating could not be loaded. Try again in a moment."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -146,7 +147,7 @@ export default function SeatingPage() {
       notifyExamChanged();
       fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove room");
+      setError(errorMessage(err, "The room couldn't be removed. Try again in a moment."))
     }
   };
 
@@ -161,7 +162,7 @@ export default function SeatingPage() {
       if (preview) setPreview(await previewAssignment(examId).catch(() => null));
     } catch (err) {
       setRules(previous);
-      setError(err instanceof Error ? err.message : "The seating rules couldn't be saved");
+      setError(errorMessage(err, "The seating rules couldn't be saved. Try again in a moment."));
     } finally {
       setSavingRules(false);
     }
@@ -175,7 +176,7 @@ export default function SeatingPage() {
       const p = await previewAssignment(examId);
       setPreview(p);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Preview failed");
+      setError(errorMessage(err, "The preview couldn't be made. Try again in a moment."));
     } finally {
       setPreviewing(false);
     }
@@ -190,7 +191,7 @@ export default function SeatingPage() {
       setPreview(null);
       fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Confirmation failed");
+      setError(errorMessage(err, "Seating couldn't be saved. Try again in a moment."));
     } finally {
       setConfirming(false);
     }
@@ -205,7 +206,7 @@ export default function SeatingPage() {
       notifyExamChanged();
       fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Regeneration failed");
+      setError(errorMessage(err, "Seating couldn't be made again. Try again in a moment."));
     } finally {
       setRegenerating(false);
     }
@@ -219,7 +220,7 @@ export default function SeatingPage() {
       notifyExamChanged();
       fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not seat the remaining students");
+      setError(errorMessage(err, "The remaining students couldn't be seated. Try again in a moment."));
     } finally {
       setSeatingRemaining(false);
     }

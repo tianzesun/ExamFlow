@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/api/client";
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -116,7 +117,7 @@ export default function SeatMapPage() {
         if (!cancelled) setExam(e);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(errorMessage(err, "The seat map could not be loaded. Try again in a moment."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -231,7 +232,7 @@ export default function SeatMapPage() {
       setSelectedSeatId(targetSeatId);
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not move student");
+      toast.error(errorMessage(err, "The student couldn't be moved. Try again in a moment."));
     } finally {
       setBusy(false);
     }
@@ -248,7 +249,7 @@ export default function SeatMapPage() {
       setCarry(null);
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not unassign student");
+      toast.error(errorMessage(err, "The student couldn't be unseated. Try again in a moment."));
     } finally {
       setBusy(false);
     }

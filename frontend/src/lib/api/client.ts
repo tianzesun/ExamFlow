@@ -38,6 +38,13 @@ export function errorReference(err: unknown): string {
   return err instanceof ApiError && err.requestId ? ` (Ref: ${err.requestId.slice(0, 8)})` : "";
 }
 
+/** The server's explanation when it refused a request (400, 409), otherwise a generic message with the reference. */
+export function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError && (err.status === 400 || err.status === 409)
+    ? err.message
+    : `${fallback}${errorReference(err)}`;
+}
+
 /** Authenticated JSON fetch shared by all API modules. */
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const hasBody = options?.body !== undefined && options?.body !== null;

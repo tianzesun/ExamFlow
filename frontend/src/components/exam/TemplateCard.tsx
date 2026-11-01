@@ -102,7 +102,10 @@ export function TemplateCard({
       e.preventDefault();
       setDragOver(letter);
     },
-    onDragLeave: () => setDragOver(null),
+    // Moving over the text inside the row also fires dragleave; only clear once the pointer leaves the row.
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(null);
+    },
     onDrop: (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(null);

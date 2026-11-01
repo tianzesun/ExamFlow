@@ -82,3 +82,13 @@ def test_the_accommodation_room_follows_its_students():
     rules = client.get(f"/api/exams/{exam_id}/assignments/rules", headers=ADMIN_HEADERS).json()
     assert rules["accommodation_room_id"] == new
     assert _move(exam_id, first, new).status_code == 400  # others can't join it
+
+
+def test_accommodation_students_cant_join_a_room_with_other_students():
+    exam_id, first, second = _seated_exam()
+    client.patch(f"/api/rooms/{first}", json={"capacity": 4}, headers=ADMIN_HEADERS)
+    _rules(exam_id, accommodation_room_id=second)
+    before = _who_where(exam_id)
+    r = _move(exam_id, second, first)
+    assert r.status_code == 400 and "without accommodations" in r.json()["detail"]
+    assert _who_where(exam_id) == before

@@ -24,7 +24,7 @@ import {
 
 import { notifyExamChanged } from "@/components/exam/workspace";
 import { AccommodationDialog } from "@/components/exam/AccommodationDialog";
-import { errorReference } from "@/lib/api/client";
+import { errorMessage, errorReference } from "@/lib/api/client";
 export default function RosterPage() {
   const params = useParams();
   const { user } = useAuth();
@@ -65,7 +65,7 @@ export default function RosterPage() {
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(errorMessage(err, "The students could not be loaded. Try again in a moment."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -86,7 +86,7 @@ export default function RosterPage() {
       const result = await previewRosterImport(examId, importFile);
       setPreview(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Preview failed");
+      setError(errorMessage(err, "The file couldn't be read. Check it is a CSV and try again."));
     }
   };
 

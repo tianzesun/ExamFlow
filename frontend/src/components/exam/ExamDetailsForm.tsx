@@ -42,6 +42,7 @@ export function ExamDetailsForm({ exam, papers, onSaved, onCancel }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (Object.keys(changes).length === 0) return onCancel();
+    if (!form.exam_name.trim()) return setError("Give the exam a name.");
     setSaving(true);
     setError("");
     try {

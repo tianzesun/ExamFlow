@@ -118,6 +118,15 @@ def move_room(db: Session, exam_id: UUID, from_room_id: UUID, to_room_id: UUID, 
     moving.sort(key=lambda pair: (pair[1].row_number or 0, pair[1].column_number or 0, pair[1].seat_code))
 
     added = not db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == to_room_id).first()
+    if rules.accommodation_room_id == from_room_id and not added and (
+        db.query(ExamAssignment.id).join(Seat, Seat.id == ExamAssignment.seat_id)
+        .filter(ExamAssignment.exam_id == exam_id, Seat.room_id == to_room_id).first()
+    ):
+        # The new room becomes the accommodation room, which only students with accommodations may use.
+        raise ValueError(
+            f"{_room(target)} already has students without accommodations. Choose an empty room for the "
+            "accommodation room's students."
+        )
     if added:
         db.add(ExamRoom(exam_id=exam_id, room_id=to_room_id))
         db.flush()
