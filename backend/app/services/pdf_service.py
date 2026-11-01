@@ -25,6 +25,7 @@ from app.models.room import Room
 from app.models.seat import Seat
 from app.models.student import Student
 from app.services import assignment_service, paper_state
+from app.services.paper_state import exam_title
 from app.services.settings_service import PaperStamp, get_system_settings
 from app.utils import utcnow
 
@@ -142,8 +143,7 @@ def _stamp_first_page(page: pymupdf.Page, exam: Exam, student: Student, room: Ro
         write_text(page, pymupdf.Rect(badge.x0, badge.y0 + 14, badge.x1, badge.y1 - 2), paper_version, 26,
                    bold=True, align="center", colour="#fff")
         text_right = badge.x0 - 10
-    write_text(page, pymupdf.Rect(MARGIN, top, text_right, top + 16), f"{exam.course_code} — {exam.exam_name}", 9,
-               grey=True)
+    write_text(page, pymupdf.Rect(MARGIN, top, text_right, top + 16), exam_title(exam), 9, grey=True)
     main, details = _who(student, stamp)
     write_text(page, pymupdf.Rect(MARGIN, top + 14, text_right, top + 40), main, 15, bold=True)
     if details:
@@ -406,6 +406,7 @@ def generate_all_exams(
                 generation_version=new_version,
                 version_shown=show_version,
                 stamp_style=stamp.fingerprint(),
+                exam_title=exam_title(exam),
                 qr_token=qr_token,
                 qr_generated_at=utcnow(),
                 created_by=user_id,
@@ -586,7 +587,7 @@ def build_print_file(
             in_room = [p for p in papers if p[3].id == room.id]
             pad_to_sheet()
             divider = out.new_page(width=612, height=792)
-            write_text(divider, pymupdf.Rect(72, 260, 540, 300), f"{exam.course_code} — {exam.exam_name}", 16,
+            write_text(divider, pymupdf.Rect(72, 260, 540, 300), exam_title(exam), 16,
                        bold=True, align="center")
             write_text(divider, pymupdf.Rect(72, 310, 540, 370), f"{room.building} {room.room_number}", 36,
                        bold=True, align="center")

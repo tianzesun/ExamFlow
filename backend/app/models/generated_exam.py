@@ -43,6 +43,9 @@ class GeneratedExam(Base):
     # What the stamp showed (settings_service.PaperStamp.fingerprint); empty on papers made before it was recorded,
     # which used the default.
     stamp_style = Column(String(50), nullable=True)
+    # The "course — exam name" line printed at the top, so renaming the exam dates the paper. Empty on papers
+    # made before it was recorded.
+    exam_title = Column(String(310), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

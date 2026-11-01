@@ -53,6 +53,14 @@ export function formatTime(t: string | null | undefined, fallback = ""): string 
   return Number.isNaN(d.getTime()) ? fallback : timeFmt.format(d);
 }
 
+/** "11:00" from a start like "09:00" and a length in minutes; empty until both are given. */
+export function endTime(start: string, minutes: number): string {
+  if (!start || !minutes) return "";
+  const [h, m] = start.split(":").map(Number);
+  const total = h * 60 + m + minutes;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 /** "Dec 26" for chart axes */
 export function formatMonth(v: DateInput): string {
   const d = toDate(v);

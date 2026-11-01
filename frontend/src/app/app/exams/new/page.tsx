@@ -8,7 +8,7 @@ import { createExam, getExamDefaults } from "@/lib/api/exams";
 import { getCourses } from "@/lib/api/courses";
 import { errorReference } from "@/lib/api/client";
 import type { Course } from "@/lib/types";
-import { formatDateLong, formatTime } from "@/lib/format";
+import { endTime, formatDateLong, formatTime } from "@/lib/format";
 import { Input, Select, Button, PageHeader, PageContainer } from "@/components";
 
 const NEXT_STEPS = [
@@ -17,13 +17,6 @@ const NEXT_STEPS = [
   { icon: FileText, title: "Exam papers", text: "Upload the paper and generate a copy per student." },
   { icon: Printer, title: "Exam day", text: "Print sign-in sheets and record attendance." },
 ];
-
-function endTime(start: string, minutes: number): string {
-  if (!start || !minutes) return "";
-  const [h, m] = start.split(":").map(Number);
-  const total = h * 60 + m + minutes;
-  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
 
 export default function NewExamPage() {
   // useSearchParams (for ?course_id= prefill) needs a Suspense boundary.

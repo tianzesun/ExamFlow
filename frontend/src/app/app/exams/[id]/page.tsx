@@ -14,7 +14,8 @@ import { Button } from "@/components/button";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { notifyExamChanged, useExamWorkspace, nextStep } from "@/components/exam/workspace";
-import { formatDate, formatDateLong, formatDateTime, formatNumber, formatTime, plural } from "@/lib/format";
+import { ExamDetailsForm } from "@/components/exam/ExamDetailsForm";
+import { endTime, formatDate, formatDateLong, formatDateTime, formatNumber, formatTime, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle, Archive, ArrowRight, Check, ChevronRight, DoorOpen, LayoutGrid, Pencil, StickyNote, Trash2, Undo2,
@@ -52,6 +53,7 @@ export default function ExamDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [notesDraft, setNotesDraft] = useState<string | null>(null);
+  const [editingDetails, setEditingDetails] = useState(false);
   const router = useRouter();
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
@@ -246,16 +248,36 @@ export default function ExamDetailPage() {
       <div className={cn("grid grid-cols-1 gap-6", hasRooms && "lg:grid-cols-3")}>
         {/* Details */}
         <Card>
-          <CardHeader>
-            <h2 className="text-sm font-semibold text-ink">Exam details</h2>
-            <p className="text-xs text-ink-3">Schedule and record information</p>
+          <CardHeader className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Exam details</h2>
+              <p className="text-xs text-ink-3">Schedule and record information</p>
+            </div>
+            {canEdit && exam.status !== "ARCHIVED" && !editingDetails && (
+              <Button variant="ghost" size="sm" onClick={() => setEditingDetails(true)}>
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </Button>
+            )}
           </CardHeader>
+          {editingDetails ? (
+            <ExamDetailsForm
+              exam={exam}
+              papers={progress?.generated_count ?? 0}
+              onSaved={(updated) => {
+                setExam(updated);
+                notifyExamChanged(updated);
+                setEditingDetails(false);
+              }}
+              onCancel={() => setEditingDetails(false)}
+            />
+          ) : (
           <dl className="divide-y divide-line px-5 text-sm">
             {[
               ["Course", <><span className="font-mono text-xs text-ink-2">{exam.course_code}</span> <span>{exam.course_name}</span></>],
               ["Term", `${exam.term} ${exam.academic_year}`],
               ["Date", formatDateLong(exam.exam_date)],
-              ["Start time", formatTime(exam.start_time, "—")],
+              ["Exam", exam.exam_name],
+              ["Time", `${formatTime(exam.start_time, "—")} – ${formatTime(endTime(exam.start_time.slice(0, 5), exam.duration_minutes))}`],
               ["Duration", `${exam.duration_minutes} min`],
               ["Created", formatDate(exam.created_at)],
               ["Last updated", formatDateTime(exam.updated_at)],
@@ -266,6 +288,7 @@ export default function ExamDetailPage() {
               </div>
             ))}
           </dl>
+          )}
           <div className="border-t border-line px-5 py-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">

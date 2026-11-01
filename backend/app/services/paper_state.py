@@ -2,9 +2,10 @@
 
 A paper stays valid (its QR code verifies) until it is replaced, but it is only
 up to date while the student sits in the seat printed on it, the template it
-was made from is still the active one for the student's paper version, and the stamp
-shows what Admin › Settings asks for. Seating changes and a new template therefore make
-just the affected papers out of date, and only those need generating and printing again.
+was made from is still the active one for the student's paper version, the stamp
+shows what Admin › Settings asks for, and the title is the exam's current one. Seating
+changes and a new template therefore make just the affected papers out of date, and only
+those need generating and printing again.
 """
 
 from uuid import UUID
@@ -47,6 +48,20 @@ def shows_version(db: Session, exam_id: UUID) -> bool:
     ).first() is not None
 
 
+def exam_title(exam: Exam) -> str:
+    """The line printed at the top of each paper, recorded on it so renaming the exam dates the paper."""
+    return f"{exam.course_code} — {exam.exam_name}"
+
+
+# The title the exam has now; papers from before it was recorded are taken to match.
+_title_matches = or_(
+    GeneratedExam.exam_title.is_(None),
+    select(Exam.id).where(
+        Exam.id == GeneratedExam.exam_id, GeneratedExam.exam_title == Exam.course_code + " — " + Exam.exam_name,
+    ).correlate(GeneratedExam).exists(),
+)
+
+
 # Correlated to the paper explicitly, so it still works in queries that also join seats or templates.
 # The student must still hold the seat printed on the paper, and the paper's template must be the
 # active upload for the version that seat now has.
@@ -60,6 +75,7 @@ _matches = (
         ExamTemplate.paper_version == ExamAssignment.paper_version,
         or_(GeneratedExam.version_shown.is_(None), GeneratedExam.version_shown == _shows_version),
         _stamp_matches,
+        _title_matches,
     )
     .correlate(GeneratedExam)
     .exists()

@@ -28,6 +28,12 @@ This document describes the complete workflow for exam administrators using Exam
 1. Review exam details on the exam page
 2. Verify date, time, and duration
 3. Confirm course information is correct
+4. To change the name, term, date, time or duration, choose **Edit** on the Exam details card. Changes are recorded
+   in Admin › Activity.
+   - Moving the date or time keeps everyone's seat. If another exam then uses the same seats at the same time,
+     ExamFlow says so straight away, and the readiness check blocks printing until those students are moved.
+   - Renaming the exam makes generated papers out of date, because the name is printed on them. Generate them
+     again on Exam papers before printing.
 
 ### 3. Import Student Roster
 

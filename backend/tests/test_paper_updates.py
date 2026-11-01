@@ -171,3 +171,19 @@ def test_print_only_new_papers():
     assert r.status_code == 200 and "-new" in r.headers["content-disposition"]
     doc = pymupdf.open(stream=r.content)
     assert len(doc) == 1 + 1 and numbers[0] in doc[1].get_text()
+
+
+def test_renaming_the_exam_makes_every_paper_out_of_date():
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    # Moving the exam keeps the papers: the date and time aren't printed on them.
+    r = client.patch(f"/api/exams/{exam_id}", json={"exam_date": "2026-12-11", "start_time": "14:00:00"},
+                     headers=ADMIN_HEADERS)
+    assert r.status_code == 200 and _status(exam_id)["outdated"] == 0
+
+    assert client.patch(f"/api/exams/{exam_id}", json={"exam_name": "Final (rescheduled)"},
+                        headers=ADMIN_HEADERS).status_code == 200
+    assert _status(exam_id)["outdated"] == 2
+    _update_papers(exam_id)
+    assert _status(exam_id)["up_to_date"] == 2
+    r = client.get(f"/api/exams/{exam_id}/generated/print", headers=ADMIN_HEADERS)
+    assert "Final (rescheduled)" in " ".join(pymupdf.open(stream=r.content)[0].get_text().split())
