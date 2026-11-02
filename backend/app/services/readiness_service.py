@@ -84,6 +84,19 @@ def validate_exam_readiness(db: Session, exam_id: UUID) -> ReadinessResult:
             count=len(clashes),
         ))
 
+    # 3c. Accommodations given or taken away after seating leave students in the wrong room.
+    from app.services.assignment_service import wrong_room_for_accommodations
+
+    wrong_room = len(wrong_room_for_accommodations(db, exam_id))
+    if wrong_room:
+        checks.append(CheckResult(
+            name="accommodation_rooms",
+            status="FAIL",
+            message=f"{wrong_room} {'student is' if wrong_room == 1 else 'students are'} in the wrong room for "
+                    "their accommodations. Move them on the Seats step.",
+            count=wrong_room,
+        ))
+
     active = {
         t.paper_version: t for t in db.query(ExamTemplate).filter(
             ExamTemplate.exam_id == exam_id,

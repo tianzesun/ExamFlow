@@ -166,8 +166,9 @@ def test_every_printed_paper_names_the_students_seat():
     big_room = next(r for r in rooms if r["id"] == big["id"])
     empty = next(s for s in big_room["seats"] if s["is_usable"] and not s["occupant"])
     mover, a, b = first[3], first[4], first[5]
-    ok(client.post(f"/api/exams/{eid}/assignments/move", json={"student_id": truth[mover][6]["student_id"],
-                                                               "seat_id": empty["id"]}, headers=H))
+    # The spacing keeps that seat empty, so staff confirm the move.
+    ok(client.post(f"/api/exams/{eid}/assignments/move", headers=H, json={
+        "student_id": truth[mover][6]["student_id"], "seat_id": empty["id"], "ignore_rules": True}))
     ok(client.post(f"/api/exams/{eid}/assignments/move", json={"student_id": truth[a][6]["student_id"],
                                                                "seat_id": truth[b][5]}, headers=H))
     status = ok(client.get(f"/api/exams/{eid}/generated/status", headers=H))

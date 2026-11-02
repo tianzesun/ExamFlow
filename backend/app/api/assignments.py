@@ -25,6 +25,11 @@ class AssignRequest(BaseModel):
     seat_id: UUID
 
 
+class MoveRequest(AssignRequest):
+    # Staff confirmed a move that breaks the exam's seating rules.
+    ignore_rules: bool = False
+
+
 class ExamRoomRequest(BaseModel):
     room_id: UUID
 
@@ -52,6 +57,7 @@ class AssignmentSummaryResponse(BaseModel):
     unused_seats: int
     rooms_used: int
     room_details: list[dict]
+    wrong_room_accommodations: int
 
 
 class AssignmentListResponse(BaseModel):
@@ -119,6 +125,21 @@ def move_room(
         result = assignment_service.move_room(db, exam_id, room_id, data.room_id, user.id)
     except LookupError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    sync_exam_status(db, exam_id, user.id)
+    return result
+
+
+@router.post("/accommodation-rooms/fix")
+def fix_accommodation_rooms(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Move students in the wrong room for their accommodations to the right one."""
+    try:
+        result = assignment_service.fix_accommodation_rooms(db, exam_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     sync_exam_status(db, exam_id, user.id)
@@ -243,12 +264,16 @@ def list_unassigned(
 @router.post("/move")
 def move_student(
     exam_id: UUID,
-    data: AssignRequest,
+    data: MoveRequest,
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
     try:
-        result = assignment_service.move_student(db, exam_id, data.student_id, data.seat_id, user.id)
+        result = assignment_service.move_student(
+            db, exam_id, data.student_id, data.seat_id, user.id, ignore_rules=data.ignore_rules
+        )
+    except assignment_service.SeatingRuleError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     sync_exam_status(db, exam_id, user.id)

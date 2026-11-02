@@ -34,6 +34,7 @@ const CHECK_LABELS: Record<string, string> = {
   rooms: "Rooms configured",
   seating: "Seating assigned",
   seat_clashes: "Seats shared with another exam",
+  accommodation_rooms: "Accommodation room",
   template: "Exam paper uploaded",
   documents: "Papers generated",
   qr: "QR codes ready",

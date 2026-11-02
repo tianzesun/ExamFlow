@@ -25,6 +25,8 @@ export interface AssignmentSummary {
   unused_seats: number;
   rooms_used: number;
   room_details: { room_id: string; building: string; room_number: string; total_seats: number; used_seats: number; available_seats: number }[];
+  /** Seated students in the wrong room for their accommodations (given or removed after seating). */
+  wrong_room_accommodations: number;
 }
 
 export interface AssignmentListResponse {
@@ -122,6 +124,11 @@ export async function seatRemainingStudents(examId: string): Promise<{ assigned:
   return fetchApi(`/api/exams/${examId}/assignments/seat-remaining`, { method: "POST" });
 }
 
+/** Move just the students in the wrong room for their accommodations to the right one. */
+export async function fixAccommodationRooms(examId: string): Promise<{ moved: number }> {
+  return fetchApi(`/api/exams/${examId}/assignments/accommodation-rooms/fix`, { method: "POST" });
+}
+
 export async function getAssignments(examId: string, opts?: { query?: string; room_id?: string; page?: number; page_size?: number }): Promise<AssignmentListResponse> {
   const params = new URLSearchParams();
   if (opts?.query) params.set("query", opts.query);
@@ -192,14 +199,18 @@ export async function getUnassignedStudents(examId: string): Promise<{ students:
   return fetchApi(`/api/exams/${examId}/assignments/unassigned`);
 }
 
-/** Seat a student. Empty seat: assign or move. Occupied seat: swap the two students. */
+/**
+ * Seat a student. Empty seat: assign or move. Occupied seat: swap the two students.
+ * A move that breaks the exam's seating rules is refused with 409 and the reason, unless ignoreRules is set.
+ */
 export async function moveStudent(
   examId: string,
   studentId: string,
   seatId: string,
+  ignoreRules = false,
 ): Promise<{ action: "assigned" | "moved" | "swapped" | "unchanged" }> {
   return fetchApi(`/api/exams/${examId}/assignments/move`, {
     method: "POST",
-    body: JSON.stringify({ student_id: studentId, seat_id: seatId }),
+    body: JSON.stringify({ student_id: studentId, seat_id: seatId, ignore_rules: ignoreRules }),
   });
 }

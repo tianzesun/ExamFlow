@@ -29,6 +29,8 @@ class AssignmentSummary:
     unused_seats: int
     rooms_used: int
     room_details: list[dict]
+    # Seated students whose accommodations don't match their room (see wrong_room_for_accommodations).
+    wrong_room_accommodations: int = 0
 
 
 # ── Exam Rooms ──────────────────────────────────────────────
@@ -240,6 +242,74 @@ def save_rules(db: Session, exam_id: UUID, rules: SeatingRules, user_id: UUID, r
 
 def needs_accommodation(es: ExamStudent) -> bool:
     return (es.extra_time_minutes or 0) > 0 or bool((es.accommodation_notes or "").strip())
+
+
+def _accommodation_room(db: Session, exam_id: UUID, rules: SeatingRules) -> UUID | None:
+    """The exam's accommodation room, or None when there is none or it was removed from the exam."""
+    room_id = rules.accommodation_room_id
+    if room_id and db.query(ExamRoom).filter(ExamRoom.exam_id == exam_id, ExamRoom.room_id == room_id).first():
+        return room_id
+    return None
+
+
+def wrong_room_for_accommodations(db: Session, exam_id: UUID) -> list[tuple[ExamAssignment, Seat]]:
+    """Seated students in the wrong room for their accommodations: given accommodations after seating but
+    outside the accommodation room, or in it without accommodations (theirs were removed)."""
+    room_id = _accommodation_room(db, exam_id, get_rules(db, exam_id))
+    if not room_id:
+        return []
+    rows = (
+        db.query(ExamAssignment, ExamStudent, Seat)
+        .join(ExamStudent, ExamStudent.id == ExamAssignment.exam_student_id)
+        .join(Seat, Seat.id == ExamAssignment.seat_id)
+        .filter(ExamAssignment.exam_id == exam_id)
+        .all()
+    )
+    return [(a, seat) for a, es, seat in rows if needs_accommodation(es) != (seat.room_id == room_id)]
+
+
+def fix_accommodation_rooms(db: Session, exam_id: UUID, user_id: UUID) -> dict:
+    """Move just the students in the wrong room for their accommodations, each to the first free seat in the
+    right room under the exam's seating rules. Nobody else moves, so only their papers need reprinting."""
+    _lock_exam_rooms(db, exam_id)
+    rules = get_rules(db, exam_id)
+    room_id = _accommodation_room(db, exam_id, rules)
+    wrong = wrong_room_for_accommodations(db, exam_id)
+    if not wrong:
+        raise ValueError("Everyone is already in the right room for their accommodations")
+    wrong.sort(key=lambda pair: (pair[1].row_number or 0, pair[1].column_number or 0, pair[1].seat_code))
+
+    free = [seat for seat, _room in _free_seats(db, exam_id) if _usable(seat, rules)]
+    into_special = [seat for seat in free if seat.room_id == room_id]
+    into_regular = [seat for seat in free if seat.room_id != room_id]
+    to_special = [a for a, seat in wrong if seat.room_id != room_id]
+    to_regular = [a for a, seat in wrong if seat.room_id == room_id]
+    if len(to_special) > len(into_special):
+        raise ValueError(
+            f"The accommodation room has {_n(len(into_special), 'free seat')} for "
+            f"{_n(len(to_special), 'student')} with accommodations. Choose a larger room or reduce the spacing."
+        )
+    if len(to_regular) > len(into_regular):
+        raise ValueError(
+            f"The other rooms have {_n(len(into_regular), 'free seat')} for {_n(len(to_regular), 'student')} "
+            "without accommodations. Add a room or reduce the spacing."
+        )
+
+    version = (db.query(func.max(ExamAssignment.version)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0) + 1
+    moves = list(zip(to_special, into_special)) + list(zip(to_regular, into_regular))
+    for assignment, seat in moves:
+        assignment.seat_id = seat.id
+        assignment.version = version
+        assignment.paper_version = version_for_seat(seat, rules)
+    db.add(AuditLog(
+        user_id=user_id,
+        action="ACCOMMODATION_SEATS_FIXED",
+        entity_type="exam",
+        entity_id=exam_id,
+        new_values={"into_accommodation_room": len(to_special), "out_of_accommodation_room": len(to_regular)},
+    ))
+    db.commit()
+    return {"moved": len(moves)}
 
 
 def _n(count: int, word: str) -> str:
@@ -642,6 +712,7 @@ def get_summary(db: Session, exam_id: UUID) -> AssignmentSummary:
         unused_seats=total_usable_seats - assigned,
         rooms_used=rooms_used,
         room_details=room_details,
+        wrong_room_accommodations=len(wrong_room_for_accommodations(db, exam_id)),
     )
 
 
@@ -871,8 +942,33 @@ def get_unassigned_students(db: Session, exam_id: UUID) -> list[dict]:
     ]
 
 
-def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, user_id: UUID) -> dict:
-    """Put a student in a seat. Empty seat: assign or move. Occupied seat: swap the two students."""
+class SeatingRuleError(ValueError):
+    """A manual move would break the exam's seating rules; staff may confirm it anyway."""
+
+
+def _rule_breaks(db: Session, exam_id: UUID, rules: SeatingRules, es: ExamStudent, seat: Seat) -> list[str]:
+    """What seating es in seat breaks: the accommodation room, the spacing, or the empty front row."""
+    name = db.get(Student, es.student_id).full_name
+    breaks = []
+    room_id = _accommodation_room(db, exam_id, rules)
+    if room_id and needs_accommodation(es) and seat.room_id != room_id:
+        breaks.append(f"{name} has accommodations and sits in the accommodation room, {_room(db.get(Room, room_id))}.")
+    if room_id and not needs_accommodation(es) and seat.room_id == room_id:
+        breaks.append(f"{_room(db.get(Room, room_id))} is the accommodation room, and {name} has no accommodations.")
+    if rules.front_row_empty and seat.row_number == 1:
+        breaks.append(f"Seat {seat.seat_code} is in the front row, which this exam keeps empty.")
+    elif not _seat_allowed(seat, rules.spacing):
+        breaks.append(f"Seat {seat.seat_code} is kept empty by this exam's spacing.")
+    return breaks
+
+
+def move_student(
+    db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, user_id: UUID, ignore_rules: bool = False
+) -> dict:
+    """Put a student in a seat. Empty seat: assign or move. Occupied seat: swap the two students.
+
+    Raises SeatingRuleError when the move breaks the exam's seating rules, unless ignore_rules is set.
+    """
     exam_student = db.query(ExamStudent).filter(
         ExamStudent.exam_id == exam_id,
         ExamStudent.student_id == student_id,
@@ -903,6 +999,15 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
         raise ValueError("Seat is occupied. Choose an empty seat or unassign that student first.")
 
     rules = get_rules(db, exam_id)
+    if not ignore_rules:
+        breaks = _rule_breaks(db, exam_id, rules, exam_student, seat)
+        if occupant:
+            # The student in the seat moves to the one being left.
+            breaks += _rule_breaks(
+                db, exam_id, rules, db.get(ExamStudent, occupant.exam_student_id), db.get(Seat, current.seat_id)
+            )
+        if breaks:
+            raise SeatingRuleError(" ".join(breaks))
     new_version = (db.query(func.max(ExamAssignment.version)).filter(
         ExamAssignment.exam_id == exam_id
     ).scalar() or 0) + 1
@@ -957,7 +1062,7 @@ def move_student(db: Session, exam_id: UUID, student_id: UUID, seat_id: UUID, us
         entity_type="exam_assignment",
         entity_id=current.id,
         old_values=old_values or None,
-        new_values=new_values,
+        new_values={**new_values, "rules_overridden": True} if ignore_rules else new_values,
     ))
     db.commit()
     return {"action": action}

@@ -199,3 +199,104 @@ def test_front_row_counts_when_seats_run_short():
     _rules(exam_id, front_row_empty=True)
     r = client.post(f"/api/exams/{exam_id}/assignments/preview", headers=ADMIN_HEADERS)
     assert r.status_code == 400 and "front row empty" in r.json()["detail"]
+
+
+# ── Accommodations changed after seating, and manual moves against the rules ──
+
+def _unflag(exam_id: str, student_number: str) -> None:
+    roster = client.get(f"/api/exams/{exam_id}/roster", headers=ADMIN_HEADERS).json()
+    entry = next(s for s in roster["students"] if s["student_number"] == student_number)
+    assert client.put(
+        f"/api/exams/{exam_id}/roster/{entry['student_id']}/accommodation",
+        json={"extra_time_minutes": 0, "accommodation_notes": None},
+        headers=ADMIN_HEADERS,
+    ).status_code == 200
+
+
+def _wrong_room(exam_id: str) -> int:
+    return client.get(f"/api/exams/{exam_id}/assignments/summary", headers=ADMIN_HEADERS).json()[
+        "wrong_room_accommodations"
+    ]
+
+
+def _seated_with_quiet_room(student_count: int = 4) -> tuple[str, dict, list[str]]:
+    """Seated exam with an accommodation room; the third student has accommodations."""
+    exam_id, _, numbers = _create_exam_with_students(student_count=student_count, capacity=10)
+    quiet = _create_room(capacity=5)
+    client.post(f"/api/exams/{exam_id}/assignments/rooms", json={"room_id": quiet["id"]}, headers=ADMIN_HEADERS)
+    _flag(exam_id, numbers[2])
+    _rules(exam_id, accommodation_room_id=quiet["id"])
+    _confirm(exam_id)
+    return exam_id, quiet, numbers
+
+
+def test_accommodations_changed_after_seating_are_flagged_and_fixed():
+    exam_id, quiet, numbers = _seated_with_quiet_room()
+    before = _seats(exam_id)
+    assert _wrong_room(exam_id) == 0
+
+    _flag(exam_id, numbers[0])  # accommodations given late
+    _unflag(exam_id, numbers[2])  # and taken away
+    assert _wrong_room(exam_id) == 2
+    check = next(c for c in client.get(f"/api/exams/{exam_id}/readiness", headers=ADMIN_HEADERS).json()["checks"]
+                 if c["name"] == "accommodation_rooms")
+    assert check["status"] == "FAIL" and check["count"] == 2
+
+    r = client.post(f"/api/exams/{exam_id}/assignments/accommodation-rooms/fix", headers=ADMIN_HEADERS)
+    assert r.status_code == 200 and r.json() == {"moved": 2}
+    after = _seats(exam_id)
+    assert after[numbers[0]][0] == quiet["building"] and after[numbers[2]][0] != quiet["building"]
+    assert all(after[n] == before[n] for n in (numbers[1], numbers[3]))  # nobody else moves
+    assert _wrong_room(exam_id) == 0
+    r = client.post(f"/api/exams/{exam_id}/assignments/accommodation-rooms/fix", headers=ADMIN_HEADERS)
+    assert r.status_code == 400
+
+
+def test_fixing_accommodation_rooms_reports_a_full_room():
+    exam_id, quiet, numbers = _seated_with_quiet_room()
+    for n in (numbers[0], numbers[1], numbers[3]):
+        _flag(exam_id, n)
+    _rules(exam_id, accommodation_room_id=quiet["id"], spacing="every_other_seat_and_row")  # 1 seat in 4
+    r = client.post(f"/api/exams/{exam_id}/assignments/accommodation-rooms/fix", headers=ADMIN_HEADERS)
+    assert r.status_code == 400 and "accommodation room has" in r.json()["detail"]
+
+
+def _seat_id(exam_id: str, building: str, code: str) -> str:
+    rooms = client.get(f"/api/exams/{exam_id}/assignments/seat-map", headers=ADMIN_HEADERS).json()["rooms"]
+    return next(s["id"] for r in rooms if r["building"] == building for s in r["seats"] if s["seat_code"] == code)
+
+
+def _student_id(exam_id: str, student_number: str) -> str:
+    roster = client.get(f"/api/exams/{exam_id}/roster", headers=ADMIN_HEADERS).json()
+    return next(s["student_id"] for s in roster["students"] if s["student_number"] == student_number)
+
+
+def _move(exam_id: str, student_number: str, seat_id: str, ignore_rules: bool = False):
+    return client.post(
+        f"/api/exams/{exam_id}/assignments/move",
+        json={"student_id": _student_id(exam_id, student_number), "seat_id": seat_id, "ignore_rules": ignore_rules},
+        headers=ADMIN_HEADERS,
+    )
+
+
+def test_moving_someone_into_the_accommodation_room_asks_first():
+    exam_id, quiet, numbers = _seated_with_quiet_room()
+    free_quiet_seat = _seat_id(exam_id, quiet["building"], "A05")
+    r = _move(exam_id, numbers[0], free_quiet_seat)
+    assert r.status_code == 409 and "is the accommodation room" in r.json()["detail"]
+    assert _seats(exam_id)[numbers[0]][0] != quiet["building"]  # nothing moved
+
+    assert _move(exam_id, numbers[0], free_quiet_seat, ignore_rules=True).status_code == 200
+    assert _seats(exam_id)[numbers[0]] == (quiet["building"], "A05")
+    assert _wrong_room(exam_id) == 1
+
+
+def test_moving_into_a_seat_the_spacing_keeps_empty_asks_first():
+    exam_id, _, numbers = _create_exam_with_students(student_count=2, capacity=10)
+    _rules(exam_id, spacing="every_other_seat")
+    _confirm(exam_id)
+    building = _seats(exam_id)[numbers[0]][0]
+    r = _move(exam_id, numbers[0], _seat_id(exam_id, building, "A02"))
+    assert r.status_code == 409 and "spacing" in r.json()["detail"]
+    # A seat the spacing allows moves straight away.
+    assert _move(exam_id, numbers[0], _seat_id(exam_id, building, "A07")).status_code == 200

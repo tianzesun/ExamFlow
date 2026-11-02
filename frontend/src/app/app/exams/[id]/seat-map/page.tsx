@@ -1,6 +1,6 @@
 "use client";
 
-import { errorMessage } from "@/lib/api/client";
+import { ApiError, errorMessage } from "@/lib/api/client";
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -223,7 +223,15 @@ export default function SeatMapPage() {
     }
     setBusy(true);
     try {
-      const res = await moveStudent(examId, studentId, targetSeatId);
+      let res;
+      try {
+        res = await moveStudent(examId, studentId, targetSeatId);
+      } catch (err) {
+        // The move breaks the exam's seating rules; staff decide whether it's right anyway.
+        if (!(err instanceof ApiError && err.status === 409)) throw err;
+        if (!confirm(`${err.message}\n\nMove anyway?`)) return;
+        res = await moveStudent(examId, studentId, targetSeatId, true);
+      }
       notifyExamChanged();
       if (res.action === "swapped") toast.success(`Swapped ${name} and ${target.occupant?.full_name}`);
       else if (res.action === "moved") toast.success(`Moved ${name} to ${target.seat_code}`);

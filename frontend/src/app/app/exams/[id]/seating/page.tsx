@@ -9,6 +9,7 @@ import { getAllRooms, Room } from "@/lib/api/rooms";
 import {
   getExamRooms, addExamRoom, removeExamRoom, moveExamRoom,
   getAssignmentSummary, previewAssignment, confirmAssignment, regenerateAssignment, seatRemainingStudents,
+  fixAccommodationRooms,
   getAssignments, AssignmentSummary, Assignment, AssignmentPreview,
   getSeatingRules, saveSeatingRules, SeatingRules,
 } from "@/lib/api/assignments";
@@ -67,6 +68,7 @@ export default function SeatingPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [seatingRemaining, setSeatingRemaining] = useState(false);
+  const [fixingRooms, setFixingRooms] = useState(false);
   const [choosingRoom, setChoosingRoom] = useState(false);
   // The room whose students are moving to another, while its chooser is open.
   const [movingFrom, setMovingFrom] = useState<{ id: string; label: string; students: number } | null>(null);
@@ -226,12 +228,28 @@ export default function SeatingPage() {
     }
   };
 
+  const handleFixRooms = async () => {
+    setFixingRooms(true);
+    setError(null);
+    try {
+      const { moved } = await fixAccommodationRooms(examId);
+      toast.success(`${plural(moved, "student")} moved. Their papers need regenerating before printing.`);
+      notifyExamChanged();
+      fetchAll();
+    } catch (err) {
+      setError(errorMessage(err, "The students couldn't be moved. Try again in a moment."));
+    } finally {
+      setFixingRooms(false);
+    }
+  };
+
   const handleSearch = () => {
     setPage(1);
     if (searchQuery === appliedQuery) fetchAll();
     else setAppliedQuery(searchQuery);
   };
   const hasAssignments = (summary?.assigned_students ?? 0) > 0;
+  const wrongRoom = summary?.wrong_room_accommodations ?? 0;
   const unseated = summary?.unassigned_students ?? 0;
   // Existing seats keep their version after the rule changes, so show the column while any differ.
   const showVersions = rules.versions > 1 || assignments.some((a) => a.paper_version !== "A");
@@ -302,6 +320,31 @@ export default function SeatingPage() {
               Regenerate seating
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Accommodations changed after seating */}
+      {wrongRoom > 0 && (
+        <div role="alert" className="surface-card flex flex-col gap-4 border-warning/30 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">
+                {plural(wrongRoom, "student")} {wrongRoom === 1 ? "is" : "are"} in the wrong room for their accommodations
+              </h3>
+              <p className="mt-0.5 text-sm text-ink-2">
+                Accommodations were added or removed after seating. Move just these students: those with
+                accommodations to the accommodation room, the others out of it. Nobody else moves.
+              </p>
+            </div>
+          </div>
+          {canEdit && (
+            <Button className="shrink-0" onClick={handleFixRooms} disabled={fixingRooms} loading={fixingRooms}>
+              <ArrowRightLeft className="h-4 w-4" /> Move {wrongRoom === 1 ? "this student" : `these ${wrongRoom} students`}
+            </Button>
+          )}
         </div>
       )}
 
