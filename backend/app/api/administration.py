@@ -11,7 +11,7 @@ from app.models.exam import Exam
 from app.models.generated_exam import GeneratedExam
 from app.models.user import User
 from app.rate_limit import per_address, per_user
-from app.services import admin_service
+from app.services import admin_service, paper_state
 from app.services.access_service import require_exam_access
 from app.services.download_audit import record_download
 from app.services.exam_status_service import block_writes_to_archived_exam
@@ -58,9 +58,15 @@ def verify_qr(
     ))
     db.commit()
 
+    if ge.exam_student_id is None:
+        return {"valid": False, "message": "This paper was withdrawn and shouldn't be in use", "status": ge.status}
     if ge.status != "GENERATED":
         # The paper was replaced by a later generation; this copy shouldn't be in use.
         return {"valid": False, "message": "This paper has been replaced by a newer version", "status": ge.status}
+    if not paper_state.is_up_to_date(db, ge.id):
+        # The student moved, or the exam paper or room changed, and no new paper has been made yet.
+        return {"valid": False, "message": "This paper is out of date. Ask the exam office for a new one",
+                "status": "OUTDATED"}
 
     exam = db.query(Exam).filter(Exam.id == ge.exam_id).first()
     return {

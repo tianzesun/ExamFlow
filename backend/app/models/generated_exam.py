@@ -23,13 +23,17 @@ class GeneratedExam(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
-    exam_student_id = Column(UUID(as_uuid=True), ForeignKey("exam_students.id", ondelete="CASCADE"), nullable=False)
+    # Empty once the student is removed from the roster, kept only if the paper was printed so staff are told
+    # to take it out of the stack (roster_service.remove_from_roster).
+    exam_student_id = Column(UUID(as_uuid=True), ForeignKey("exam_students.id", ondelete="CASCADE"), nullable=True)
     exam_assignment_id = Column(UUID(as_uuid=True), ForeignKey("exam_assignments.id", ondelete="SET NULL"))
     exam_template_id = Column(UUID(as_uuid=True), ForeignKey("exam_templates.id", ondelete="SET NULL"))
     # The seat printed on the paper; once the student moves, the paper is out of date.
     seat_id = Column(UUID(as_uuid=True), ForeignKey("seats.id", ondelete="SET NULL"))
     # When the paper was first included in a print file.
     printed_at = Column(DateTime(timezone=True), nullable=True)
+    # When staff confirmed this printed copy was taken out of the stack after it was replaced or went out of date.
+    pulled_at = Column(DateTime(timezone=True), nullable=True)
     file_name = Column(String(500), nullable=False)
     storage_key = Column(String(1000), nullable=False)
     file_size = Column(BigInteger, nullable=False)

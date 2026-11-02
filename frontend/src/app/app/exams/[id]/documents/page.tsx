@@ -21,6 +21,7 @@ import { Table, TableHead, TableBody, Th, Td } from "@/components/table";
 import { PageLoader } from "@/components/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateCard } from "@/components/exam/TemplateCard";
+import { PullList } from "@/components/exam/PullList";
 import { notifyExamChanged } from "@/components/exam/workspace";
 import { errorReference, openFile } from "@/lib/api/client";
 import {
@@ -256,6 +257,8 @@ export default function DocumentsPage() {
           shrunk slightly so the student&apos;s details never cover your content.
         </p>
       </div>
+
+      {canEdit && <PullList examId={examId} count={paperStatus?.to_pull ?? 0} onChange={fetchData} />}
 
       <TemplateCard examId={examId} canEdit={canEdit} onChange={setTemplates} onUploaded={fetchData} versions={paperVersions} />
 

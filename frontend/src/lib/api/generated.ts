@@ -26,6 +26,20 @@ export interface PaperStatus {
   to_generate: number;
   /** Up-to-date papers not yet included in a print file */
   not_printed: number;
+  /** Printed copies to take out of the stacks (see getPapersToPull). */
+  to_pull: number;
+}
+
+/** A printed copy that is no longer the student's paper and must come out of the stack. */
+export interface PaperToPull {
+  id: string;
+  room: string;
+  room_id: string | null;
+  seat_code: string;
+  /** Empty when the student was removed from the roster. */
+  student_number: string | null;
+  full_name: string | null;
+  reason: "removed" | "out_of_date" | "replaced";
 }
 
 export interface GeneratedExamListResponse {
@@ -69,6 +83,15 @@ export async function startGenerationJob(examId: string, onlyChanged = true): Pr
 
 export async function getPaperStatus(examId: string): Promise<PaperStatus> {
   return fetchApi(`/api/exams/${examId}/generated/status`);
+}
+
+export async function getPapersToPull(examId: string): Promise<{ papers: PaperToPull[] }> {
+  return fetchApi(`/api/exams/${examId}/generated/pull`);
+}
+
+/** Record that these printed copies were taken out of the stacks. */
+export async function markPapersPulled(examId: string, ids: string[]): Promise<{ pulled: number }> {
+  return fetchApi(`/api/exams/${examId}/generated/pull`, { method: "POST", body: JSON.stringify({ ids }) });
 }
 
 export async function getLatestGenerationJob(examId: string): Promise<{ job: GenerationJob | null }> {

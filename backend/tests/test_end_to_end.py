@@ -184,8 +184,10 @@ def test_every_printed_paper_names_the_students_seat():
     assert (after[a][1], after[b][1]) == (truth[b][1], truth[a][1]), "swap"
 
 
-    # Besides the papers, the print file has one cover sheet per room, naming its seat range.
+    # Besides the papers, the print file has one cover sheet per room, naming its seat range, after a
+    # first page listing the three printed copies the moves replaced.
     _, doc = printed(eid)
     covers = [" ".join(p.get_text().split()) for p in doc
               if "Student number:" not in p.get_text() and " · Seat " not in p.get_text()]
-    assert len(covers) == 2 and all("in seat order" in c for c in covers), covers
+    assert covers[0].startswith("Take these old papers out") and "3 printed papers" in covers[0], covers[0]
+    assert len(covers) == 3 and all("in seat order" in c for c in covers[1:]), covers

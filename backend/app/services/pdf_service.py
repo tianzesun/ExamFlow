@@ -587,6 +587,21 @@ def build_print_file(
                          else "No up-to-date papers for this selection. Generate papers first.")
 
     out = pymupdf.open()
+    # Old copies still in the stacks come out before the new ones go in.
+    to_pull = paper_state.papers_to_pull(db, exam_id, room_id)
+    if to_pull:
+        from app.services.admin_service import table_pdf
+
+        sheet = table_pdf(
+            "Take these old papers out of the stacks first",
+            f"{exam_title(exam)} · {len(to_pull)} printed {'paper is' if len(to_pull) == 1 else 'papers are'} "
+            "no longer the student's paper. Remove and shred them, then tick them off on the Exam papers step.",
+            [("Room", 22), ("Seat", 10), ("Student", 38), ("Why", 30)],
+            [[p["room"], p["seat_code"], f"{p['full_name']} ({p['student_number']})" if p["full_name"] else "—",
+              paper_state.PULL_REASONS[p["reason"]]] for p in to_pull],
+        )
+        with pymupdf.open(stream=sheet, filetype="pdf") as pages:
+            out.insert_pdf(pages)
 
     def pad_to_sheet() -> None:
         if double_sided and len(out) % 2:

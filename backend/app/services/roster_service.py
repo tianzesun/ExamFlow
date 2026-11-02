@@ -224,8 +224,19 @@ def remove_from_roster(db: Session, exam_id: UUID, student_id: UUID, user_id: UU
     if not es:
         return False
 
-    # The papers go with the roster entry (cascade); their files hold the student's name, so remove them too.
-    paper_files = [key for (key,) in db.query(GeneratedExam.storage_key).filter(GeneratedExam.exam_student_id == es.id)]
+    # The papers go with the roster entry; their files hold the student's name, so remove them too. A printed
+    # paper keeps a record without the student, so staff are told to take it out of the stack.
+    papers = db.query(GeneratedExam).filter(GeneratedExam.exam_student_id == es.id).all()
+    paper_files = [ge.storage_key for ge in papers]
+    for ge in papers:
+        if ge.printed_at and not ge.pulled_at:
+            ge.exam_student_id = None
+            ge.exam_assignment_id = None
+            ge.status = "SUPERSEDED"
+            ge.file_name = "withdrawn.pdf"
+        else:
+            db.delete(ge)
+    db.flush()
     db.delete(es)
     db.add(AuditLog(
         user_id=user_id,

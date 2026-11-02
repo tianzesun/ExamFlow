@@ -151,6 +151,33 @@ def get_paper_status(
     return paper_state.paper_counts(db, exam_id)
 
 
+# ── Printed papers to take out of the stacks ───────────────
+
+class PulledRequest(BaseModel):
+    ids: list[UUID]
+
+
+@router.get("/api/exams/{exam_id}/generated/pull")
+def list_papers_to_pull(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Printed papers that were replaced, went out of date, or belong to a student removed from the roster."""
+    return {"papers": paper_state.papers_to_pull(db, exam_id)}
+
+
+@router.post("/api/exams/{exam_id}/generated/pull")
+def mark_papers_pulled(
+    exam_id: UUID,
+    data: PulledRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Staff took these printed papers out of the stacks."""
+    return {"pulled": paper_state.mark_pulled(db, exam_id, data.ids, user.id)}
+
+
 # ── Preview ─────────────────────────────────────────────────
 
 @router.get("/api/exams/{exam_id}/generated/preview", dependencies=[Depends(per_user("exam-files", 30, 600))])

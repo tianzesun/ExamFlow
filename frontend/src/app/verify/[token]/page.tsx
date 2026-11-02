@@ -66,7 +66,9 @@ export default function VerifyPaperPage() {
             <p className="mt-1 text-sm text-ink-2">
               {result.message === "Invalid token"
                 ? "This code doesn't match any paper issued by ExamFlow."
-                : "This copy was replaced by a newer version. Ask the exam office for the current paper."}
+                : result.message === "This paper has been replaced by a newer version"
+                ? "This copy was replaced by a newer version. Ask the exam office for the current paper."
+                : `${result.message}.`}
             </p>
           </>
         )}

@@ -8,20 +8,24 @@ changes and a new template therefore make just the affected papers out of date, 
 those need generating and printing again.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import Integer, cast, func, not_, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.audit_log import AuditLog
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_student import ExamStudent
 from app.models.exam_template import ExamTemplate
 from app.models.generated_exam import GeneratedExam
 from app.models.room import Room
 from app.models.seat import Seat
+from app.models.student import Student
 from app.models.system_setting import SystemSetting
 from app.services.settings_service import DEFAULT_STAMP, KEY
+from app.utils import utcnow
 
 # Papers carry a VERSION badge while the exam uses several versions, or anyone still sits at a seat
 # given another version. Switching between one and several versions therefore dates every paper.
@@ -120,6 +124,86 @@ def up_to_date_student_ids(db: Session, exam_id: UUID) -> set[UUID]:
     return {row[0] for row in rows}
 
 
+def is_up_to_date(db: Session, generated_exam_id: UUID) -> bool:
+    return db.query(GeneratedExam.id).filter(GeneratedExam.id == generated_exam_id, *UP_TO_DATE).first() is not None
+
+
+# A printed copy that is no longer the student's paper: replaced by a newer one, out of date and waiting
+# to be replaced, or its student was removed from the roster. Until staff take it out of the stack, it
+# could be handed out.
+_TO_PULL = (
+    GeneratedExam.printed_at.isnot(None),
+    GeneratedExam.pulled_at.is_(None),
+    or_(GeneratedExam.status != "GENERATED", not_(_matches)),
+)
+
+
+def papers_to_pull(db: Session, exam_id: UUID, room_id: UUID | None = None) -> list[dict]:
+    """Printed papers to take out of the stacks, room by room in seat order.
+
+    Only while the exam is still to come; afterwards the stacks are gone.
+    """
+    from app.services.admin_service import seat_order
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam or exam.status == "ARCHIVED" or (exam.exam_date and exam.exam_date < date.today()):
+        return []
+    q = (
+        db.query(GeneratedExam, Seat, Room, Student)
+        .outerjoin(Seat, Seat.id == GeneratedExam.seat_id)
+        .outerjoin(Room, Room.id == Seat.room_id)
+        .outerjoin(ExamStudent, ExamStudent.id == GeneratedExam.exam_student_id)
+        .outerjoin(Student, Student.id == ExamStudent.student_id)
+        .filter(GeneratedExam.exam_id == exam_id, *_TO_PULL)
+    )
+    if room_id:
+        q = q.filter(Seat.room_id == room_id)
+    rows = sorted(q.all(), key=lambda r: (
+        r[0].room_label or (room_label(r[2]) if r[2] else ""), seat_order(r[1]) if r[1] else (0, 0, ""),
+    ))
+    return [
+        {
+            "id": str(ge.id),
+            # What the paper shows, so it can be found in the stack.
+            "room": ge.room_label or (room_label(room) if room else ""),
+            "room_id": str(room.id) if room else None,
+            "seat_code": seat.seat_code if seat else "",
+            "student_number": student.student_number if student else None,
+            "full_name": student.full_name if student else None,
+            "reason": "removed" if ge.exam_student_id is None
+            else "out_of_date" if ge.status == "GENERATED" else "replaced",
+        }
+        for ge, seat, room, student in rows
+    ]
+
+
+PULL_REASONS = {
+    "removed": "Student removed from the roster",
+    "out_of_date": "Out of date; a new paper is needed",
+    "replaced": "Replaced by a newer paper",
+}
+
+
+def mark_pulled(db: Session, exam_id: UUID, ids: list[UUID], user_id: UUID) -> int:
+    """Record that these printed papers were taken out of the stacks."""
+    papers = db.query(GeneratedExam).filter(
+        GeneratedExam.exam_id == exam_id, GeneratedExam.id.in_(ids), *_TO_PULL
+    ).all()
+    now = utcnow()
+    for ge in papers:
+        ge.pulled_at = now
+    if papers:
+        db.add(AuditLog(
+            user_id=user_id,
+            action="PRINTED_PAPERS_PULLED",
+            entity_type="exam",
+            entity_id=exam_id,
+            new_values={"count": len(papers)},
+        ))
+    db.commit()
+    return len(papers)
+
+
 def paper_counts(db: Session, exam_id: UUID) -> dict:
     seated = db.query(func.count(ExamAssignment.id)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0
 
@@ -135,4 +219,6 @@ def paper_counts(db: Session, exam_id: UUID) -> dict:
         # Seated students without an up-to-date paper, whether theirs is out of date or missing.
         "to_generate": max(0, seated - up_to_date),
         "not_printed": count(*UP_TO_DATE, GeneratedExam.printed_at.is_(None)),
+        # Printed copies to take out of the stacks.
+        "to_pull": len(papers_to_pull(db, exam_id)),
     }

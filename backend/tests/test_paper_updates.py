@@ -163,14 +163,16 @@ def test_print_only_new_papers():
     numbers = sorted(_current_papers(exam_id))
     empty = next(s for s in _seat_map(exam_id)["seats"] if not s["occupant"])
     _move(exam_id, numbers[0], empty["id"])
-    # The moved student's old paper shows the wrong seat, so it's left out of every print file.
-    assert len(pymupdf.open(stream=_print(exam_id).content)) == 1 + 2
+    # The moved student's old paper shows the wrong seat, so it's left out of every print file, and the
+    # first page says to take the printed copy out of the stack.
+    doc = pymupdf.open(stream=_print(exam_id).content)
+    assert len(doc) == 1 + 1 + 2 and "Take these old papers out" in doc[0].get_text()
 
     _update_papers(exam_id)
     r = _print(exam_id, only_new=True)
     assert r.status_code == 200 and "-new" in r.headers["content-disposition"]
     doc = pymupdf.open(stream=r.content)
-    assert len(doc) == 1 + 1 and numbers[0] in doc[1].get_text()
+    assert len(doc) == 1 + 1 + 1 and numbers[0] in doc[2].get_text()
 
 
 def test_renaming_the_exam_makes_every_paper_out_of_date():
@@ -218,3 +220,67 @@ def test_papers_for_seated_students_while_some_still_need_a_seat():
     assert client.get(f"/api/exams/{exam_id}/generated/validate", headers=ADMIN_HEADERS).json()["warnings"] == []
     _update_papers(exam_id)
     assert late in _current_papers(exam_id)
+
+
+# ── Printed copies to take out of the stacks ────────────────
+
+def _to_pull(exam_id: str) -> list[dict]:
+    r = client.get(f"/api/exams/{exam_id}/generated/pull", headers=ADMIN_HEADERS)
+    assert r.status_code == 200, r.text
+    return r.json()["papers"]
+
+
+def test_printed_paper_of_a_moved_student_must_be_taken_out():
+    exam_id, _ = _ready_exam_with_papers(student_count=3)
+    numbers = sorted(_current_papers(exam_id))
+    old_seat = _seat_of(_seat_map(exam_id), numbers[0])["seat_code"]
+    empty = next(s for s in _seat_map(exam_id)["seats"] if not s["occupant"])
+    _move(exam_id, numbers[0], empty["id"])
+    assert _to_pull(exam_id) == []  # nothing printed yet, nothing to take out
+
+    _update_papers(exam_id)
+    _print(exam_id)
+    _move(exam_id, numbers[0], next(s for s in _seat_map(exam_id)["seats"] if not s["occupant"])["id"])
+    pull = _to_pull(exam_id)
+    assert [(p["student_number"], p["reason"]) for p in pull] == [(numbers[0], "out_of_date")]
+    assert pull[0]["seat_code"] == empty["seat_code"] and pull[0]["seat_code"] != old_seat
+    assert _status(exam_id)["to_pull"] == 1
+
+    _update_papers(exam_id)
+    assert [p["reason"] for p in _to_pull(exam_id)] == ["replaced"]
+    r = client.post(f"/api/exams/{exam_id}/generated/pull", json={"ids": [pull[0]["id"]]}, headers=ADMIN_HEADERS)
+    assert r.json() == {"pulled": 1}
+    assert _to_pull(exam_id) == [] and _status(exam_id)["to_pull"] == 0
+
+
+def test_printed_paper_of_a_removed_student_must_be_taken_out():
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    _print(exam_id)
+    gone = sorted(_current_papers(exam_id))[0]
+    seat = _seat_of(_seat_map(exam_id), gone)["seat_code"]
+    student_id = _seat_of(_seat_map(exam_id), gone)["occupant"]["student_id"]
+    paper_id, token = _current_papers(exam_id)[gone]
+    assert client.delete(f"/api/exams/{exam_id}/roster/{student_id}", headers=ADMIN_HEADERS).status_code == 204
+
+    assert [(p["seat_code"], p["reason"], p["full_name"]) for p in _to_pull(exam_id)] == [(seat, "removed", None)]
+    assert client.get(f"/api/verify/{token}").json()["message"] == "This paper was withdrawn and shouldn't be in use"
+    # The kept record holds nothing about the student, and its file is gone.
+    db = SessionLocal()
+    try:
+        kept = db.get(GeneratedExam, uuid.UUID(paper_id))
+        assert kept.exam_student_id is None and kept.file_name == "withdrawn.pdf"
+    finally:
+        db.close()
+    r = client.get(f"/api/exams/{exam_id}/generated/{paper_id}/download", headers=ADMIN_HEADERS)
+    assert r.status_code == 404
+    assert _status(exam_id)["outdated"] == 0
+
+
+def test_qr_check_says_out_of_date_before_new_papers_are_made():
+    exam_id, _ = _ready_exam_with_papers(student_count=2)
+    numbers = sorted(_current_papers(exam_id))
+    _, token = _current_papers(exam_id)[numbers[0]]
+    assert _verifies(token)
+    _move(exam_id, numbers[0], next(s for s in _seat_map(exam_id)["seats"] if not s["occupant"])["id"])
+    r = client.get(f"/api/verify/{token}").json()
+    assert not r["valid"] and r["status"] == "OUTDATED"
