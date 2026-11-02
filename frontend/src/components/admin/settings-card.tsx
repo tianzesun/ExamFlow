@@ -9,6 +9,7 @@ import { FILL_OPTIONS, FRONT_ROW_OPTIONS, ORDER_OPTIONS, SPACING_OPTIONS, VERSIO
 import { Button, Input, Select, Skeleton } from "@/components";
 import { Group } from "./settings-group";
 import { SignInSettingsCard } from "./sign-in-settings";
+import { RetentionDue } from "./retention-due";
 
 /** Settings an administrator changes, and the server's set-up (read only, from its environment). */
 export function SettingsCard() {
@@ -50,6 +51,8 @@ export function SettingsCard() {
   const set = <K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => setForm({ ...form, [key]: value });
   const setStamp = (key: keyof SystemSettings["paper_stamp"], value: boolean) =>
     set("paper_stamp", { ...form.paper_stamp, [key]: value });
+  const setRetention = (key: keyof SystemSettings["retention"], value: string) =>
+    set("retention", { ...form.retention, [key]: value.trim() === "" ? null : Number(value) });
   const setSeating = (key: keyof SystemSettings["default_seating"], value: string) =>
     set("default_seating", {
       ...form.default_seating,
@@ -130,6 +133,27 @@ export function SettingsCard() {
               value={form.max_upload_mb}
               onChange={(e) => set("max_upload_mb", Number(e.target.value))}
               hint="Between 1 and 200 MB." />
+          </Group>
+
+          <Group
+            title="Keeping data"
+            text="How many days after the exam its data is deleted. Leave empty to keep it. Set these only once the periods are approved (see DATA-CLASSIFICATION.md). Deletion runs daily, archives the exam, and can't be undone."
+          >
+            <Input label="Students' papers (days)" type="number" min={1} max={3650}
+              value={form.retention.papers_days ?? ""} placeholder="Keep"
+              onChange={(e) => setRetention("papers_days", e.target.value)}
+              hint="Each student's stamped paper. Suggested: 365." />
+            <Input label="Uploaded exam papers (days)" type="number" min={1} max={3650}
+              value={form.retention.exam_papers_days ?? ""} placeholder="Keep"
+              onChange={(e) => setRetention("exam_papers_days", e.target.value)}
+              hint="The exam paper PDFs staff uploaded. Suggested: 730." />
+            <Input label="Rosters and seating (days)" type="number" min={1} max={3650}
+              value={form.retention.rosters_days ?? ""} placeholder="Keep"
+              onChange={(e) => setRetention("rosters_days", e.target.value)}
+              hint="Roster, seats, attendance and accommodations, with the papers. Student records no exam uses go too. Suggested: 730." />
+            <div className="md:col-span-2">
+              <RetentionDue saved={saved.retention} />
+            </div>
           </Group>
 
           <Group title="Exam-day documents" text="Signature lists, seating lists, seating maps and the exam summary.">

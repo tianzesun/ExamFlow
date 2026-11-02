@@ -69,6 +69,26 @@ export interface SystemSettings {
   default_duration_minutes: number;
   /** HH:MM, or empty */
   default_start_time: string;
+  /** Days after the exam its data is deleted; null keeps it. */
+  retention: { papers_days: number | null; exam_papers_days: number | null; rosters_days: number | null };
+}
+
+/** What the saved retention periods delete now, or deleted in a run. */
+export interface RetentionCounts {
+  papers: number;
+  exam_papers: number;
+  roster_entries: number;
+  exams: number;
+  /** Student records no exam refers to any more; only after a run. */
+  students?: number;
+}
+
+export async function getRetentionPlan(): Promise<RetentionCounts> {
+  return fetchApi<RetentionCounts>("/api/admin/retention");
+}
+
+export async function runRetention(): Promise<RetentionCounts> {
+  return fetchApi<RetentionCounts>("/api/admin/retention/run", { method: "POST" });
 }
 
 /** How the server is set up; shown, not editable. */

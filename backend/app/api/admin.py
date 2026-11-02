@@ -18,7 +18,7 @@ from app.models.course_access import CourseAccess
 from app.models.exam import Exam
 from app.models.room import Room
 from app.models.user import User
-from app.services import settings_service
+from app.services import retention_service, settings_service
 from app.services.settings_service import SignInSettings, SignInSettingsError, SystemSettings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -120,6 +120,18 @@ def update_settings(
 ) -> dict:
     """Save the settings. They apply from the next sync, new exam or upload; nothing done already changes."""
     return _settings_response(settings_service.update_system_settings(db, data, admin.id))
+
+
+@router.get("/retention")
+def get_retention_plan(db: Session = Depends(get_db), _admin: User = Depends(require_role("ADMIN"))) -> dict:
+    """What the saved retention periods would delete now."""
+    return retention_service.plan(db)
+
+
+@router.post("/retention/run")
+def run_retention(db: Session = Depends(get_db), admin: User = Depends(require_role("ADMIN"))) -> dict:
+    """Delete what is due now instead of waiting for the daily run."""
+    return retention_service.run(db, admin.id)
 
 
 def _sign_in_response(db: Session) -> dict:

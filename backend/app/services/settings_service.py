@@ -56,6 +56,19 @@ class PaperStamp(BaseModel):
 DEFAULT_STAMP = PaperStamp().fingerprint()
 
 
+class Retention(BaseModel):
+    """How many days after the exam its data is deleted; empty keeps it. Off until the periods are approved
+    (DATA-CLASSIFICATION.md › Retention). Applied daily by retention_service."""
+
+    # Each student's stamped paper (the files and their records).
+    papers_days: int | None = Field(None, ge=1, le=3650)
+    # The exam papers staff uploaded.
+    exam_papers_days: int | None = Field(None, ge=1, le=3650)
+    # The roster with seating, attendance and accommodations, and with it the papers. Student records no
+    # exam refers to any more go too.
+    rosters_days: int | None = Field(None, ge=1, le=3650)
+
+
 class SystemSettings(BaseModel):
     # Given to courses the Timetable Builder sync adds.
     department_name: str = Field("Computer Science", min_length=1, max_length=120)
@@ -72,6 +85,7 @@ class SystemSettings(BaseModel):
     # What the new-exam form starts with.
     default_duration_minutes: int = Field(120, ge=15, le=600)
     default_start_time: str = ""  # HH:MM, or empty for none
+    retention: Retention = Field(default_factory=Retention)
 
     @computed_field
     @property

@@ -39,7 +39,7 @@ This document records known limitations of ExamFlow v1.0.0-pilot.
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
-| No data retention policy | Data retained indefinitely | Manual cleanup |
+| Retention periods not yet approved | Data kept until an administrator sets the periods | Admin › Settings › Keeping data |
 | No exam archival automation | Manual status change required | Workflow documented |
 | No bulk operations | One exam at a time | Acceptable for pilot |
 | Roster-only export | The seating list exports as CSV; a plain roster export doesn't exist | Use the seating list CSV |

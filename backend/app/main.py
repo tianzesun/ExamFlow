@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 import uuid
@@ -22,6 +23,7 @@ from app.api.templates import router as templates_router
 from app.api.ttb import router as ttb_router
 from app.config import get_settings, validate_production_settings
 from app.database import SessionLocal
+from app.services import retention_service
 
 logger = logging.getLogger("examflow")
 
@@ -41,10 +43,31 @@ if prod_errors:
         logger.warning("Production config: %s", err)
 
 
+def _apply_retention() -> None:
+    db = SessionLocal()
+    try:
+        retention_service.run(db)
+    finally:
+        db.close()
+
+
+async def _daily_retention() -> None:
+    """Delete exam data past its retention period once a day, starting ten minutes after start-up."""
+    await asyncio.sleep(600)
+    while True:
+        try:
+            await asyncio.to_thread(_apply_retention)
+        except Exception:
+            logger.exception("Retention run failed")
+        await asyncio.sleep(24 * 3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("ExamFlow starting (env=%s)", settings.APP_ENV)
+    retention = asyncio.create_task(_daily_retention())
     yield
+    retention.cancel()
     logger.info("ExamFlow shutting down")
 
 

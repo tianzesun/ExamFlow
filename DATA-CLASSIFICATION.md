@@ -87,7 +87,9 @@ from the failing request.
 
 ## Retention: decisions needed
 
-Nothing is deleted automatically today.
+ExamFlow can delete papers, uploaded exam papers and rosters a set number of days after each exam
+(Admin › Settings › Keeping data; runs daily and archives the exam). Every period is empty, so nothing
+is deleted, until an administrator sets it. The periods themselves still need approval:
 
 | Data | Today | Suggested (needs approval) |
 |------|-------|----------------------------|
@@ -107,6 +109,6 @@ Nothing is deleted automatically today.
 2. **Storage at rest.** Papers are files on the server's disk; the database and files rely on the
    host's disk encryption and backups, which aren't part of ExamFlow. This needs confirming for
    the production server.
-3. **Retention.** No automatic deletion yet (table above).
+3. **Retention.** Deletion is built but off until the periods above are approved and set.
 4. **Tracebacks in logs** can contain request values; logs need the same protection as the
    database.

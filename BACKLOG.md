@@ -113,13 +113,13 @@ This document tracks planned improvements for ExamFlow, prioritized by importanc
 - **Description:** Automatic archival after exam date
 - **Impact:** Data management
 - **Scope:** Scheduled task
-- **Status:** Not started
+- **Status:** Done with P2-008 — an exam is archived when retention deletes any of its data
 
 ### P2-008: Data Retention
 - **Description:** Implement configurable data retention policies
 - **Impact:** Compliance
 - **Scope:** Background job, configuration
-- **Status:** Not started
+- **Status:** Done — Admin › Settings › Keeping data sets days after the exam for papers, uploaded exam papers and rosters (with unused student records). Runs daily in the API process (one process at a time) and on demand. Off until the periods in DATA-CLASSIFICATION.md are approved
 
 ---
 
