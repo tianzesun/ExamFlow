@@ -672,37 +672,37 @@ def get_summary(db: Session, exam_id: UUID) -> AssignmentSummary:
     registered = db.query(func.count(ExamStudent.id)).filter(ExamStudent.exam_id == exam_id).scalar() or 0
     assigned = db.query(func.count(ExamAssignment.id)).filter(ExamAssignment.exam_id == exam_id).scalar() or 0
 
-    room_ids = [r.id for r in get_exam_rooms(db, exam_id)]
-    total_usable_seats = 0
+    rooms = get_exam_rooms(db, exam_id)
+    room_ids = [r.id for r in rooms]
+    usable: dict[UUID, int] = {}
+    used: dict[UUID, int] = {}
     if room_ids:
-        total_usable_seats = db.query(func.count(Seat.id)).filter(
-            Seat.room_id.in_(room_ids),
-            Seat.is_usable,
-        ).scalar() or 0
-
-    rooms_used = 0
-    room_details = []
-    if room_ids:
-        for room in get_exam_rooms(db, exam_id):
-            total_seats = db.query(func.count(Seat.id)).filter(
-                Seat.room_id == room.id, Seat.is_usable
-            ).scalar() or 0
-            used_seats = db.query(func.count(ExamAssignment.id)).join(
-                Seat, ExamAssignment.seat_id == Seat.id
-            ).filter(
-                ExamAssignment.exam_id == exam_id,
-                Seat.room_id == room.id,
-            ).scalar() or 0
-            if used_seats > 0:
-                rooms_used += 1
-            room_details.append({
-                "room_id": str(room.id),
-                "building": room.building,
-                "room_number": room.room_number,
-                "total_seats": total_seats,
-                "used_seats": used_seats,
-                "available_seats": total_seats - used_seats,
-            })
+        usable = dict(
+            db.query(Seat.room_id, func.count(Seat.id))
+            .filter(Seat.room_id.in_(room_ids), Seat.is_usable)
+            .group_by(Seat.room_id)
+            .all()
+        )
+        used = dict(
+            db.query(Seat.room_id, func.count(ExamAssignment.id))
+            .join(Seat, ExamAssignment.seat_id == Seat.id)
+            .filter(ExamAssignment.exam_id == exam_id, Seat.room_id.in_(room_ids))
+            .group_by(Seat.room_id)
+            .all()
+        )
+    total_usable_seats = sum(usable.values())
+    rooms_used = sum(1 for room in rooms if used.get(room.id))
+    room_details = [
+        {
+            "room_id": str(room.id),
+            "building": room.building,
+            "room_number": room.room_number,
+            "total_seats": usable.get(room.id, 0),
+            "used_seats": used.get(room.id, 0),
+            "available_seats": usable.get(room.id, 0) - used.get(room.id, 0),
+        }
+        for room in rooms
+    ]
 
     return AssignmentSummary(
         registered_students=registered,

@@ -475,9 +475,11 @@ export default function SeatingPage() {
                 disabled={!canEdit || savingRules}
               />
               <p className="text-xs text-ink-3">
-                {rules.versions > 1
-                  ? "Versions alternate by seat so neighbours write different papers. Upload one PDF per version on the papers page."
-                  : "Everyone writes the same paper."}
+                {rules.versions === 1
+                  ? "Everyone writes the same paper."
+                  : rules.spacing === "none"
+                  ? "Students beside, in front of and behind each other write different versions; one diagonal neighbour writes the same. Add spacing to avoid that. Upload one PDF per version on the papers page."
+                  : "Versions alternate by seat so the nearest students write different papers. Upload one PDF per version on the papers page."}
               </p>
             </div>
             <div className="space-y-1.5">
