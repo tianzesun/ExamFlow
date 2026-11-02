@@ -53,6 +53,11 @@ class GeneratedExam(Base):
     # The "building room" printed in the stamp, so renaming the room dates the paper. Empty on papers made
     # before it was recorded.
     room_label = Column(String(160), nullable=True)
+    # The student's name and UTORid as printed, so correcting them dates the paper. Empty when the stamp
+    # doesn't print them (Admin › Settings) or on papers made before they were recorded; student_utorid
+    # is "" when the stamp prints UTORids but the student had none.
+    student_name = Column(String(255), nullable=True)
+    student_utorid = Column(String(50), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

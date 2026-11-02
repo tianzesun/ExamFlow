@@ -46,6 +46,14 @@ class AccommodationUpdate(BaseModel):
     accommodation_notes: str | None = Field(None, max_length=2000)
 
 
+class StudentDetailsUpdate(BaseModel):
+    """A correction to the student's record, shared by every exam they are in."""
+
+    full_name: str = Field(..., min_length=1, max_length=255)
+    # Empty removes it.
+    utorid: str | None = Field(None, max_length=50)
+
+
 class AttendanceSummary(BaseModel):
     expected: int
     present: int
@@ -61,6 +69,8 @@ class RosterImportPreview(BaseModel):
     new_students: int
     errors: list[str]
     preview: list[dict]
+    # Students in the exam but not in the file: they may have dropped the course.
+    not_in_file: list[dict] = []
 
 
 class RosterImportConfirm(BaseModel):

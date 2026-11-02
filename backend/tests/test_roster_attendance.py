@@ -123,7 +123,7 @@ def test_import_skips_values_too_long_for_the_roster():
     assert preview["valid_rows"] == 1 and "longer than 50" in preview["errors"][0]
     response = client.post(f"/api/exams/{exam_id}/roster/import/confirm", files=files, headers=ADMIN_HEADERS)
     assert response.status_code == 200, response.text
-    assert response.json() == {"imported": 1, "skipped": 1}
+    assert response.json() == {"imported": 1, "skipped": 1, "removed": 0}
 
 
 def test_accommodation_notes_are_for_exam_office_staff_only():

@@ -392,6 +392,7 @@ def generate_all_exams(
         try:
             qr_token = secrets.token_urlsafe(32)
             template, template_bytes = templates[assignment.paper_version]
+            printed = paper_state.printed_student(student, stamp)
             pdf_bytes = generate_one_student_pdf(template_bytes, exam, student, room, seat, qr_token,
                                                  assignment.paper_version if show_version else None, stamp)
             file_hash = hashlib.sha256(pdf_bytes).hexdigest()
@@ -419,6 +420,8 @@ def generate_all_exams(
                 stamp_style=stamp.fingerprint(),
                 exam_title=exam_title(exam),
                 room_label=room_label(room),
+                student_name=printed[0],
+                student_utorid=printed[1],
                 qr_token=qr_token,
                 qr_generated_at=utcnow(),
                 created_by=user_id,

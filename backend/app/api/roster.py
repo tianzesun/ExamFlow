@@ -15,6 +15,7 @@ from app.schemas.student import (
     ExamStudentResponse,
     RosterImportPreview,
     RosterStats,
+    StudentDetailsUpdate,
 )
 from app.services import roster_service
 from app.services.access_service import require_exam_access
@@ -87,6 +88,26 @@ def set_attendance(
     return _roster_entry(es, _student_for(db, es), user, roster_service.seats_for(db, [es.id]).get(es.id))
 
 
+@router.patch("/{student_id}", response_model=ExamStudentResponse)
+def update_student(
+    exam_id: UUID,
+    student_id: UUID,
+    data: StudentDetailsUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("ADMIN", "STAFF")),
+):
+    """Correct the student's name or UTORid, in every exam they're in."""
+    try:
+        student = roster_service.update_student(db, exam_id, student_id, data.full_name, data.utorid, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in roster")
+    es = roster_service._get_exam_student(db, exam_id, student_id)
+    sync_exam_status(db, exam_id, user.id)
+    return _roster_entry(es, student, user, roster_service.seats_for(db, [es.id]).get(es.id))
+
+
 @router.put("/{student_id}/accommodation", response_model=ExamStudentResponse)
 def set_accommodation(
     exam_id: UUID,
@@ -149,6 +170,7 @@ async def preview_import(
 async def confirm_import(
     exam_id: UUID,
     file: UploadFile = File(...),
+    remove_missing: bool = Query(False, description="The file is the whole class list; remove students not in it"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role("ADMIN", "STAFF")),
 ):
@@ -167,7 +189,7 @@ async def confirm_import(
             detail="File must be UTF-8 encoded",
         )
 
-    result = roster_service.import_roster(db, exam_id, text, user.id)
+    result = roster_service.import_roster(db, exam_id, text, user.id, remove_missing=remove_missing)
     sync_exam_status(db, exam_id, user.id)
     return result
 

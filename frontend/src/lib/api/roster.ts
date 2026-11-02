@@ -13,6 +13,14 @@ export async function getRosterStats(examId: string): Promise<{ total_students: 
   return fetchApi(`/api/exams/${examId}/roster/stats`);
 }
 
+export interface RosterDrop {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  room: string | null;
+  seat_code: string | null;
+}
+
 export async function previewRosterImport(
   examId: string,
   file: File
@@ -24,6 +32,8 @@ export async function previewRosterImport(
   new_students: number;
   errors: string[];
   preview: { student_number: string; full_name: string }[];
+  /** Students in the exam but not in the file: they may have dropped the course. */
+  not_in_file: RosterDrop[];
 }> {
   const formData = new FormData();
   formData.append("file", file);
@@ -33,13 +43,15 @@ export async function previewRosterImport(
   });
 }
 
+/** Add the file's students. With removeMissing, the file is the whole class list and students not in it are removed. */
 export async function confirmRosterImport(
   examId: string,
-  file: File
-): Promise<{ imported: number; skipped: number }> {
+  file: File,
+  removeMissing = false,
+): Promise<{ imported: number; skipped: number; removed: number }> {
   const formData = new FormData();
   formData.append("file", file);
-  return fetchApi(`/api/exams/${examId}/roster/import/confirm`, {
+  return fetchApi(`/api/exams/${examId}/roster/import/confirm?remove_missing=${removeMissing}`, {
     method: "POST",
     body: formData,
   });
@@ -70,6 +82,18 @@ export async function setAttendance(
   return fetchApi(`/api/exams/${examId}/roster/${studentId}/attendance`, {
     method: "PUT",
     body: JSON.stringify({ attendance_status }),
+  });
+}
+
+/** Correct a student's name or UTORid, in every exam they're in. */
+export async function updateStudentDetails(
+  examId: string,
+  studentId: string,
+  data: { full_name: string; utorid: string | null },
+): Promise<ExamStudent> {
+  return fetchApi(`/api/exams/${examId}/roster/${studentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 }
 

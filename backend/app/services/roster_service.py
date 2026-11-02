@@ -94,6 +94,7 @@ def preview_roster_import(db: Session, exam_id: UUID, file_content: str) -> dict
         })
 
     return {
+        "not_in_file": _not_in_file(db, exam_id, seen_numbers),
         "total_rows": len(rows),
         "valid_rows": valid_rows,
         "duplicate_in_file": duplicate_in_file,
@@ -104,8 +105,37 @@ def preview_roster_import(db: Session, exam_id: UUID, file_content: str) -> dict
     }
 
 
-def import_roster(db: Session, exam_id: UUID, file_content: str, user_id: UUID) -> dict:
+def _not_in_file(db: Session, exam_id: UUID, numbers: set[str]) -> list[dict]:
+    """Students in the exam whose number isn't in the file, with their seat if they have one."""
+    if not numbers:
+        return []  # an empty or unreadable file says nothing about who dropped
+    rows = (
+        db.query(ExamStudent, Student)
+        .join(Student, Student.id == ExamStudent.student_id)
+        .filter(ExamStudent.exam_id == exam_id, Student.student_number.notin_(numbers))
+        .order_by(Student.student_number)
+        .all()
+    )
+    seats = seats_for(db, [es.id for es, _ in rows])
+    return [
+        {
+            "student_id": str(st.id),
+            "student_number": st.student_number,
+            "full_name": st.full_name,
+            "room": seats[es.id][0] if es.id in seats else None,
+            "seat_code": seats[es.id][1] if es.id in seats else None,
+        }
+        for es, st in rows
+    ]
+
+
+def import_roster(
+    db: Session, exam_id: UUID, file_content: str, user_id: UUID, remove_missing: bool = False
+) -> dict:
+    """Add the file's students. With remove_missing, the file is the whole class list: students in the exam
+    but not in it (they dropped) are removed, their seats freed and their papers withdrawn."""
     rows = parse_csv(file_content)
+    missing = _not_in_file(db, exam_id, {row.get("student_number", "").strip() for row in rows} - {""})
     imported = 0
     skipped = 0
 
@@ -183,7 +213,43 @@ def import_roster(db: Session, exam_id: UUID, file_content: str, user_id: UUID) 
     ))
     db.commit()
 
-    return {"imported": imported, "skipped": skipped}
+    removed = 0
+    if remove_missing:
+        for entry in missing:
+            removed += remove_from_roster(db, exam_id, UUID(entry["student_id"]), user_id)
+    return {"imported": imported, "skipped": skipped, "removed": removed}
+
+
+def update_student(db: Session, exam_id: UUID, student_id: UUID, full_name: str, utorid: str | None,
+                   user_id: UUID) -> Student | None:
+    """Correct a student's name or UTORid. The record is shared, so every exam they're in shows the change,
+    and papers that printed the old details become out of date."""
+    if not _get_exam_student(db, exam_id, student_id):
+        return None
+    student = db.get(Student, student_id)
+    full_name = " ".join(full_name.split())
+    utorid = (utorid or "").strip().lower() or None
+    if not full_name:
+        raise ValueError("Enter the student's name")
+    if utorid and db.query(Student.id).filter(Student.utorid == utorid, Student.id != student_id).first():
+        raise ValueError(f"Another student already has the UTORid {utorid}")
+    changed = [field for field, value in (("full_name", full_name), ("utorid", utorid))
+               if getattr(student, field) != value]
+    if not changed:
+        return student
+    student.full_name = full_name
+    student.utorid = utorid
+    # Names identify the student; the audit trail records which details changed, not what they say.
+    db.add(AuditLog(
+        user_id=user_id,
+        action="STUDENT_DETAILS_UPDATED",
+        entity_type="student",
+        entity_id=student_id,
+        new_values={"changed": changed, "exam_id": str(exam_id)},
+    ))
+    db.commit()
+    db.refresh(student)
+    return student
 
 
 def get_roster(db: Session, exam_id: UUID, page: int = 1, page_size: int = 50) -> tuple[list, int]:

@@ -3,7 +3,7 @@
 A paper stays valid (its QR code verifies) until it is replaced, but it is only
 up to date while the student sits in the seat printed on it, the template it
 was made from is still the active one for the student's paper version, the stamp
-shows what Admin › Settings asks for, and the exam title and room name are the current ones. Seating
+shows what Admin › Settings asks for, and the exam title, room and student details are the current ones. Seating
 changes and a new template therefore make just the affected papers out of date, and only
 those need generating and printing again.
 """
@@ -93,6 +93,25 @@ _room_matches = or_(
 )
 
 
+# The student's name and UTORid now, where the paper printed them; papers that didn't are taken to match.
+_student_matches = or_(
+    (GeneratedExam.student_name.is_(None)) & (GeneratedExam.student_utorid.is_(None)),
+    select(Student.id).join(ExamStudent, ExamStudent.student_id == Student.id).where(
+        ExamStudent.id == GeneratedExam.exam_student_id,
+        or_(GeneratedExam.student_name.is_(None), GeneratedExam.student_name == Student.full_name),
+        or_(GeneratedExam.student_utorid.is_(None), GeneratedExam.student_utorid == func.coalesce(Student.utorid, "")),
+    ).correlate(GeneratedExam).exists(),
+)
+
+
+def printed_student(student, stamp) -> tuple[str | None, str | None]:
+    """(name, UTORid) as the stamp prints them, recorded on the paper; None where it doesn't print them."""
+    return (
+        student.full_name if stamp.show_name else None,
+        (student.utorid or "") if stamp.show_utorid else None,
+    )
+
+
 # Correlated to the paper explicitly, so it still works in queries that also join seats or templates.
 # The student must still hold the seat printed on the paper, and the paper's template must be the
 # active upload for the version that seat now has.
@@ -108,6 +127,7 @@ _matches = (
         _stamp_matches,
         _title_matches,
         _room_matches,
+        _student_matches,
     )
     .correlate(GeneratedExam)
     .exists()

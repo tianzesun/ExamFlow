@@ -8,6 +8,7 @@ import {
   previewRosterImport,
   confirmRosterImport,
   removeFromRoster,
+  RosterDrop,
 } from "@/lib/api/roster";
 import { Exam, ExamStudent } from "@/lib/types";
 import { useAuth } from "@/lib/auth/context";
@@ -24,6 +25,7 @@ import {
 
 import { notifyExamChanged } from "@/components/exam/workspace";
 import { AccommodationDialog } from "@/components/exam/AccommodationDialog";
+import { StudentDetailsDialog } from "@/components/exam/StudentDetailsDialog";
 import { errorMessage, errorReference } from "@/lib/api/client";
 export default function RosterPage() {
   const params = useParams();
@@ -48,10 +50,14 @@ export default function RosterPage() {
     new_students: number;
     errors: string[];
     preview: { student_number: string; full_name: string }[];
+    not_in_file: RosterDrop[];
   }>(null);
+  // The file is the whole class list: remove students not in it.
+  const [removeMissing, setRemoveMissing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<null | { imported: number; skipped: number }>(null);
+  const [importResult, setImportResult] = useState<null | { imported: number; skipped: number; removed: number }>(null);
   const [editing, setEditing] = useState<ExamStudent | null>(null);
+  const [editingDetails, setEditingDetails] = useState<ExamStudent | null>(null);
 
   const canEdit = user?.role === "ADMIN" || user?.role === "STAFF";
 
@@ -85,6 +91,7 @@ export default function RosterPage() {
     try {
       const result = await previewRosterImport(examId, importFile);
       setPreview(result);
+      setRemoveMissing(false);
     } catch (err) {
       setError(errorMessage(err, "The file couldn't be read. Check it is a CSV and try again."));
     }
@@ -95,7 +102,7 @@ export default function RosterPage() {
     setImporting(true);
     setError(null);
     try {
-      const result = await confirmRosterImport(examId, importFile);
+      const result = await confirmRosterImport(examId, importFile, removeMissing && (preview?.not_in_file.length ?? 0) > 0);
       notifyExamChanged();
       setImportResult(result);
       setPreview(null);
@@ -181,7 +188,8 @@ export default function RosterPage() {
       {importResult && (
         <div role="status" className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Imported {plural(importResult.imported, "student")}, skipped {formatNumber(importResult.skipped)}.
+          Imported {plural(importResult.imported, "student")}, skipped {formatNumber(importResult.skipped)}
+          {importResult.removed > 0 && <>, removed {plural(importResult.removed, "student")} not in the file</>}.
         </div>
       )}
 
@@ -260,14 +268,41 @@ export default function RosterPage() {
                 </div>
               )}
 
+              {preview.not_in_file.length > 0 && (
+                <div className="mx-5 mt-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
+                  <p className="font-medium text-ink">
+                    {plural(preview.not_in_file.length, "student")} on this exam {preview.not_in_file.length === 1 ? "isn't" : "aren't"} in the file
+                  </p>
+                  <p className="mt-0.5 text-ink-2">
+                    If the file is the whole class list, they may have dropped the course. Removing them frees their
+                    seats, and any printed papers of theirs are listed to take out of the stacks.
+                  </p>
+                  <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs text-ink-2">
+                    {preview.not_in_file.map((d) => (
+                      <li key={d.student_id}>
+                        <span className="font-mono">{d.student_number}</span> {d.full_name}
+                        {d.seat_code && <span className="text-ink-3"> · {d.room} {d.seat_code}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="mt-3 flex cursor-pointer select-none items-center gap-2 text-ink">
+                    <input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)}
+                      className="h-4 w-4 accent-[var(--accent)]" />
+                    The file is the whole class list: remove {preview.not_in_file.length === 1 ? "this student" : "these students"}
+                  </label>
+                </div>
+              )}
+
               <div className="mt-4 flex justify-end gap-2 border-t border-line px-5 py-3">
                 <Button variant="secondary" onClick={resetImport}>Cancel</Button>
                 <Button
                   onClick={handleConfirmImport}
-                  disabled={importing || preview.new_students === 0}
+                  disabled={importing || (preview.new_students === 0 && !(removeMissing && preview.not_in_file.length > 0))}
                   loading={importing}
                 >
-                  Import {plural(preview.new_students, "student")}
+                  {removeMissing && preview.not_in_file.length > 0
+                    ? `Import ${plural(preview.new_students, "student")}, remove ${formatNumber(preview.not_in_file.length)}`
+                    : `Import ${plural(preview.new_students, "student")}`}
                 </Button>
               </div>
             </>
@@ -338,6 +373,9 @@ export default function RosterPage() {
                   {canEdit && (
                     <Td className="py-1.5">
                       <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditingDetails(s)} aria-label={`Edit details for ${s.full_name}`}>
+                        Details
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => setEditing(s)} aria-label={`Edit accommodations for ${s.full_name}`}>
                         Accommodations
                       </Button>
@@ -377,6 +415,12 @@ export default function RosterPage() {
         </div>
       )}
 
+      <StudentDetailsDialog
+        examId={examId}
+        student={editingDetails}
+        onClose={() => setEditingDetails(null)}
+        onSaved={(u) => setStudents((list) => list.map((x) => (x.student_id === u.student_id ? { ...x, ...u } : x)))}
+      />
       <AccommodationDialog
         examId={examId}
         student={editing}

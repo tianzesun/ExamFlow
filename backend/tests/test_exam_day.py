@@ -87,7 +87,7 @@ def test_roster_import_tolerates_duplicate_rows():
         headers=ADMIN_HEADERS,
     )
     assert r.status_code == 200, r.text
-    assert r.json() == {"imported": 1, "skipped": 1}
+    assert r.json() == {"imported": 1, "skipped": 1, "removed": 0}
 
 
 def test_archived_exam_is_read_only():
